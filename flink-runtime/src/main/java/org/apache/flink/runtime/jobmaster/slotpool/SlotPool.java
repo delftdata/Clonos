@@ -514,6 +514,7 @@ public class SlotPool extends RpcEndpoint implements SlotPoolGateway, AllocatedS
 			Time allocationTimeout) throws NoResourceAvailableException {
 
 		// check first whether we have a resolved root slot which we can use
+		log.debug("Try allocate multi task slot with slot profile [{}]", slotProfile);
 		SlotSharingManager.MultiTaskSlotLocality multiTaskSlotLocality = slotSharingManager.getResolvedRootSlot(
 			groupId,
 			schedulingStrategy,
@@ -622,6 +623,7 @@ public class SlotPool extends RpcEndpoint implements SlotPoolGateway, AllocatedS
 		// (1) do we have a slot available already?
 		SlotAndLocality slotFromPool = pollAndAllocateSlot(slotRequestId, slotProfile);
 
+		log.debug("Selected slot from pool: [{}]", slotFromPool);
 		if (slotFromPool != null) {
 			allocatedSlotLocalityFuture = CompletableFuture.completedFuture(slotFromPool);
 		} else if (allowQueuedScheduling) {
@@ -714,6 +716,7 @@ public class SlotPool extends RpcEndpoint implements SlotPoolGateway, AllocatedS
 				}
 			},
 			getMainThreadExecutor());
+		log.debug(printStatus());
 	}
 
 	private void slotRequestToResourceManagerFailed(SlotRequestId slotRequestID, Throwable failure) {
@@ -814,6 +817,7 @@ public class SlotPool extends RpcEndpoint implements SlotPoolGateway, AllocatedS
 	private SlotAndLocality pollAndAllocateSlot(SlotRequestId slotRequestId, SlotProfile slotProfile) {
 		SlotAndLocality slotFromPool = availableSlots.poll(schedulingStrategy, slotProfile);
 
+		log.debug("Slot from pool is [{}]", slotFromPool);
 		if (slotFromPool != null) {
 			allocatedSlots.add(slotRequestId, slotFromPool.getSlot());
 		}
@@ -972,6 +976,7 @@ public class SlotPool extends RpcEndpoint implements SlotPoolGateway, AllocatedS
 			} else {
 				log.debug("Fulfilled slot request [{}] with allocated slot [{}].", pendingRequest.getSlotRequestId(), allocationID);
 			}
+			log.debug(printStatus());
 		}
 		else {
 			// we were actually not waiting for this:
