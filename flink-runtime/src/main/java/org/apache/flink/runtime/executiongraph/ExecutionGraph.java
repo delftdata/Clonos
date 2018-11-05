@@ -46,6 +46,7 @@ import org.apache.flink.runtime.concurrent.ScheduledExecutorServiceAdapter;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.execution.SuppressRestartsException;
 import org.apache.flink.runtime.executiongraph.failover.FailoverStrategy;
+import org.apache.flink.runtime.executiongraph.failover.RunStandbyTaskStrategy;
 import org.apache.flink.runtime.executiongraph.failover.RestartAllStrategy;
 import org.apache.flink.runtime.executiongraph.restart.ExecutionGraphRestartCallback;
 import org.apache.flink.runtime.executiongraph.restart.RestartCallback;
@@ -1260,6 +1261,11 @@ public class ExecutionGraph implements AccessExecutionGraph {
 			}
 
 			scheduleForExecution();
+
+			// Re-set standby tasks if this failover strategy is used.
+			if (failoverStrategy instanceof RunStandbyTaskStrategy) {
+				failoverStrategy.notifyNewVertices(this.verticesInCreationOrder);
+			}
 		}
 		catch (Throwable t) {
 			LOG.warn("Failed to restart the job.", t);
