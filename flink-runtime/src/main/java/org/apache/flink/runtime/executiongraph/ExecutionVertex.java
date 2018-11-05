@@ -659,6 +659,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 		// we copy a reference to the stack to make sure both calls go to the same Execution
 		final Execution exec = this.currentExecution;
 		exec.cancel();
+		cancelStandbyExecution();
 		return exec.getReleaseFuture();
 	}
 
@@ -884,6 +885,11 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 		return newStandbyExecution.scheduleForExecution();
 
 	}
+
+	public void cancelStandbyExecution() {
+		if (standbyExecutions != null && !standbyExecutions.isEmpty()) {
+			standbyExecutions.remove(0).cancel();
+		}
 	}
 
 	// --------------------------------------------------------------------------------------------

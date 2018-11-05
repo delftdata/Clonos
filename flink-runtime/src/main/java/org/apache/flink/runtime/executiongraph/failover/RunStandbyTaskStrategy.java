@@ -86,10 +86,29 @@ public class RunStandbyTaskStrategy extends FailoverStrategy {
 								final CompletableFuture<Void> standbyExecutionFuture =
 									executionVertex.addStandbyExecution();
 								schedulingFutures.add(standbyExecutionFuture);
+							} else {
+								schedulingFutures.add(
+										new CompletableFuture<>());
+								schedulingFutures.get(schedulingFutures.size() - 1)
+									.completeExceptionally(t);
 							}
 						});
-
 			}
+		}
+
+		if (CompletableFuture.anyOf(schedulingFutures.toArray(
+						new CompletableFuture<?>[schedulingFutures.size()])).isCompletedExceptionally()) {
+			for (ExecutionJobVertex executionJobVertex : newExecutionJobVerticesTopological) {
+				for (ExecutionVertex executionVertex : executionJobVertex.getTaskVertices()) {
+					executionVertex.cancelStandbyExecution();
+				}
+			}
+
+			LOG.warn("Scheduling of standby tasks in '" +
+				getStrategyName() + "' failed. Cancelling the scheduling of standby tasks.");
+		}
+		else {
+			LOG.info("Scheduling of standby tasks in '" + getStrategyName() + "' completed successfully.");
 		}
 	}
 
