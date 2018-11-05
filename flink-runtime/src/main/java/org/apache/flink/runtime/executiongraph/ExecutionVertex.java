@@ -94,6 +94,8 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 
 	private final EvictingBoundedList<Execution> priorExecutions;
 
+	private final ArrayList<Execution> standbyExecutions;
+
 	private final Time timeout;
 
 	/** The name in the format "myTask (2/7)", cached to avoid frequent string concatenations. */
@@ -164,6 +166,9 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 		this.inputEdges = new ExecutionEdge[jobVertex.getJobVertex().getInputs().size()][];
 
 		this.priorExecutions = new EvictingBoundedList<>(maxPriorExecutionHistoryLength);
+
+		// We can make the size match a replication factor
+		this.standbyExecutions = new ArrayList<Execution>();
 
 		this.currentExecution = new Execution(
 			getExecutionGraph().getFutureExecutor(),
@@ -337,6 +342,10 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 
 	public Map<IntermediateResultPartitionID, IntermediateResultPartition> getProducedPartitions() {
 		return resultPartitions;
+	}
+
+	public ArrayList<Execution> getStandbyExecutions() {
+		return new ArrayList<>(standbyExecutions);
 	}
 
 	// --------------------------------------------------------------------------------------------
@@ -760,7 +769,8 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			ExecutionAttemptID executionId,
 			LogicalSlot targetSlot,
 			@Nullable JobManagerTaskRestore taskRestore,
-			int attemptNumber) throws ExecutionGraphException {
+			int attemptNumber,
+			boolean isStandby) throws ExecutionGraphException {
 
 		// Produced intermediate results
 		List<ResultPartitionDeploymentDescriptor> producedPartitions = new ArrayList<>(resultPartitions.size());
@@ -850,7 +860,30 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			targetSlot.getPhysicalSlotNumber(),
 			taskRestore,
 			producedPartitions,
-			consumedPartitions);
+			consumedPartitions,
+			isStandby);
+	}
+
+	public CompletableFuture<Void> addStandbyExecution() {
+		final long globalModVersion = currentExecution.getGlobalModVersion();
+		final long createTimestamp = System.currentTimeMillis();
+		final boolean isStandby = true;
+
+		Execution newStandbyExecution = new Execution(
+			getExecutionGraph().getFutureExecutor(),
+			this,
+			currentExecution.getAttemptNumber() + 1,
+			globalModVersion,
+			createTimestamp,
+			timeout,
+			isStandby);
+
+		standbyExecutions.add(newStandbyExecution);
+		getExecutionGraph().registerExecution(newStandbyExecution);
+
+		return newStandbyExecution.scheduleForExecution();
+
+	}
 	}
 
 	// --------------------------------------------------------------------------------------------

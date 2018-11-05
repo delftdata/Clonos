@@ -234,6 +234,9 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 	/** Executor to run future callbacks. */
 	private final Executor executor;
 
+	/** Whether the task is a standby task */
+	private boolean isStandby;
+
 	// ------------------------------------------------------------------------
 	//  Fields that control the task execution. All these fields are volatile
 	//  (which means that they introduce memory barriers), to establish
@@ -248,6 +251,9 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 
 	/** The current execution state of the task. */
 	private volatile ExecutionState executionState = ExecutionState.CREATED;
+
+	/** Future for standby tasks that completes when they are required to run */
+	private volatile CompletableFuture<Void> standbyFuture;
 
 	/** The observed exception, in case the task execution failed. */
 	private volatile Throwable failureCause;
@@ -298,6 +304,44 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		PartitionProducerStateChecker partitionProducerStateChecker,
 		Executor executor) {
 
+		this(jobInformation, taskInformation, executionAttemptID, slotAllocationId,
+				subtaskIndex, attemptNumber, resultPartitionDeploymentDescriptors,
+				inputGateDeploymentDescriptors, targetSlotNumber, memManager,
+				ioManager, networkEnvironment, bcVarManager, taskStateManager,
+				taskManagerActions, inputSplitProvider, checkpointResponder,
+				blobService, libraryCache, fileCache, taskManagerConfig,
+				metricGroup, resultPartitionConsumableNotifier,
+				partitionProducerStateChecker, executor, false);
+	}
+
+	public Task(
+		JobInformation jobInformation,
+		TaskInformation taskInformation,
+		ExecutionAttemptID executionAttemptID,
+		AllocationID slotAllocationId,
+		int subtaskIndex,
+		int attemptNumber,
+		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
+		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors,
+		int targetSlotNumber,
+		MemoryManager memManager,
+		IOManager ioManager,
+		NetworkEnvironment networkEnvironment,
+		BroadcastVariableManager bcVarManager,
+		TaskStateManager taskStateManager,
+		TaskManagerActions taskManagerActions,
+		InputSplitProvider inputSplitProvider,
+		CheckpointResponder checkpointResponder,
+		BlobCacheService blobService,
+		LibraryCacheManager libraryCache,
+		FileCache fileCache,
+		TaskManagerRuntimeInfo taskManagerConfig,
+		@Nonnull TaskMetricGroup metricGroup,
+		ResultPartitionConsumableNotifier resultPartitionConsumableNotifier,
+		PartitionProducerStateChecker partitionProducerStateChecker,
+		Executor executor,
+		boolean isStandby) {
+
 		Preconditions.checkNotNull(jobInformation);
 		Preconditions.checkNotNull(taskInformation);
 
@@ -317,7 +361,22 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		this.vertexId = taskInformation.getJobVertexId();
 		this.executionId  = Preconditions.checkNotNull(executionAttemptID);
 		this.allocationId = Preconditions.checkNotNull(slotAllocationId);
-		this.taskNameWithSubtask = taskInfo.getTaskNameWithSubtasks();
+
+		this.isStandby = isStandby;
+		if (this.isStandby) {
+			standbyFuture = new CompletableFuture<>();
+		}
+		else {
+			this.standbyFuture = null;
+		}
+
+		if (this.isStandby) {
+			this.taskNameWithSubtask = taskInfo.getTaskNameWithSubtasks() + " (STANDBY)";
+		}
+		else {
+			this.taskNameWithSubtask = taskInfo.getTaskNameWithSubtasks();
+		}
+
 		this.jobConfiguration = jobInformation.getJobConfiguration();
 		this.taskConfiguration = taskInformation.getTaskConfiguration();
 		this.requiredJarFiles = jobInformation.getRequiredJarFileBlobKeys();
@@ -425,6 +484,14 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 
 	public AllocationID getAllocationId() {
 		return allocationId;
+	}
+
+	public boolean getIsStandby() {
+		return isStandby;
+	}
+
+	public CompletableFuture<Void> getStandbyFuture() {
+		return standbyFuture;
 	}
 
 	public TaskInfo getTaskInfo() {
@@ -686,9 +753,29 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 			// by the time we switched to running.
 			this.invokable = invokable;
 
-			// switch to the RUNNING state, if that fails, we have been canceled/failed in the meantime
-			if (!transitionState(ExecutionState.DEPLOYING, ExecutionState.RUNNING)) {
-				throw new CancelTaskException();
+			if (this.isStandby) {
+				// switch to the STANDBY state, if that fails, we have been canceled/failed in the meantime
+				if (!transitionState(ExecutionState.DEPLOYING, ExecutionState.STANDBY)) {
+					throw new CancelTaskException();
+				}
+				else {
+					LOG.info("Standby task " + taskNameWithSubtask + " is at STANDBY state.");
+				}
+
+
+				// Block until the standby task is requested to run.
+				standbyFuture.get();
+
+				// switch to the RUNNING state, if that fails, we have been canceled/failed in the meantime
+				if (!transitionState(ExecutionState.STANDBY, ExecutionState.RUNNING)) {
+					throw new CancelTaskException();
+				}
+			}
+			else {
+				// switch to the RUNNING state, if that fails, we have been canceled/failed in the meantime
+				if (!transitionState(ExecutionState.DEPLOYING, ExecutionState.RUNNING)) {
+					throw new CancelTaskException();
+				}
 			}
 
 			// notify everyone that we switched to running

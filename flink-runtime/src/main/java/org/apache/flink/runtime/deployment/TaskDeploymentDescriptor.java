@@ -124,6 +124,9 @@ public final class TaskDeploymentDescriptor implements Serializable {
 	/** The ID referencing the attempt to execute the task. */
 	private final ExecutionAttemptID executionId;
 
+	/** Whether the deployment concerns a standby task. */
+	private final boolean isStandby;
+
 	/** The allocation ID of the slot in which the task shall be run. */
 	private final AllocationID allocationId;
 
@@ -159,6 +162,26 @@ public final class TaskDeploymentDescriptor implements Serializable {
 		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
 		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors) {
 
+		this(jobId, serializedJobInformation, serializedTaskInformation,
+				executionAttemptId, allocationId, subtaskIndex, attemptNumber,
+				targetSlotNumber, taskRestore, resultPartitionDeploymentDescriptors,
+				inputGateDeploymentDescriptors, false);
+		}
+
+	public TaskDeploymentDescriptor(
+		JobID jobId,
+		MaybeOffloaded<JobInformation> serializedJobInformation,
+		MaybeOffloaded<TaskInformation> serializedTaskInformation,
+		ExecutionAttemptID executionAttemptId,
+		AllocationID allocationId,
+		int subtaskIndex,
+		int attemptNumber,
+		int targetSlotNumber,
+		@Nullable JobManagerTaskRestore taskRestore,
+		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
+		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors,
+		boolean isStandby) {
+
 		this.jobId = Preconditions.checkNotNull(jobId);
 
 		this.serializedJobInformation = Preconditions.checkNotNull(serializedJobInformation);
@@ -166,6 +189,7 @@ public final class TaskDeploymentDescriptor implements Serializable {
 
 		this.executionId = Preconditions.checkNotNull(executionAttemptId);
 		this.allocationId = Preconditions.checkNotNull(allocationId);
+		this.isStandby = isStandby;
 
 		Preconditions.checkArgument(0 <= subtaskIndex, "The subtask index must be positive.");
 		this.subtaskIndex = subtaskIndex;
@@ -271,6 +295,10 @@ public final class TaskDeploymentDescriptor implements Serializable {
 
 	public AllocationID getAllocationId() {
 		return allocationId;
+	}
+
+	public boolean getIsStandby() {
+		return isStandby;
 	}
 
 	/**

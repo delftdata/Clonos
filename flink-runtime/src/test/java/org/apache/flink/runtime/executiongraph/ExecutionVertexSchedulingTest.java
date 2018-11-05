@@ -36,13 +36,18 @@ import org.apache.flink.runtime.testingUtils.TestingUtils;
 
 import org.junit.Test;
 
+import java.util.Map;
+import java.util.ArrayList;
 import java.util.concurrent.CompletableFuture;
 
 import static org.apache.flink.runtime.executiongraph.ExecutionGraphTestUtils.getExecutionVertex;
 import static org.apache.flink.runtime.executiongraph.ExecutionGraphTestUtils.getInstance;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.fail;
+import static org.hamcrest.Matchers.is;
 import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.mock;
@@ -140,6 +145,44 @@ public class ExecutionVertexSchedulingTest {
 			// try to deploy to the slot
 			vertex.scheduleForExecution(scheduler, false, LocationPreferenceConstraint.ALL);
 			assertEquals(ExecutionState.DEPLOYING, vertex.getExecutionState());
+		}
+		catch (Exception e) {
+			e.printStackTrace();
+			fail(e.getMessage());
+		}
+	}
+
+	@Test
+	public void testAddStandbyExecution() {
+		try {
+			final Instance instance = getInstance(new ActorTaskManagerGateway(
+				new ExecutionGraphTestUtils.SimpleActorGateway(TestingUtils.defaultExecutionContext())));
+			SimpleSlot slot = instance.allocateSimpleSlot();
+
+			Scheduler scheduler = mock(Scheduler.class);
+			CompletableFuture<LogicalSlot> future = new CompletableFuture<>();
+			future.complete(slot);
+			when(scheduler.allocateSlot(any(SlotRequestId.class), any(ScheduledUnit.class), anyBoolean(), any(SlotProfile.class), any(Time.class))).thenReturn(future);
+
+			final ExecutionJobVertex ejv = getExecutionVertex(new JobVertexID(), scheduler);
+			final ExecutionVertex vertex = new ExecutionVertex(ejv, 0, new IntermediateResult[0],
+					AkkaUtils.getDefaultTimeout());
+			assertEquals(ExecutionState.CREATED, vertex.getExecutionState());
+
+			// Try to deploy a standby execution.
+			vertex.addStandbyExecution();
+
+			ArrayList<Execution> standbyExecutions = vertex.getStandbyExecutions();
+			assertThat(standbyExecutions.size(), is(1));
+
+			Execution thisStandbyExecution = standbyExecutions.get(0);
+			assertThat(thisStandbyExecution.getIsStandby(), is(true));
+			assertThat(thisStandbyExecution.getState(), is(ExecutionState.DEPLOYING));
+
+			Map<ExecutionAttemptID, Execution> currentExecutions = ejv.getGraph().getRegisteredExecutions();
+			Execution getThisStandbyExecutionFromRegistered =
+				currentExecutions.get(thisStandbyExecution.getAttemptId());
+			assertNotNull(getThisStandbyExecutionFromRegistered);
 		}
 		catch (Exception e) {
 			e.printStackTrace();

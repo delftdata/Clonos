@@ -110,6 +110,26 @@ public class TaskDeploymentDescriptorTest {
 			assertEquals(orig.getTaskRestore().getTaskStateSnapshot(), copy.getTaskRestore().getTaskStateSnapshot());
 			assertEquals(orig.getProducedPartitions(), copy.getProducedPartitions());
 			assertEquals(orig.getInputGates(), copy.getInputGates());
+			assertEquals(orig.getIsStandby(), false);
+
+			final boolean isStandby = true;
+			final TaskDeploymentDescriptor orig2 = new TaskDeploymentDescriptor(
+				jobID,
+				new TaskDeploymentDescriptor.NonOffloaded<>(serializedJobInformation),
+				new TaskDeploymentDescriptor.NonOffloaded<>(serializedJobVertexInformation),
+				execId,
+				allocationId,
+				indexInSubtaskGroup,
+				attemptNumber,
+				targetSlotNumber,
+				taskRestore,
+				producedResults,
+				inputGates,
+				isStandby);
+
+			final TaskDeploymentDescriptor copy2 = CommonTestUtils.createCopySerializable(orig2);
+			assertEquals(orig2.getIsStandby(), copy2.getIsStandby());
+
 		}
 		catch (Exception e) {
 			e.printStackTrace();

@@ -21,12 +21,16 @@ package org.apache.flink.runtime.executiongraph.failover;
 import org.apache.flink.runtime.executiongraph.Execution;
 import org.apache.flink.runtime.executiongraph.ExecutionGraph;
 import org.apache.flink.runtime.executiongraph.ExecutionJobVertex;
+import org.apache.flink.runtime.executiongraph.ExecutionVertex;
+import org.apache.flink.runtime.execution.ExecutionState;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import java.util.ArrayList;
 import java.util.concurrent.Executor;
+import java.util.concurrent.CompletableFuture;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -66,7 +70,36 @@ public class RunStandbyTaskStrategy extends FailoverStrategy {
 
 	@Override
 	public void notifyNewVertices(List<ExecutionJobVertex> newExecutionJobVerticesTopological) {
+		final boolean isStandby = true;
+                final ArrayList<CompletableFuture<Void>> schedulingFutures = new ArrayList<>();
 
+                for (ExecutionJobVertex executionJobVertex : newExecutionJobVerticesTopological) {
+			for (ExecutionVertex executionVertex : executionJobVertex.getTaskVertices()) {
+
+				final CompletableFuture<Void> currentExecutionFuture =
+					// TODO: Anti-affinity constraint
+					CompletableFuture.runAsync(
+							() -> waitForExecutionToReachRunningState(executionVertex));
+				currentExecutionFuture.whenComplete(
+						(Void ignored, Throwable t) -> {
+							if (t == null) {
+								final CompletableFuture<Void> standbyExecutionFuture =
+									executionVertex.addStandbyExecution();
+								schedulingFutures.add(standbyExecutionFuture);
+							}
+						});
+
+			}
+		}
+	}
+
+	private void waitForExecutionToReachRunningState(ExecutionVertex executionVertex) {
+		ExecutionState executionState = ExecutionState.CREATED;
+		do {
+			executionState = executionVertex.getExecutionState();
+		} while (executionState == ExecutionState.CREATED ||
+				executionState == ExecutionState.SCHEDULED ||
+				executionState == ExecutionState.DEPLOYING);
 	}
 
 	@Override

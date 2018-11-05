@@ -144,6 +144,11 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 
 	private final ConcurrentLinkedQueue<PartialInputChannelDeploymentDescriptor> partialInputChannelDeploymentDescriptors;
 
+	/** Whether this is a standby execution.
+	 *  In this case the underlying task waits in STANDBY state to substitute a specific failed task
+	 *  if this is required */
+	private boolean isStandby;
+
 	/** A future that completes once the Execution reaches a terminal ExecutionState. */
 	private final CompletableFuture<ExecutionState> terminalStateFuture;
 
@@ -193,6 +198,8 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 	 *             The timestamp that marks the creation of this Execution
 	 * @param rpcTimeout
 	 *             The rpcTimeout for RPC calls like deploy/cancel/stop.
+	 * @param isStandby
+	 *             Whether the task is a standby task for failover purposes.
 	 */
 	public Execution(
 			Executor executor,
@@ -201,6 +208,17 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 			long globalModVersion,
 			long startTimestamp,
 			Time rpcTimeout) {
+		this(executor, vertex, attemptNumber, globalModVersion, startTimestamp, rpcTimeout, false);
+	}
+
+	public Execution(
+			Executor executor,
+			ExecutionVertex vertex,
+			int attemptNumber,
+			long globalModVersion,
+			long startTimestamp,
+			Time rpcTimeout,
+			boolean isStandby) {
 
 		this.executor = checkNotNull(executor);
 		this.vertex = checkNotNull(vertex);
@@ -214,6 +232,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 		markTimestamp(ExecutionState.CREATED, startTimestamp);
 
 		this.partialInputChannelDeploymentDescriptors = new ConcurrentLinkedQueue<>();
+		this.isStandby = isStandby;
 		this.terminalStateFuture = new CompletableFuture<>();
 		this.releaseFuture = new CompletableFuture<>();
 		this.taskManagerLocationFuture = new CompletableFuture<>();
@@ -247,6 +266,15 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 	@Nullable
 	public AllocationID getAssignedAllocationID() {
 		return assignedAllocationID;
+	}
+
+	public boolean getIsStandby() {
+		return isStandby;
+	}
+
+	@VisibleForTesting
+	boolean setState(ExecutionState newState) {
+		return transitionState(state, newState);
 	}
 
 	/**
@@ -581,7 +609,8 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 				attemptId,
 				slot,
 				taskRestore,
-				attemptNumber);
+				attemptNumber,
+				isStandby);
 
 			// null taskRestore to let it be GC'ed
 			taskRestore = null;
@@ -1409,8 +1438,8 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 	public String toString() {
 		final LogicalSlot slot = assignedResource;
 
-		return String.format("Attempt #%d (%s) @ %s - [%s]", attemptNumber, vertex.getTaskNameWithSubtaskIndex(),
-				(slot == null ? "(unassigned)" : slot), state);
+		return String.format("Attempt #%d (%s) @ %s - [%s] %s", attemptNumber, vertex.getTaskNameWithSubtaskIndex(),
+				(slot == null ? "(unassigned)" : slot), state, (isStandby ? "(STANDBY)" : ""));
 	}
 
 	@Override
