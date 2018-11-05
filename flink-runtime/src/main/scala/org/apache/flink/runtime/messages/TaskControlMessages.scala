@@ -59,6 +59,16 @@ object TaskMessages {
     extends TaskMessage with RequiresLeaderSessionID
 
   /**
+   * Switches the state of the standby task associated with [[attemptID]] into RUNNING.
+   * The result is sent back to the sender as a
+   * [[TaskOperationResult]] message.
+   *
+   * @param attemptID The task's execution attempt ID.
+   */
+  case class switchStandbyTaskToRunning(attemptID: ExecutionAttemptID)
+    extends TaskMessage with RequiresLeaderSessionID
+
+  /**
    * Stops the task associated with [[attemptID]]. The result is sent back to the sender as a
    * [[TaskOperationResult]] message.
    *

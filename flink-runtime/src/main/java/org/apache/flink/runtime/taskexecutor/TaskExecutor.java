@@ -604,6 +604,25 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		}
 	}
 
+	@Override
+	public CompletableFuture<Acknowledge> switchStandbyTaskToRunning(ExecutionAttemptID executionAttemptID, Time timeout) {
+		final Task task = taskSlotTable.getTask(executionAttemptID);
+
+		if (task != null) {
+			try {
+				task.switchStandbyToRunning();
+				return CompletableFuture.completedFuture(Acknowledge.get());
+			} catch (Throwable t) {
+				return FutureUtils.completedExceptionally(new TaskException("Cannot switch standby task to running " + executionAttemptID + '.', t));
+			}
+		} else {
+			final String message = "Cannot find standby task to switch to running " + executionAttemptID + '.';
+
+			log.debug(message);
+			return FutureUtils.completedExceptionally(new TaskException(message));
+		}
+	}
+
 	// ----------------------------------------------------------------------
 	// Partition lifecycle RPCs
 	// ----------------------------------------------------------------------

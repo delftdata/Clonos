@@ -115,6 +115,11 @@ public class TestingTaskExecutorGateway implements TaskExecutorGateway {
 	}
 
 	@Override
+	public CompletableFuture<Acknowledge> switchStandbyTaskToRunning(ExecutionAttemptID executionAttemptID, Time timeout) {
+		return CompletableFuture.completedFuture(Acknowledge.get());
+	}
+
+	@Override
 	public CompletableFuture<Acknowledge> cancelTask(ExecutionAttemptID executionAttemptID, Time timeout) {
 		return CompletableFuture.completedFuture(Acknowledge.get());
 	}

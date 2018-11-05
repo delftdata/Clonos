@@ -72,8 +72,11 @@ import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.isOneOf;
+import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.fail;
 import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.mock;
@@ -208,7 +211,108 @@ public class TaskAsyncCallTest extends TestLogger {
 		}
 	}
 
+	@Test
+	public void testNonStandbyTaskRunningState() throws Exception {
+		Task task = createTask(CheckpointsInOrderInvokable.class);
+		assertThat(task.getIsStandby(), is(false));
+		assertNull(task.getStandbyFuture());
+
+		try (TaskCleaner ignored = new TaskCleaner(task)) {
+			task.startTaskThread();
+			awaitLatch.await();
+
+			assertThat(task.getExecutionState(), is(ExecutionState.RUNNING));
+		}
+	}
+
+	@Test
+	public void testNonStandbyTaskSwitchToRunningState() throws Exception {
+		Task task = createTask(CheckpointsInOrderInvokable.class);
+		assertThat(task.getIsStandby(), is(false));
+		assertNull(task.getStandbyFuture());
+
+		try (TaskCleaner ignored = new TaskCleaner(task)) {
+			task.startTaskThread();
+			awaitLatch.await();
+
+			task.switchStandbyToRunning();
+		}
+		catch (Exception e) {
+			String message = new String("Task " + task.getTaskInfo().getTaskNameWithSubtasks() + " is not a STANDBY task. It cannot be switched to RUNNING state.");
+			assertThat(message, is(e.getMessage()));
+		}
+	}
+
+	@Test
+	public void testStandbyTaskNotInStandbyStateSwitchToRunningState() throws Exception {
+		boolean isStandby = true;
+		Task task = createTask(CheckpointsInOrderInvokable.class, isStandby);
+		assertThat(task.getIsStandby(), is(true));
+		assertNotNull(task.getStandbyFuture());
+
+		try (TaskCleaner ignored = new TaskCleaner(task)) {
+			task.startTaskThread();
+
+			// task is still in CREATED state
+			task.switchStandbyToRunning();
+		}
+		catch (Exception e) {
+			String message = new String("Standby task still in CREATED state. Retry.");
+			assertThat(message, is(e.getMessage()));
+		}
+	}
+
+	@Test
+	public void testStandbyTaskInFailingStateSwitchToRunningState() throws Exception {
+		boolean isStandby = true;
+		Task task = createTask(CheckpointsInOrderInvokable.class, isStandby);
+		assertThat(task.getIsStandby(), is(true));
+		assertNotNull(task.getStandbyFuture());
+
+		try (TaskCleaner ignored = new TaskCleaner(task)) {
+			task.startTaskThread();
+
+			task.failExternally(new Exception("external"));
+
+			task.switchStandbyToRunning();
+			assertThat(task.getStandbyFuture().isCompletedExceptionally(), is(true));
+		}
+		catch (Exception e) {
+			fail(e.getMessage());
+		}
+	}
+
+	@Test
+	public void testStandbyTaskSwitchToRunningState() throws Exception {
+		boolean isStandby = true;
+		Task task = createTask(CheckpointsInOrderInvokable.class, isStandby);
+		assertThat(task.getIsStandby(), is(true));
+		assertNotNull(task.getStandbyFuture());
+
+		try (TaskCleaner ignored = new TaskCleaner(task)) {
+			task.startTaskThread();
+			ExecutionState state = ExecutionState.CREATED;
+			do {
+				state = task.getExecutionState();
+			} while (state == ExecutionState.CREATED || state == ExecutionState.DEPLOYING);
+
+			assertThat(task.getExecutionState(), is(ExecutionState.STANDBY));
+			assertThat(task.getStandbyFuture().isDone(), is(false));
+
+			task.switchStandbyToRunning();
+			awaitLatch.await();
+
+			assertThat(task.getStandbyFuture().isDone(), is(true));
+			assertThat(task.getStandbyFuture().isCompletedExceptionally(), is(false));
+			assertThat(task.getExecutionState(), is(ExecutionState.RUNNING));
+		}
+	}
+
 	private Task createTask(Class<? extends AbstractInvokable> invokableClass) throws Exception {
+		return createTask(invokableClass, false);
+	}
+
+	private Task createTask(Class<? extends AbstractInvokable> invokableClass, boolean isStandby) throws Exception {
 		BlobCacheService blobService =
 			new BlobCacheService(mock(PermanentBlobCache.class), mock(TransientBlobCache.class));
 
@@ -271,7 +375,8 @@ public class TaskAsyncCallTest extends TestLogger {
 			taskMetricGroup,
 			consumableNotifier,
 			partitionProducerStateChecker,
-			executor);
+			executor,
+			isStandby);
 	}
 
 	public static class CheckpointsInOrderInvokable extends AbstractInvokable {

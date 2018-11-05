@@ -81,6 +81,7 @@ import static org.apache.flink.runtime.execution.ExecutionState.FAILED;
 import static org.apache.flink.runtime.execution.ExecutionState.FINISHED;
 import static org.apache.flink.runtime.execution.ExecutionState.RUNNING;
 import static org.apache.flink.runtime.execution.ExecutionState.SCHEDULED;
+import static org.apache.flink.runtime.execution.ExecutionState.STANDBY;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
 
@@ -724,6 +725,19 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 		}
 	}
 
+	void runStandbyExecution() throws IllegalStateException {
+		if (!this.isStandby) {
+			markFailed(new Exception("Tried to run a standby execution instance that is not standby."));
+		}
+
+		ExecutionState current = this.state;
+		if (current != STANDBY) {
+			throw new IllegalStateException("Tried to run a standby execution that is not in STANDBY state, but in " + current + " state.");
+		}
+
+		sendSwitchStandbyToRunningRpcCall();
+	}
+
 	void scheduleOrUpdateConsumers(List<List<ExecutionEdge>> allConsumers) {
 		final int numConsumers = allConsumers.size();
 
@@ -1216,6 +1230,32 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 				(ack, failure) -> {
 					if (failure != null) {
 						fail(new Exception("Task could not be canceled.", failure));
+					}
+				},
+				executor);
+		}
+	}
+
+	/**
+	 * This method sends a switchStandbyTaskToRunning message to the instance of the assigned slot.
+	 *
+	 * <p>The sending is tried up to NUM_CANCEL_CALL_TRIES times.
+	 */
+	private void sendSwitchStandbyToRunningRpcCall() {
+		final LogicalSlot slot = assignedResource;
+
+		if (slot != null) {
+			final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
+
+			CompletableFuture<Acknowledge> switchToRunningResultFuture = FutureUtils.retry(
+				() -> taskManagerGateway.switchStandbyTaskToRunning(attemptId, rpcTimeout),
+				NUM_CANCEL_CALL_TRIES,
+				executor);
+
+			switchToRunningResultFuture.whenCompleteAsync(
+				(ack, failure) -> {
+					if (failure != null) {
+						fail(new Exception("Standby task could not be switched to runninng.", failure));
 					}
 				},
 				executor);

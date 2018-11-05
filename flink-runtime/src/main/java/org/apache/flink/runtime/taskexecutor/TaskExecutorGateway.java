@@ -146,6 +146,15 @@ public interface TaskExecutorGateway extends RpcGateway {
 	CompletableFuture<Acknowledge> cancelTask(ExecutionAttemptID executionAttemptID, @RpcTimeout Time timeout);
 
 	/**
+	 * Switch the given (standby) task to running.
+	 *
+	 * @param executionAttemptID identifying the task
+	 * @param timeout for the cancel operation
+	 * @return Future acknowledge if the task is successfully canceled
+	 */
+	CompletableFuture<Acknowledge> switchStandbyTaskToRunning(ExecutionAttemptID executionAttemptID, @RpcTimeout Time timeout);
+
+	/**
 	 * Heartbeat request from the job manager.
 	 *
 	 * @param heartbeatOrigin unique id of the job manager

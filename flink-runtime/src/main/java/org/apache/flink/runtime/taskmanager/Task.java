@@ -1179,6 +1179,27 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		}
 	}
 
+	/**
+	 * Unblock execution of a standby task.
+	 *
+	 */
+	public void switchStandbyToRunning() throws Exception {
+		if (!isStandby) {
+			throw new Exception("Task " + taskNameWithSubtask + " is not a STANDBY task. It cannot be switched to RUNNING state.");
+		}
+
+		ExecutionState current = executionState;
+		if (current == ExecutionState.STANDBY) {
+			standbyFuture.complete(null);
+		}
+		else if (current == ExecutionState.CREATED || current == ExecutionState.DEPLOYING) {
+			throw new Exception("Standby task still in " + current + " state. Retry.");
+		}
+		else {
+			standbyFuture.completeExceptionally(new Exception("Tried to run standby task that was not in STANDBY state, but in " + current + " state."));
+		}
+	}
+
 	// ------------------------------------------------------------------------
 	//  State Listeners
 	// ------------------------------------------------------------------------

@@ -671,6 +671,17 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 		this.currentExecution.fail(t);
 	}
 
+
+	public void runStandbyExecution() throws IllegalStateException {
+		if (standbyExecutions.isEmpty()) {
+			throw new IllegalStateException("No standby execution to run.");
+		}
+
+		Execution firstStandbyExecution = this.standbyExecutions.get(0);
+		firstStandbyExecution.runStandbyExecution();
+	}
+
+
 	/**
 	 * Schedules or updates the consumer tasks of the result partition with the given ID.
 	 */

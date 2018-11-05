@@ -41,6 +41,8 @@ import org.apache.flink.runtime.testingUtils.TestingUtils;
 import org.apache.flink.runtime.testtasks.NoOpInvokable;
 import org.apache.flink.util.TestLogger;
 
+import org.apache.flink.runtime.akka.AkkaUtils;
+
 import org.junit.Test;
 
 import javax.annotation.Nonnull;
@@ -64,6 +66,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 /**
  * Tests for the {@link Execution}.
@@ -491,6 +494,139 @@ public class ExecutionTest extends TestLogger {
 			assertThat(returnedSlotFuture.get(), is(equalTo(slotRequestIdFuture.get())));
 		} finally {
 			executorService.shutdownNow();
+		}
+	}
+
+	@Test
+	public void testRunStandbyExecutionWithNotAStandbyExecutionInstance() throws Exception {
+		try {
+			final JobVertex jobVertex = createNoOpJobVertex();
+			final JobVertexID jobVertexId = jobVertex.getID();
+
+			final SingleSlotTestingSlotOwner slotOwner = new SingleSlotTestingSlotOwner();
+			final ProgrammedSlotProvider slotProvider = createProgrammedSlotProvider(
+				1,
+				Collections.singleton(jobVertexId),
+				slotOwner);
+
+			ExecutionGraph executionGraph = ExecutionGraphTestUtils.createSimpleTestGraph(
+				new JobID(),
+				slotProvider,
+				new NoRestartStrategy(),
+				jobVertex);
+
+			ExecutionJobVertex executionJobVertex = executionGraph.getJobVertex(jobVertexId);
+
+			ExecutionVertex executionVertex = executionJobVertex.getTaskVertices()[0];
+
+			final long createTimestamp = System.currentTimeMillis();
+
+			// This execution is a normal execution instance, not a standby.
+			// It will be markFailed().
+			final Execution execution = new Execution(
+				executionGraph.getFutureExecutor(),
+				executionVertex,
+				0,
+				executionVertex.getCurrentExecutionAttempt().getGlobalModVersion(),
+				createTimestamp,
+				AkkaUtils.getDefaultTimeout());
+			assertThat(execution.getIsStandby(), is(false));
+			assertThat(execution.getState(), is(ExecutionState.CREATED));
+
+			execution.runStandbyExecution();
+			fail("Exception expected");
+		} catch (IllegalStateException e) {
+			String message = new String("Tried to run a standby execution that is not in STANDBY state, but in FAILED state.");
+			assertThat(e.getMessage(), is(message));
+		}
+	}
+
+	@Test
+	public void testRunStandbyExecutionNotReady() throws Exception {
+		try {
+			final JobVertex jobVertex = createNoOpJobVertex();
+			final JobVertexID jobVertexId = jobVertex.getID();
+
+			final SingleSlotTestingSlotOwner slotOwner = new SingleSlotTestingSlotOwner();
+			final ProgrammedSlotProvider slotProvider = createProgrammedSlotProvider(
+				1,
+				Collections.singleton(jobVertexId),
+				slotOwner);
+
+			ExecutionGraph executionGraph = ExecutionGraphTestUtils.createSimpleTestGraph(
+				new JobID(),
+				slotProvider,
+				new NoRestartStrategy(),
+				jobVertex);
+
+			ExecutionJobVertex executionJobVertex = executionGraph.getJobVertex(jobVertexId);
+
+			ExecutionVertex executionVertex = executionJobVertex.getTaskVertices()[0];
+
+			final long createTimestamp = System.currentTimeMillis();
+
+			final boolean isStandby = true;
+			final Execution execution = new Execution(
+				executionGraph.getFutureExecutor(),
+				executionVertex,
+				0,
+				executionVertex.getCurrentExecutionAttempt().getGlobalModVersion(),
+				createTimestamp,
+				AkkaUtils.getDefaultTimeout(),
+				isStandby);
+			assertThat(execution.getIsStandby(), is(true));
+			assertThat(execution.getState(), is(ExecutionState.CREATED));
+
+			execution.runStandbyExecution();
+			fail("Exception expected");
+		} catch (IllegalStateException e) {
+			String message = new String("Tried to run a standby execution that is not in STANDBY state, but in CREATED state.");
+			assertThat(e.getMessage(), is(message));
+		}
+	}
+
+	@Test
+	public void testRunStandbyExecution() throws Exception {
+		try {
+			final JobVertex jobVertex = createNoOpJobVertex();
+			final JobVertexID jobVertexId = jobVertex.getID();
+
+			final SingleSlotTestingSlotOwner slotOwner = new SingleSlotTestingSlotOwner();
+			final ProgrammedSlotProvider slotProvider = createProgrammedSlotProvider(
+				1,
+				Collections.singleton(jobVertexId),
+				slotOwner);
+
+			ExecutionGraph executionGraph = ExecutionGraphTestUtils.createSimpleTestGraph(
+				new JobID(),
+				slotProvider,
+				new NoRestartStrategy(),
+				jobVertex);
+
+			ExecutionJobVertex executionJobVertex = executionGraph.getJobVertex(jobVertexId);
+
+			ExecutionVertex executionVertex = executionJobVertex.getTaskVertices()[0];
+
+			final long createTimestamp = System.currentTimeMillis();
+
+			final boolean isStandby = true;
+			final Execution standbyExecution = new Execution(
+				executionGraph.getFutureExecutor(),
+				executionVertex,
+				0,
+				executionVertex.getCurrentExecutionAttempt().getGlobalModVersion(),
+				createTimestamp,
+				AkkaUtils.getDefaultTimeout(),
+				isStandby);
+			assertThat(standbyExecution.getIsStandby(), is(true));
+			assertThat(standbyExecution.getState(), is(ExecutionState.CREATED));
+			standbyExecution.setState(ExecutionState.STANDBY);
+			assertThat(standbyExecution.getState(), is(ExecutionState.STANDBY));
+
+			standbyExecution.runStandbyExecution();
+		} catch (Exception e) {
+			e.printStackTrace();
+			fail(e.getMessage());
 		}
 	}
 

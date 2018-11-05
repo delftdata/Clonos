@@ -153,6 +153,92 @@ public class ExecutionVertexSchedulingTest {
 	}
 
 	@Test
+	public void testRunStandbyExecutionEmpty() throws Exception {
+		try {
+			Scheduler scheduler = mock(Scheduler.class);
+			final ExecutionJobVertex ejv = getExecutionVertex(new JobVertexID(), scheduler);
+			final ExecutionVertex vertex = new ExecutionVertex(ejv, 0, new IntermediateResult[0],
+					AkkaUtils.getDefaultTimeout());
+			assertEquals(ExecutionState.CREATED, vertex.getExecutionState());
+
+			// Try to run standby execution without having created one.
+			vertex.runStandbyExecution();
+			fail("Exception expected");
+		}
+		catch (IllegalStateException e) {
+			String message = new String("No standby execution to run.");
+			assertThat(e.getMessage(), is(message));
+		}
+	}
+
+	@Test
+	public void testRunStandbyExecutionNotReady() throws Exception {
+		try {
+			final Instance instance = getInstance(new ActorTaskManagerGateway(
+				new ExecutionGraphTestUtils.SimpleActorGateway(TestingUtils.defaultExecutionContext())));
+			SimpleSlot slot = instance.allocateSimpleSlot();
+
+			Scheduler scheduler = mock(Scheduler.class);
+			CompletableFuture<LogicalSlot> future = new CompletableFuture<>();
+			future.complete(slot);
+			when(scheduler.allocateSlot(any(SlotRequestId.class), any(ScheduledUnit.class), anyBoolean(), any(SlotProfile.class), any(Time.class))).thenReturn(future);
+
+			final ExecutionJobVertex ejv = getExecutionVertex(new JobVertexID(), scheduler);
+			final ExecutionVertex vertex = new ExecutionVertex(ejv, 0, new IntermediateResult[0],
+					AkkaUtils.getDefaultTimeout());
+			assertEquals(ExecutionState.CREATED, vertex.getExecutionState());
+
+			// Try to deploy a standby execution.
+			vertex.addStandbyExecution();
+
+			// Try to run it although it is in DEPLOYING state.
+			vertex.runStandbyExecution();
+			fail ("Exception expected");
+		}
+		catch (IllegalStateException e) {
+			String message = new String("Tried to run a standby execution that is not in STANDBY state, but in DEPLOYING state.");
+			assertThat(e.getMessage(), is(message));
+		}
+	}
+
+	@Test
+	public void testRunStandbyExecution() throws Exception {
+		try {
+			final Instance instance = getInstance(new ActorTaskManagerGateway(
+				new ExecutionGraphTestUtils.SimpleActorGateway(TestingUtils.defaultExecutionContext())));
+			SimpleSlot slot = instance.allocateSimpleSlot();
+
+			Scheduler scheduler = mock(Scheduler.class);
+			CompletableFuture<LogicalSlot> future = new CompletableFuture<>();
+			future.complete(slot);
+			when(scheduler.allocateSlot(any(SlotRequestId.class), any(ScheduledUnit.class), anyBoolean(), any(SlotProfile.class), any(Time.class))).thenReturn(future);
+
+			final ExecutionJobVertex ejv = getExecutionVertex(new JobVertexID(), scheduler);
+			final ExecutionVertex vertex = new ExecutionVertex(ejv, 0, new IntermediateResult[0],
+					AkkaUtils.getDefaultTimeout());
+			assertEquals(ExecutionState.CREATED, vertex.getExecutionState());
+
+			// Try to deploy a standby execution.
+			vertex.addStandbyExecution();
+			ArrayList<Execution> standbyExecutions = vertex.getStandbyExecutions();
+			assertThat(standbyExecutions.size(), is(1));
+			Execution thisStandbyExecution = standbyExecutions.get(0);
+			assertThat(thisStandbyExecution.getIsStandby(), is(true));
+			assertThat(thisStandbyExecution.getState(), is(ExecutionState.DEPLOYING));
+
+			thisStandbyExecution.setState(ExecutionState.STANDBY);
+			assertThat(thisStandbyExecution.getState(), is(ExecutionState.STANDBY));
+
+			// Standby task now in STANDBY state. Try to run it.
+			vertex.runStandbyExecution();
+		}
+		catch (IllegalStateException e) {
+			e.printStackTrace();
+			fail (e.getMessage());
+		}
+	}
+
+	@Test
 	public void testAddStandbyExecution() {
 		try {
 			final Instance instance = getInstance(new ActorTaskManagerGateway(

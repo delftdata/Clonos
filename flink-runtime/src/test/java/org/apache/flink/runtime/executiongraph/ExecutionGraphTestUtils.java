@@ -529,11 +529,15 @@ public class ExecutionGraphTestUtils {
 	public static final String ERROR_MESSAGE = "test_failure_error_message";
 
 	public static ExecutionJobVertex getExecutionVertex(
-			JobVertexID id, ScheduledExecutorService executor) 
+			JobVertexID id, Scheduler scheduler, ScheduledExecutorService executor)
 		throws Exception {
 
 		JobVertex ajv = new JobVertex("TestVertex", id);
 		ajv.setInvokableClass(mock(AbstractInvokable.class).getClass());
+
+		if (scheduler == null) {
+			scheduler = new Scheduler(ExecutionContext$.MODULE$.fromExecutor(executor));
+		}
 
 		ExecutionGraph graph = new ExecutionGraph(
 			executor,
@@ -544,13 +548,21 @@ public class ExecutionGraphTestUtils {
 			new SerializedValue<>(new ExecutionConfig()),
 			AkkaUtils.getDefaultTimeout(),
 			new NoRestartStrategy(),
-			new Scheduler(ExecutionContext$.MODULE$.fromExecutor(executor)));
+			scheduler);
 
 		return spy(new ExecutionJobVertex(graph, ajv, 1, AkkaUtils.getDefaultTimeout()));
 	}
 	
+	public static ExecutionJobVertex getExecutionVertex(JobVertexID id, Scheduler scheduler) throws Exception {
+		return getExecutionVertex(id, scheduler, TestingUtils.defaultExecutor());
+	}
+
+	public static ExecutionJobVertex getExecutionVertex(JobVertexID id, ScheduledExecutorService executor) throws Exception {
+		return getExecutionVertex(id, null, executor);
+	}
+
 	public static ExecutionJobVertex getExecutionVertex(JobVertexID id) throws Exception {
-		return getExecutionVertex(id, TestingUtils.defaultExecutor());
+		return getExecutionVertex(id, null, TestingUtils.defaultExecutor());
 	}
 
 	// ------------------------------------------------------------------------

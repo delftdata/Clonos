@@ -109,6 +109,11 @@ public class RpcTaskManagerGateway implements TaskManagerGateway {
 	}
 
 	@Override
+	public CompletableFuture<Acknowledge> switchStandbyTaskToRunning(ExecutionAttemptID executionAttemptID, Time timeout) {
+		return taskExecutorGateway.switchStandbyTaskToRunning(executionAttemptID, timeout);
+	}
+
+	@Override
 	public CompletableFuture<Acknowledge> updatePartitions(ExecutionAttemptID executionAttemptID, Iterable<PartitionInfo> partitionInfos, Time timeout) {
 		return taskExecutorGateway.updatePartitions(executionAttemptID, partitionInfos, timeout);
 	}

@@ -159,6 +159,19 @@ public class ActorTaskManagerGateway implements TaskManagerGateway {
 	}
 
 	@Override
+	public CompletableFuture<Acknowledge> switchStandbyTaskToRunning(ExecutionAttemptID executionAttemptID, Time timeout) {
+		Preconditions.checkNotNull(executionAttemptID);
+		Preconditions.checkNotNull(timeout);
+
+		scala.concurrent.Future<Acknowledge> switchStandbyTaskToRunningResult = actorGateway.ask(
+			new TaskMessages.switchStandbyTaskToRunning(executionAttemptID),
+			new FiniteDuration(timeout.getSize(), timeout.getUnit()))
+			.mapTo(ClassTag$.MODULE$.<Acknowledge>apply(Acknowledge.class));
+
+		return FutureUtils.toJava(switchStandbyTaskToRunningResult);
+	}
+
+	@Override
 	public CompletableFuture<Acknowledge> updatePartitions(ExecutionAttemptID executionAttemptID, Iterable<PartitionInfo> partitionInfos, Time timeout) {
 		Preconditions.checkNotNull(executionAttemptID);
 		Preconditions.checkNotNull(partitionInfos);

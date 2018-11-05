@@ -124,6 +124,17 @@ public interface TaskManagerGateway {
 		Time timeout);
 
 	/**
+	 * Switch the given (standby) task to running.
+	 *
+	 * @param executionAttemptID identifying the task
+	 * @param timeout for the cancel operation
+	 * @return Future acknowledge if the task is successfully canceled
+	 */
+	CompletableFuture<Acknowledge> switchStandbyTaskToRunning(
+			ExecutionAttemptID executionAttemptID,
+			Time timeout);
+
+	/**
 	 * Update the task where the given partitions can be found.
 	 *
 	 * @param executionAttemptID identifying the task

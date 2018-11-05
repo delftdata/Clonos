@@ -65,7 +65,27 @@ public class RunStandbyTaskStrategy extends FailoverStrategy {
 
 	@Override
 	public void onTaskFailure(Execution taskExecution, Throwable cause) {
+		// trigger the restart once the task has reached its terminal state
+		// Note: currently all tasks passed here are already in their terminal state,
+		//       so we could actually avoid the future. We use it anyways because it is cheap and
+		//       it helps to support better testing
+		final CompletableFuture<ExecutionState> terminationFuture = taskExecution.getTerminalStateFuture();
+		final ExecutionVertex vertexToRecover = taskExecution.getVertex();
 
+		try {
+			LOG.info(getStrategyName() + "failover strategy is triggered for the recovery of task " +
+					vertexToRecover.getTaskNameWithSubtaskIndex() +
+					". Activating standby task for this task.");
+			vertexToRecover.runStandbyExecution();
+		}
+		catch (IllegalStateException e) {
+			executionGraph.failGlobal(
+					new Exception("Error during standby task recovery: no standby execution to run -- triggering full recovery", e));
+		}
+		catch (Exception e) {
+			executionGraph.failGlobal(
+					new Exception("Error during standby task recovery -- triggering full recovery", e));
+		}
 	}
 
 	@Override
