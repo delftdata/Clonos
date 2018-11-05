@@ -41,6 +41,9 @@ public class FailoverStrategyLoader {
 	/** Config name for the {@link RestartPipelinedRegionStrategy} */
 	public static final String PIPELINED_REGION_RESTART_STRATEGY_NAME = "region";
 
+	/** Config name for the {@link RunStandbyTaskStrategy} */
+	public static final String STANDBY_TASK_RUN_STRATEGY_NAME = "standbytask";
+
 	// ------------------------------------------------------------------------
 
 	/**
@@ -67,6 +70,9 @@ public class FailoverStrategyLoader {
 
 				case INDIVIDUAL_RESTART_STRATEGY_NAME:
 					return new RestartIndividualStrategy.Factory();
+
+				case STANDBY_TASK_RUN_STRATEGY_NAME:
+					return new RunStandbyTaskStrategy.Factory();
 
 				default:
 					// we could interpret the parameter as a factory class name and instantiate that
