@@ -1093,8 +1093,8 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 					return;
 				}
 			}
-			else if (current == ExecutionState.RUNNING) {
-				if (transitionState(ExecutionState.RUNNING, targetState, cause)) {
+			else if (current == ExecutionState.RUNNING || current == ExecutionState.STANDBY) {
+				if (transitionState(current, targetState, cause)) {
 					// we are canceling / failing out of the running state
 					// we need to cancel the invokable
 					if (invokable != null && invokableHasBeenCanceled.compareAndSet(false, true)) {
