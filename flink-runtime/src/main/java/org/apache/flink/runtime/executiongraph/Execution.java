@@ -1382,9 +1382,9 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 			markTimestamp(targetState);
 
 			if (error == null) {
-				LOG.info("{} ({}) switched from {} to {}.", getVertex().getTaskNameWithSubtaskIndex(), getAttemptId(), currentState, targetState);
+				LOG.info("{} ({}) {} switched from {} to {}.", getVertex().getTaskNameWithSubtaskIndex(), getAttemptId(), (isStandby ? "[STANDBY]" : ""), currentState, targetState);
 			} else {
-				LOG.info("{} ({}) switched from {} to {}.", getVertex().getTaskNameWithSubtaskIndex(), getAttemptId(), currentState, targetState, error);
+				LOG.info("{} ({}) {} switched from {} to {}.", getVertex().getTaskNameWithSubtaskIndex(), getAttemptId(), (isStandby ? "[STANDBY]" : ""), currentState, targetState, error);
 			}
 
 			if (targetState.isTerminal()) {

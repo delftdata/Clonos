@@ -986,9 +986,9 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 	private boolean transitionState(ExecutionState currentState, ExecutionState newState, Throwable cause) {
 		if (STATE_UPDATER.compareAndSet(this, currentState, newState)) {
 			if (cause == null) {
-				LOG.info("{} ({}) switched from {} to {}.", taskNameWithSubtask, executionId, currentState, newState);
+				LOG.info("{} ({}) {} switched from {} to {}.", taskNameWithSubtask, executionId, (isStandby ? "[STANDBY]" : ""), currentState, newState);
 			} else {
-				LOG.info("{} ({}) switched from {} to {}.", taskNameWithSubtask, executionId, currentState, newState, cause);
+				LOG.info("{} ({}) {} switched from {} to {}.", taskNameWithSubtask, executionId, (isStandby ? "[STANDBY]" : ""), currentState, newState, cause);
 			}
 
 			return true;
