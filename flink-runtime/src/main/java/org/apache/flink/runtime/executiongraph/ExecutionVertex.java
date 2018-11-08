@@ -659,8 +659,13 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 		// we copy a reference to the stack to make sure both calls go to the same Execution
 		final Execution exec = this.currentExecution;
 		exec.cancel();
-		cancelStandbyExecution();
-		return exec.getReleaseFuture();
+
+		final CompletableFuture<?> standbyExecutionReleaseFuture = cancelStandbyExecution();
+		if (standbyExecutionReleaseFuture != null) {
+			return CompletableFuture.allOf(exec.getReleaseFuture(), standbyExecutionReleaseFuture);
+		} else {
+			return exec.getReleaseFuture();
+		}
 	}
 
 	public void stop() {
@@ -897,10 +902,14 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 
 	}
 
-	public void cancelStandbyExecution() {
+	public CompletableFuture<?> cancelStandbyExecution() {
 		if (standbyExecutions != null && !standbyExecutions.isEmpty()) {
-			standbyExecutions.remove(0).cancel();
+			LOG.debug(String.format("Cancelling standby execution %s", this));
+			final Execution standbyExecution = standbyExecutions.remove(0);
+			standbyExecution.cancel();
+			return standbyExecution.getReleaseFuture();
 		}
+		return null;
 	}
 
 	// --------------------------------------------------------------------------------------------
