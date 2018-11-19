@@ -727,7 +727,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 
 	void runStandbyExecution() throws IllegalStateException {
 		if (!this.isStandby) {
-			markFailed(new Exception("Tried to run a standby execution instance that is not standby."));
+			markFailed(new Exception("Tried to run a standby execution instance that is not a standby one."));
 		}
 
 		ExecutionState current = this.state;
