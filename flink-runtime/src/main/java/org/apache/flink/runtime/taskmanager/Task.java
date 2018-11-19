@@ -758,10 +758,11 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 				if (!transitionState(ExecutionState.DEPLOYING, ExecutionState.STANDBY)) {
 					throw new CancelTaskException();
 				}
-				else {
-					LOG.info("Standby task " + taskNameWithSubtask + " is at STANDBY state.");
-				}
 
+				LOG.info("Standby task " + taskNameWithSubtask + " is at STANDBY state.");
+				// notify everyone that we switched to standby
+				notifyObservers(ExecutionState.STANDBY, null);
+				taskManagerActions.updateTaskExecutionState(new TaskExecutionState(jobId, executionId, ExecutionState.STANDBY));
 
 				// Block until the standby task is requested to run.
 				standbyFuture.get();
@@ -770,6 +771,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 				if (!transitionState(ExecutionState.STANDBY, ExecutionState.RUNNING)) {
 					throw new CancelTaskException();
 				}
+
 			}
 			else {
 				// switch to the RUNNING state, if that fails, we have been canceled/failed in the meantime

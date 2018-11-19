@@ -1164,6 +1164,15 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 		}
 	}
 
+	boolean switchToStandby() {
+
+		if (!this.isStandby) {
+			markFailed(new Exception("Tried to switch to STANDBY state a non-standby execution instance."));
+		}
+
+		return transitionState(DEPLOYING, STANDBY);
+	}
+
 	boolean switchToRunning() {
 
 		if (transitionState(DEPLOYING, RUNNING)) {
