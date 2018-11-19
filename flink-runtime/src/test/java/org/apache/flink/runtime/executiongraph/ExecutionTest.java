@@ -667,7 +667,7 @@ public class ExecutionTest extends TestLogger {
 			final long createTimestamp = System.currentTimeMillis();
 
 			final boolean isStandby = true;
-			final Execution execution = new Execution(
+			final Execution standbyExecution = new Execution(
 				executionGraph.getFutureExecutor(),
 				executionVertex,
 				0,
@@ -675,10 +675,10 @@ public class ExecutionTest extends TestLogger {
 				createTimestamp,
 				AkkaUtils.getDefaultTimeout(),
 				isStandby);
-			assertThat(execution.getIsStandby(), is(true));
-			assertThat(execution.getState(), is(ExecutionState.CREATED));
+			assertThat(standbyExecution.getIsStandby(), is(true));
+			assertThat(standbyExecution.getState(), is(ExecutionState.CREATED));
 
-			execution.runStandbyExecution();
+			standbyExecution.runStandbyExecution();
 			fail("Exception expected");
 		} catch (IllegalStateException e) {
 			String message = new String("Tried to run a standby execution that is not in STANDBY state, but in CREATED state.");
