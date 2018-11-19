@@ -681,7 +681,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 			}
 
 			// these two are the common cases where we need to send a cancel call
-			else if (current == RUNNING || current == DEPLOYING) {
+			else if (current == RUNNING || current == STANDBY || current == DEPLOYING) {
 				// try to transition to canceling, if successful, send the cancel call
 				if (transitionState(current, CANCELING)) {
 					sendCancelRpcCall();
