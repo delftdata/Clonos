@@ -898,6 +898,8 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 		standbyExecutions.add(newStandbyExecution);
 		getExecutionGraph().registerExecution(newStandbyExecution);
 
+		LOG.debug("Added and registered standby execution for task " + taskNameWithSubtask + ". Now scheduling it.");
+
 		return newStandbyExecution.scheduleForExecution();
 
 	}
