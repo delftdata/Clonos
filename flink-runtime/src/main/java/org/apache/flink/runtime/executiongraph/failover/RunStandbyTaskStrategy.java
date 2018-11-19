@@ -24,6 +24,8 @@ import org.apache.flink.runtime.executiongraph.ExecutionJobVertex;
 import org.apache.flink.runtime.executiongraph.ExecutionVertex;
 import org.apache.flink.runtime.execution.ExecutionState;
 
+import org.apache.flink.runtime.concurrent.FutureUtils;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -116,20 +118,18 @@ public class RunStandbyTaskStrategy extends FailoverStrategy {
 			}
 		}
 
-		if (CompletableFuture.anyOf(schedulingFutures.toArray(
-						new CompletableFuture<?>[schedulingFutures.size()])).isCompletedExceptionally()) {
-			for (ExecutionJobVertex executionJobVertex : newExecutionJobVerticesTopological) {
-				for (ExecutionVertex executionVertex : executionJobVertex.getTaskVertices()) {
-					executionVertex.cancelStandbyExecution();
+		final CompletableFuture<Void> allSchedulingFutures = FutureUtils.waitForAll(schedulingFutures);
+		allSchedulingFutures.whenComplete((Void ignored, Throwable t) -> {
+			if (t != null) {
+				LOG.warn("Scheduling of standby tasks in '" +
+					getStrategyName() + "' failed. Cancelling the scheduling of standby tasks.");
+				for (ExecutionJobVertex executionJobVertex : newExecutionJobVerticesTopological) {
+					for (ExecutionVertex executionVertex : executionJobVertex.getTaskVertices()) {
+						executionVertex.cancelStandbyExecution();
+					}
 				}
 			}
-
-			LOG.warn("Scheduling of standby tasks in '" +
-				getStrategyName() + "' failed. Cancelling the scheduling of standby tasks.");
-		}
-		else {
-			LOG.info("Scheduling of standby tasks in '" + getStrategyName() + "' completed successfully.");
-		}
+		});
 	}
 
 	private void waitForExecutionToReachRunningState(ExecutionVertex executionVertex) {
