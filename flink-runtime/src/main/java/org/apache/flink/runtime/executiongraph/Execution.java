@@ -1179,6 +1179,10 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 			sendPartitionInfos();
 			return true;
 		}
+		else if (this.isStandby && transitionState(STANDBY, RUNNING)) {
+			sendPartitionInfos();
+			return true;
+		}
 		else {
 			// something happened while the call was in progress.
 			// it can mean:
