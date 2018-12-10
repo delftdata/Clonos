@@ -905,7 +905,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 	}
 
 	public CompletableFuture<?> cancelStandbyExecution() {
-		if (standbyExecutions != null && !standbyExecutions.isEmpty()) {
+		if (!standbyExecutions.isEmpty()) {
 			LOG.debug(String.format("Cancelling standby execution %s", this));
 			final Execution standbyExecution = standbyExecutions.remove(0);
 			standbyExecution.cancel();
