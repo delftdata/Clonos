@@ -35,6 +35,7 @@ import org.apache.flink.runtime.blob.PermanentBlobKey;
 import org.apache.flink.runtime.broadcast.BroadcastVariableManager;
 import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
+import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore;
 import org.apache.flink.runtime.checkpoint.decline.CheckpointDeclineTaskNotReadyException;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.deployment.InputGateDeploymentDescriptor;
@@ -1179,6 +1180,26 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 					current, taskNameWithSubtask, executionId));
 			}
 		}
+	}
+
+	/**
+	 * Receive the latest checkpointed state snapshot of a running task.
+	 * It only applies to a standby task in STANDBY state.
+	 *
+	 */
+	public void dispatchStateToStandbyTask(JobManagerTaskRestore taskRestore) throws Exception {
+		if (!isStandby) {
+			throw new Exception("Task " + taskNameWithSubtask + " is not a STANDBY task. It cannot receive a state snapshot.");
+		}
+
+		ExecutionState current = executionState;
+		if (current != ExecutionState.STANDBY) {
+			throw new Exception("Standby task " + taskNameWithSubtask + " is not in STANDBY state. Failing state dispatch.");
+		}
+
+		taskStateManager.setTaskRestore(taskRestore);
+		LOG.debug("Standby task " + taskNameWithSubtask + " received state snapshot of checkpoint " +
+				taskRestore.getRestoreCheckpointId() + ".");
 	}
 
 	/**

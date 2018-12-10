@@ -22,6 +22,7 @@ import java.util
 
 import org.apache.flink.runtime.deployment.{InputChannelDeploymentDescriptor, TaskDeploymentDescriptor}
 import org.apache.flink.runtime.executiongraph.{ExecutionAttemptID, PartitionInfo}
+import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID
 import org.apache.flink.runtime.taskmanager.TaskExecutionState
 
@@ -56,6 +57,20 @@ object TaskMessages {
    * @param attemptID The task's execution attempt ID.
    */
   case class CancelTask(attemptID: ExecutionAttemptID)
+    extends TaskMessage with RequiresLeaderSessionID
+
+  /**
+   * Dispatches a checkpointed state snapshot of a running task to its
+   * standby task associated with [[attemptID]].
+   * The result is sent back to the sender as a
+   * [[TaskOperationResult]] message.
+   *
+   * @param attemptID The standby task's execution attempt ID.
+   * @param taskRestore The task's latest checkpointed state snapshot.
+   */
+  case class dispatchStateToStandbyTask(
+      attemptID: ExecutionAttemptID,
+      taskRestore: JobManagerTaskRestore)
     extends TaskMessage with RequiresLeaderSessionID
 
   /**

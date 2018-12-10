@@ -51,6 +51,11 @@ import static org.apache.flink.util.Preconditions.checkState;
  */
 public class StateAssignmentOperation {
 
+	public static enum Operation {
+		RESTORE_STATE,
+		DISPATCH_STATE_TO_STANDBY_TASK
+	}
+
 	private static final Logger LOG = LoggerFactory.getLogger(StateAssignmentOperation.class);
 
 	private final Map<JobVertexID, ExecutionJobVertex> tasks;
@@ -58,17 +63,20 @@ public class StateAssignmentOperation {
 
 	private final long restoreCheckpointId;
 	private final boolean allowNonRestoredState;
+	public final Operation operation;
 
 	public StateAssignmentOperation(
 		long restoreCheckpointId,
 		Map<JobVertexID, ExecutionJobVertex> tasks,
 		Map<OperatorID, OperatorState> operatorStates,
-		boolean allowNonRestoredState) {
+		boolean allowNonRestoredState,
+		Operation operation) {
 
 		this.restoreCheckpointId = restoreCheckpointId;
 		this.tasks = Preconditions.checkNotNull(tasks);
 		this.operatorStates = Preconditions.checkNotNull(operatorStates);
 		this.allowNonRestoredState = allowNonRestoredState;
+		this.operation = operation;
 	}
 
 	public boolean assignStates() throws Exception {
@@ -195,8 +203,21 @@ public class StateAssignmentOperation {
 
 		for (int subTaskIndex = 0; subTaskIndex < newParallelism; subTaskIndex++) {
 
-			Execution currentExecutionAttempt = executionJobVertex.getTaskVertices()[subTaskIndex]
-				.getCurrentExecutionAttempt();
+			Execution executionAttempt = null;
+			if (operation == Operation.RESTORE_STATE) {
+				executionAttempt = executionJobVertex.getTaskVertices()[subTaskIndex]
+					.getCurrentExecutionAttempt();
+			} else if (operation == Operation.DISPATCH_STATE_TO_STANDBY_TASK) {
+				ArrayList<Execution> standbyExecutions = executionJobVertex.getTaskVertices()
+					[subTaskIndex].getStandbyExecutions();
+				if (standbyExecutions.isEmpty()) {
+					throw new IllegalStateException("No standby execution to dispatch the state of task " +
+							executionJobVertex.getTaskVertices()[subTaskIndex].getTaskNameWithSubtaskIndex());
+				}
+				executionAttempt = standbyExecutions.get(0);
+			} else {
+				throw new IllegalStateException("Unknown state assignment operation " + operation + '.');
+			}
 
 			TaskStateSnapshot taskState = new TaskStateSnapshot();
 			boolean statelessTask = true;
@@ -219,7 +240,7 @@ public class StateAssignmentOperation {
 
 			if (!statelessTask) {
 				JobManagerTaskRestore taskRestore = new JobManagerTaskRestore(restoreCheckpointId, taskState);
-				currentExecutionAttempt.setInitialState(taskRestore);
+				executionAttempt.setInitialState(taskRestore);
 			}
 		}
 	}

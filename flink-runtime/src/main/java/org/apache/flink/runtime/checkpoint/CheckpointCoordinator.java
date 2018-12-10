@@ -29,6 +29,8 @@ import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.ExecutionJobVertex;
 import org.apache.flink.runtime.executiongraph.ExecutionVertex;
 import org.apache.flink.runtime.executiongraph.JobStatusListener;
+import org.apache.flink.runtime.executiongraph.ExecutionGraph;
+import org.apache.flink.runtime.executiongraph.failover.RunStandbyTaskStrategy;
 import org.apache.flink.runtime.jobgraph.JobStatus;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.OperatorID;
@@ -50,6 +52,7 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.Nullable;
 
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -63,6 +66,8 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static org.apache.flink.runtime.checkpoint.StateAssignmentOperation.Operation.RESTORE_STATE;
+import static org.apache.flink.runtime.checkpoint.StateAssignmentOperation.Operation.DISPATCH_STATE_TO_STANDBY_TASK;
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -877,6 +882,18 @@ public class CheckpointCoordinator {
 		LOG.info("Completed checkpoint {} for job {} ({} bytes in {} ms).", checkpointId, job,
 			completedCheckpoint.getStateSize(), completedCheckpoint.getDuration());
 
+		try {
+			ExecutionGraph executionGraph = tasksToTrigger[0].getExecutionGraph();
+			if (executionGraph.getFailoverStrategy() instanceof RunStandbyTaskStrategy) {
+				boolean errorIfNoCheckpoint = false;
+				boolean allowNonRestoredState = true;
+				dispatchLatestCheckpointedStateToStandbyTasks(executionGraph.getAllVertices(), errorIfNoCheckpoint,
+						allowNonRestoredState);
+			}
+		} catch (Throwable t) {
+			LOG.warn("Failed to dispatch the latest checkpointed state to standby tasks. Only possible when RunStandbyTaskStrategy is enabled.", t);
+		}
+
 		if (LOG.isDebugEnabled()) {
 			StringBuilder builder = new StringBuilder();
 			builder.append("Checkpoint state: ");
@@ -1046,7 +1063,7 @@ public class CheckpointCoordinator {
 			final Map<OperatorID, OperatorState> operatorStates = latest.getOperatorStates();
 
 			StateAssignmentOperation stateAssignmentOperation =
-					new StateAssignmentOperation(latest.getCheckpointID(), tasks, operatorStates, allowNonRestoredState);
+					new StateAssignmentOperation(latest.getCheckpointID(), tasks, operatorStates, allowNonRestoredState, RESTORE_STATE);
 
 			stateAssignmentOperation.assignStates();
 
@@ -1114,6 +1131,64 @@ public class CheckpointCoordinator {
 		LOG.info("Reset the checkpoint ID of job {} to {}.", job, nextCheckpointId);
 
 		return restoreLatestCheckpointedState(tasks, true, allowNonRestored);
+	}
+
+	/**
+	 * Dispatches the latest checkpointed state of running tasks to the standby tasks that mirror them.
+	 *
+	 * @param tasks Map of job vertices that point to the running tasks to dispatch state from.
+	 * The new state for standby tasks is dispatched via {@link Execution#setInitialState(JobManagerTaskRestore)}.
+	 * @param errorIfNoCheckpoint Fail if no completed checkpoint is available to
+	 * dispatch state from.
+	 * @param allowNonDispatchededState Allow checkpoint state that cannot be mapped
+	 * to any job vertex in tasks.
+	 * @return <code>true</code> if state was dispatchred, <code>false</code> otherwise.
+	 * @throws IllegalStateException If the CheckpointCoordinator is shut down.
+	 * @throws IllegalStateException If no completed checkpoint is available and
+	 *                               the <code>failIfNoCheckpoint</code> flag has been set.
+	 * @throws IllegalStateException If the checkpoint contains state that cannot be
+	 *                               mapped to any job vertex in <code>tasks</code> and the
+	 *                               <code>allowNonDispatchedState</code> flag has not been set.
+	 * @throws IllegalStateException If the max parallelism changed for an operator
+	 *                               that receives state from this checkpoint.
+	 * @throws IllegalStateException If the parallelism changed for an operator
+	 *                               that receives <i>non-partitioned</i> state from this
+	 *                               checkpoint.
+	 */
+	public boolean dispatchLatestCheckpointedStateToStandbyTasks(
+			Map<JobVertexID, ExecutionJobVertex> tasks,
+			boolean errorIfNoCheckpoint,
+			boolean allowNonRestoredState) throws Exception {
+
+		synchronized (lock) {
+			if (shutdown) {
+				throw new IllegalStateException("CheckpointCoordinator is shut down");
+			}
+
+			// Get the latest checkpoint
+			CompletedCheckpoint latest = completedCheckpointStore.getLatestCheckpoint();
+
+			if (latest == null) {
+				if (errorIfNoCheckpoint) {
+					throw new IllegalStateException("No completed checkpoint available");
+				} else {
+					LOG.debug("No completed checkpoint available for dispatching state to standby tasks.");
+					return false;
+				}
+			}
+
+			LOG.info("Dispatching state of job {} from latest valid checkpoint: {} to standby tasks.", job, latest);
+
+			// re-assign the task states
+			final Map<OperatorID, OperatorState> operatorStates = latest.getOperatorStates();
+
+			StateAssignmentOperation stateAssignmentOperation =
+					new StateAssignmentOperation(latest.getCheckpointID(), tasks, operatorStates, allowNonRestoredState, DISPATCH_STATE_TO_STANDBY_TASK);
+
+			stateAssignmentOperation.assignStates();
+
+			return true;
+		}
 	}
 
 	// ------------------------------------------------------------------------

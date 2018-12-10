@@ -378,8 +378,14 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 	 * @param taskRestore information to restore the state
 	 */
 	public void setInitialState(@Nullable JobManagerTaskRestore taskRestore) {
-		checkState(state == CREATED, "Can only assign operator state when execution attempt is in CREATED");
+		checkState(state == CREATED || (isStandby && state == STANDBY),
+				"Can only assign operator state when execution attempt is a) in CREATED state or b) a standby execution attempt in STANDBY state.");
 		this.taskRestore = taskRestore;
+
+		if (isStandby && state == STANDBY) {
+			dispatchStateToStandbyTaskRpcCall(taskRestore);
+			LOG.debug("Dispatch state snapshot to standby task " + vertex.getTaskNameWithSubtaskIndex() + '.');
+		}
 	}
 
 	/**
@@ -1247,6 +1253,31 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 				},
 				executor);
 		}
+	}
+
+	/**
+	 * This method sends a dispatchStateToStandbyTask message to the instance of the assigned slot.
+	 *
+	 * <p>The sending is tried up to NUM_CANCEL_CALL_TRIES times.
+	 */
+	private void dispatchStateToStandbyTaskRpcCall(JobManagerTaskRestore taskRestore) {
+		final LogicalSlot slot = assignedResource;
+
+		final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
+
+		CompletableFuture<Acknowledge> dispatchStateResultFuture = FutureUtils.retry(
+			() -> taskManagerGateway.dispatchStateToStandbyTask(attemptId, taskRestore, rpcTimeout),
+			NUM_CANCEL_CALL_TRIES,
+			executor);
+
+		dispatchStateResultFuture.whenCompleteAsync(
+			(ack, failure) -> {
+				if (failure != null) {
+					fail(new Exception("State snapshot could not be dispatched to standby task " +
+							vertex.getTaskNameWithSubtaskIndex() + '.', failure));
+				}
+			},
+			executor);
 	}
 
 	/**
