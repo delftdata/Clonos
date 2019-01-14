@@ -40,6 +40,7 @@ import org.apache.flink.runtime.query.TaskKvStateRegistry;
 import org.apache.flink.runtime.state.TaskStateManager;
 import org.apache.flink.runtime.state.internal.InternalKvState;
 import org.apache.flink.runtime.taskmanager.TaskManagerRuntimeInfo;
+import org.apache.flink.runtime.taskmanager.Task;
 
 import java.util.Map;
 import java.util.concurrent.Future;
@@ -160,6 +161,8 @@ public interface Environment {
 	 * @return KvState registry
 	 */
 	TaskKvStateRegistry getTaskKvStateRegistry();
+
+	Task getContainingTask();
 
 	/**
 	 * Confirms that the invokable has successfully completed all steps it needed to

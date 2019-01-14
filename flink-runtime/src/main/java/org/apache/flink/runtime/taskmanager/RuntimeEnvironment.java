@@ -256,6 +256,11 @@ public class RuntimeEnvironment implements Environment {
 	}
 
 	@Override
+	public Task getContainingTask() {
+		return containingTask;
+	}
+
+	@Override
 	public void acknowledgeCheckpoint(long checkpointId, CheckpointMetrics checkpointMetrics) {
 		acknowledgeCheckpoint(checkpointId, checkpointMetrics, null);
 	}

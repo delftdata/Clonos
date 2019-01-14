@@ -27,6 +27,9 @@ import org.apache.flink.runtime.execution.Environment;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
+import java.util.concurrent.CompletableFuture;
+import org.apache.flink.annotation.VisibleForTesting;
+
 /**
  * This is the abstract base class for every task that can be executed by a TaskManager.
  * Concrete tasks extend this class, for example the streaming and batch tasks.
@@ -89,6 +92,14 @@ public abstract class AbstractInvokable {
 	 *         Tasks may forward their exceptions for the TaskManager to handle through failure/recovery.
 	 */
 	public abstract void invoke() throws Exception;
+
+	public void initializeState() throws Exception {
+
+	}
+
+	public void switchStandbyToRunning() throws Exception {
+
+	}
 
 	/**
 	 * This method is called when a task is canceled either as a result of a user abort or an execution failure. It can
@@ -186,6 +197,11 @@ public abstract class AbstractInvokable {
 	 */
 	public ExecutionConfig getExecutionConfig() {
 		return this.environment.getExecutionConfig();
+	}
+
+	@VisibleForTesting
+	public CompletableFuture<Void> getStandbyFuture() {
+		return null;
 	}
 
 	// ------------------------------------------------------------------------

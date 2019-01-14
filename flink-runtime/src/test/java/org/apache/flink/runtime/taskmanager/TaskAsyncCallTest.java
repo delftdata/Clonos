@@ -65,6 +65,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.Executor;
+import java.util.concurrent.CompletableFuture;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.everyItem;
@@ -215,12 +216,12 @@ public class TaskAsyncCallTest extends TestLogger {
 	public void testNonStandbyTaskRunningState() throws Exception {
 		Task task = createTask(CheckpointsInOrderInvokable.class);
 		assertThat(task.getIsStandby(), is(false));
-		assertNull(task.getStandbyFuture());
 
 		try (TaskCleaner ignored = new TaskCleaner(task)) {
 			task.startTaskThread();
 			awaitLatch.await();
 
+			assertNull(task.getInvokable().getStandbyFuture());
 			assertThat(task.getExecutionState(), is(ExecutionState.RUNNING));
 		}
 	}
@@ -229,13 +230,13 @@ public class TaskAsyncCallTest extends TestLogger {
 	public void testNonStandbyTaskSwitchToRunningState() throws Exception {
 		Task task = createTask(CheckpointsInOrderInvokable.class);
 		assertThat(task.getIsStandby(), is(false));
-		assertNull(task.getStandbyFuture());
 
 		try (TaskCleaner ignored = new TaskCleaner(task)) {
 			task.startTaskThread();
 			awaitLatch.await();
 
 			task.switchStandbyToRunning();
+			fail("Expected exception not thrown");
 		}
 		catch (Exception e) {
 			String message = new String("Task " + task.getTaskInfo().getTaskNameWithSubtasks() + " is not a STANDBY task. It cannot be switched to RUNNING state.");
@@ -248,13 +249,13 @@ public class TaskAsyncCallTest extends TestLogger {
 		boolean isStandby = true;
 		Task task = createTask(CheckpointsInOrderInvokable.class, isStandby);
 		assertThat(task.getIsStandby(), is(true));
-		assertNotNull(task.getStandbyFuture());
 
 		try (TaskCleaner ignored = new TaskCleaner(task)) {
 			task.startTaskThread();
 
 			// task is still in CREATED state
 			task.switchStandbyToRunning();
+			fail("Expected exception not thrown");
 		}
 		catch (Exception e) {
 			String message = new String("Standby task still in CREATED state. Retry.");
@@ -267,7 +268,6 @@ public class TaskAsyncCallTest extends TestLogger {
 		boolean isStandby = true;
 		Task task = createTask(CheckpointsInOrderInvokable.class, isStandby);
 		assertThat(task.getIsStandby(), is(true));
-		assertNotNull(task.getStandbyFuture());
 
 		try (TaskCleaner ignored = new TaskCleaner(task)) {
 			task.startTaskThread();
@@ -275,10 +275,11 @@ public class TaskAsyncCallTest extends TestLogger {
 			task.failExternally(new Exception("external"));
 
 			task.switchStandbyToRunning();
-			assertThat(task.getStandbyFuture().isCompletedExceptionally(), is(true));
+			fail("Expected exception not thrown");
 		}
 		catch (Exception e) {
-			fail(e.getMessage());
+			String message = new String("Tried to run standby task that was not in STANDBY state, but in FAILED state.");
+			assertThat(message, is(e.getMessage()));
 		}
 	}
 
@@ -287,23 +288,19 @@ public class TaskAsyncCallTest extends TestLogger {
 		boolean isStandby = true;
 		Task task = createTask(CheckpointsInOrderInvokable.class, isStandby);
 		assertThat(task.getIsStandby(), is(true));
-		assertNotNull(task.getStandbyFuture());
 
 		try (TaskCleaner ignored = new TaskCleaner(task)) {
 			task.startTaskThread();
-			ExecutionState state = ExecutionState.CREATED;
-			do {
-				state = task.getExecutionState();
-			} while (state == ExecutionState.CREATED || state == ExecutionState.DEPLOYING);
 
-			assertThat(task.getExecutionState(), is(ExecutionState.STANDBY));
-			assertThat(task.getStandbyFuture().isDone(), is(false));
-
-			task.switchStandbyToRunning();
 			awaitLatch.await();
 
-			assertThat(task.getStandbyFuture().isDone(), is(true));
-			assertThat(task.getStandbyFuture().isCompletedExceptionally(), is(false));
+			assertThat(task.getExecutionState(), is(ExecutionState.STANDBY));
+			assertThat(task.getInvokable().getStandbyFuture().isDone(), is(false));
+
+			task.switchStandbyToRunning();
+
+			assertThat(task.getInvokable().getStandbyFuture().isDone(), is(true));
+			assertThat(task.getInvokable().getStandbyFuture().isCompletedExceptionally(), is(false));
 			assertThat(task.getExecutionState(), is(ExecutionState.RUNNING));
 		}
 	}
@@ -385,13 +382,35 @@ public class TaskAsyncCallTest extends TestLogger {
 
 		private volatile Exception error;
 
+		private volatile CompletableFuture<Void> standbyFuture;
+
 		public CheckpointsInOrderInvokable(Environment environment) {
 			super(environment);
+
+			if (environment.getContainingTask().getIsStandby()) {
+				standbyFuture = new CompletableFuture<Void>();
+			} else {
+				standbyFuture = null;
+			}
+		}
+
+		@Override
+		public CompletableFuture<Void> getStandbyFuture() {
+			return standbyFuture;
+		}
+
+		@Override
+		public void switchStandbyToRunning() throws Exception {
+			standbyFuture.complete(null);
 		}
 
 		@Override
 		public void invoke() throws Exception {
 			awaitLatch.trigger();
+
+			if (standbyFuture != null) {
+				standbyFuture.get();
+			}
 
 			// wait forever (until canceled)
 			synchronized (this) {

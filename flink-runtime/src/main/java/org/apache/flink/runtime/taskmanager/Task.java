@@ -236,7 +236,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 	private final Executor executor;
 
 	/** Whether the task is a standby task */
-	private boolean isStandby;
+	private final boolean isStandby;
 
 	// ------------------------------------------------------------------------
 	//  Fields that control the task execution. All these fields are volatile
@@ -252,9 +252,6 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 
 	/** The current execution state of the task. */
 	private volatile ExecutionState executionState = ExecutionState.CREATED;
-
-	/** Future for standby tasks that completes when they are required to run */
-	private volatile CompletableFuture<Void> standbyFuture;
 
 	/** The observed exception, in case the task execution failed. */
 	private volatile Throwable failureCause;
@@ -364,13 +361,6 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		this.allocationId = Preconditions.checkNotNull(slotAllocationId);
 
 		this.isStandby = isStandby;
-		if (this.isStandby) {
-			standbyFuture = new CompletableFuture<>();
-		}
-		else {
-			this.standbyFuture = null;
-		}
-
 		if (this.isStandby) {
 			this.taskNameWithSubtask = taskInfo.getTaskNameWithSubtasks() + " (STANDBY)";
 		}
@@ -491,10 +481,6 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		return isStandby;
 	}
 
-	public CompletableFuture<Void> getStandbyFuture() {
-		return standbyFuture;
-	}
-
 	public TaskInfo getTaskInfo() {
 		return taskInfo;
 	}
@@ -529,6 +515,11 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 
 	public Thread getExecutingThread() {
 		return executingThread;
+	}
+
+	@VisibleForTesting
+	public final AbstractInvokable getInvokable() {
+		return invokable;
 	}
 
 	@VisibleForTesting
@@ -744,7 +735,8 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 				this);
 
 			// now load and instantiate the task's invokable code
-			invokable = loadAndInstantiateInvokable(userCodeClassLoader, nameOfInvokableClass, env);
+			invokable = loadAndInstantiateInvokable(userCodeClassLoader, nameOfInvokableClass, env,
+					isStandby);
 
 			// ----------------------------------------------------------------
 			//  actual task core work
@@ -764,26 +756,17 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 				// notify everyone that we switched to standby
 				notifyObservers(ExecutionState.STANDBY, null);
 				taskManagerActions.updateTaskExecutionState(new TaskExecutionState(jobId, executionId, ExecutionState.STANDBY));
-
-				// Block until the standby task is requested to run.
-				standbyFuture.get();
-
-				// switch to the RUNNING state, if that fails, we have been canceled/failed in the meantime
-				if (!transitionState(ExecutionState.STANDBY, ExecutionState.RUNNING)) {
-					throw new CancelTaskException();
-				}
-
 			}
 			else {
 				// switch to the RUNNING state, if that fails, we have been canceled/failed in the meantime
 				if (!transitionState(ExecutionState.DEPLOYING, ExecutionState.RUNNING)) {
 					throw new CancelTaskException();
 				}
-			}
 
-			// notify everyone that we switched to running
-			notifyObservers(ExecutionState.RUNNING, null);
-			taskManagerActions.updateTaskExecutionState(new TaskExecutionState(jobId, executionId, ExecutionState.RUNNING));
+				// notify everyone that we switched to running
+				notifyObservers(ExecutionState.RUNNING, null);
+				taskManagerActions.updateTaskExecutionState(new TaskExecutionState(jobId, executionId, ExecutionState.RUNNING));
+			}
 
 			// make sure the user code classloader is accessible thread-locally
 			executingThread.setContextClassLoader(userCodeClassLoader);
@@ -1200,6 +1183,15 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		taskStateManager.setTaskRestore(taskRestore);
 		LOG.debug("Standby task " + taskNameWithSubtask + " received state snapshot of checkpoint " +
 				taskRestore.getRestoreCheckpointId() + ".");
+
+		try {
+			// Invokable should be an instance of an operator class in the hierarchy of StreamTask.
+			invokable.initializeState();
+		} catch (NoSuchMethodException e) {
+			throw new FlinkException("Standby task has no initializeState() method; it is not an instance in the StreamTask hierarchy.", e);
+		} catch (Exception ee) {
+			throw new Exception("initializeState() for Task " + taskNameWithSubtask + " failed.", ee);
+		}
 	}
 
 	/**
@@ -1213,13 +1205,18 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 
 		ExecutionState current = executionState;
 		if (current == ExecutionState.STANDBY) {
-			standbyFuture.complete(null);
+			invokable.switchStandbyToRunning();
+
+			// switch to the RUNNING state, if that fails, we have been canceled/failed in the meantime
+			if (!transitionState(ExecutionState.STANDBY, ExecutionState.RUNNING)) {
+				throw new CancelTaskException();
+			}
 		}
 		else if (current == ExecutionState.CREATED || current == ExecutionState.DEPLOYING) {
 			throw new Exception("Standby task still in " + current + " state. Retry.");
 		}
 		else {
-			standbyFuture.completeExceptionally(new Exception("Tried to run standby task that was not in STANDBY state, but in " + current + " state."));
+			throw new Exception("Tried to run standby task that was not in STANDBY state, but in " + current + " state.");
 		}
 	}
 
@@ -1532,7 +1529,8 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 	private static AbstractInvokable loadAndInstantiateInvokable(
 		ClassLoader classLoader,
 		String className,
-		Environment environment) throws Throwable {
+		Environment environment,
+		boolean isStandby) throws Throwable {
 
 		final Class<? extends AbstractInvokable> invokableClass;
 		try {

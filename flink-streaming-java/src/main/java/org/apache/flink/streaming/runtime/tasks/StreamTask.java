@@ -71,6 +71,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Base class for all streaming tasks. A task is the unit of local processing that is deployed
@@ -168,6 +169,9 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	/** Flag to mark this task as canceled. */
 	private volatile boolean canceled;
 
+	/** Future for standby tasks that completes when they are required to run */
+	private volatile CompletableFuture<Void> standbyFuture;
+
 	/** Thread pool for async snapshot workers. */
 	private ExecutorService asyncOperationsThreadPool;
 
@@ -210,6 +214,14 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		this.configuration = new StreamConfig(getTaskConfiguration());
 		this.accumulatorMap = getEnvironment().getAccumulatorRegistry().getUserMap();
 		this.streamRecordWriters = createStreamRecordWriters(configuration, environment);
+
+		if (isStandby()) {
+			this.standbyFuture = new CompletableFuture<>();
+		}
+		else {
+			this.standbyFuture = null;
+		}
+
 	}
 
 	// ------------------------------------------------------------------------
@@ -282,11 +294,23 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			// executed before all operators are opened
 			synchronized (lock) {
 
-				// both the following operations are protected by the lock
+				// both initializeState() and openAllOperators() are protected by the lock
 				// so that we avoid race conditions in the case that initializeState()
 				// registers a timer, that fires before the open() is called.
 
 				initializeState();
+			}
+
+			// Block until the standby task is requested to run.
+			// In the meantime checkpointed state snapshots of the running task mirrored by the
+			// standby task are dispatched to the standby task. See Task.dispatchStateToStandbyTask().
+			if (isStandby()) {
+				standbyFuture.get();
+			}
+
+			// we need to make sure that any triggers scheduled in open() cannot be
+			// executed before all operators are opened
+			synchronized (lock) {
 				openAllOperators();
 			}
 
@@ -410,6 +434,16 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 	public final boolean isCanceled() {
 		return canceled;
+	}
+
+	public final boolean isStandby() {
+		return getEnvironment().getContainingTask().getIsStandby();
+	}
+
+	@Override
+	@VisibleForTesting
+	public CompletableFuture<Void> getStandbyFuture() {
+		return standbyFuture;
 	}
 
 	/**
@@ -729,7 +763,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		checkpointingOperation.executeCheckpointing();
 	}
 
-	private void initializeState() throws Exception {
+	@Override
+	public void initializeState() throws Exception {
 
 		StreamOperator<?>[] allOperators = operatorChain.getAllOperators();
 
@@ -740,6 +775,26 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		}
 	}
 
+	/**
+	 * Unblock execution of a standby task.
+	 *
+	 */
+	@Override
+	public void switchStandbyToRunning() throws Exception {
+		if (!isStandby()) {
+			throw new Exception("Task " + getName() + " is not a STANDBY task. It cannot be switched to RUNNING state.");
+		}
+
+		if (!isRunning && !canceled) {
+			standbyFuture.complete(null);
+		}
+		else if (isRunning) {
+			LOG.debug("Standby task " + getName() + "is already running.");
+		}
+		else {
+			standbyFuture.completeExceptionally(new Exception("Tried to run standby task that was not in STANDBY state, but in canceled state."));
+		}
+	}
 	// ------------------------------------------------------------------------
 	//  State backend
 	// ------------------------------------------------------------------------
