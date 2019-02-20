@@ -684,8 +684,48 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 
 		Execution firstStandbyExecution = this.standbyExecutions.get(0);
 		firstStandbyExecution.runStandbyExecution();
+
+		priorExecutions.add(currentExecution);
+		currentExecution = firstStandbyExecution;
+
+		boolean updateConsumersOnFailover = true;
+		for (ExecutionEdge[] edges : inputEdges) {
+			for (ExecutionEdge edge : edges) {
+				List<List<ExecutionEdge>> currentConsumerEdge = new ArrayList<List<ExecutionEdge>>(0);
+				currentConsumerEdge.add(new ArrayList<ExecutionEdge>(0));
+				currentConsumerEdge.get(0).add(edge);
+
+				checkPartition(edge.getSource());
+				Execution producer = edge.getSource().getProducer().getCurrentExecutionAttempt();
+
+				LOG.debug("Update the " + producer + " producer execution's consumer execution " + currentExecution + ".");
+				producer.scheduleOrUpdateConsumers(currentConsumerEdge,
+				//producer.scheduleOrUpdateConsumers(edge.getSource().getConsumers(),
+					updateConsumersOnFailover);
+			}
+		}
+
+		LOG.debug("Update the to-run standby task's " + currentExecution + " consumer vertices (if any).");
+		for (IntermediateResultPartition partition : resultPartitions.values()) {
+			checkPartition(partition);
+			currentExecution.scheduleOrUpdateConsumers(partition.getConsumers(),
+					updateConsumersOnFailover);
+		}
 	}
 
+	/**
+	 * Check intermediate result partition is pipelined and not null.
+	 */
+	private void checkPartition(IntermediateResultPartition partition) {
+		if (partition == null) {
+			throw new IllegalStateException("Unknown partition " + partition + ".");
+		}
+
+		if (!partition.getIntermediateResult().getResultType().isPipelined()) {
+			throw new IllegalArgumentException("ScheduleOrUpdateConsumers msg is only valid for" +
+					"pipelined partitions.");
+		}
+	}
 
 	/**
 	 * Schedules or updates the consumer tasks of the result partition with the given ID.
@@ -701,18 +741,11 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 
 		final IntermediateResultPartition partition = resultPartitions.get(partitionId.getPartitionId());
 
-		if (partition == null) {
-			throw new IllegalStateException("Unknown partition " + partitionId + ".");
-		}
+		checkPartition(partition);
 
-		if (partition.getIntermediateResult().getResultType().isPipelined()) {
-			// Schedule or update receivers of this partition
-			execution.scheduleOrUpdateConsumers(partition.getConsumers());
-		}
-		else {
-			throw new IllegalArgumentException("ScheduleOrUpdateConsumers msg is only valid for" +
-					"pipelined partitions.");
-		}
+		// Schedule or update receivers of this partition
+		boolean updateConsumersOnFailover = false;
+		execution.scheduleOrUpdateConsumers(partition.getConsumers(), updateConsumersOnFailover);
 	}
 
 	public void cachePartitionInfo(PartialInputChannelDeploymentDescriptor partitionInfo){
@@ -896,9 +929,9 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			isStandby);
 
 		standbyExecutions.add(newStandbyExecution);
+		// register this execution at the execution graph, to receive call backs such as task state updates.
 		getExecutionGraph().registerExecution(newStandbyExecution);
-
-		LOG.debug("Added and registered standby execution for task " + taskNameWithSubtask + ". Now scheduling it.");
+		LOG.debug("Added standby execution for task " + taskNameWithSubtask + "and registered it to running executions. Now scheduling it.");
 
 		return newStandbyExecution.scheduleForExecution();
 

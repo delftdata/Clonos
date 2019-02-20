@@ -44,6 +44,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.SocketAddress;
+import java.net.InetSocketAddress;
 import java.util.ArrayDeque;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -139,13 +140,28 @@ class CreditBasedPartitionRequestClientHandler extends ChannelInboundHandlerAdap
 		// channels have been removed. This indicates a problem with the remote task manager.
 		if (!inputChannels.isEmpty()) {
 			final SocketAddress remoteAddr = ctx.channel().remoteAddress();
+			RemoteTransportException cause = new RemoteTransportException(
+					"Connection unexpectedly closed by remote task manager '" + remoteAddr + "'. "
+						+ "This might indicate that the remote task manager was lost.", remoteAddr);
 
-			notifyAllChannelsOfErrorAndClose(new RemoteTransportException(
-				"Connection unexpectedly closed by remote task manager '" + remoteAddr + "'. "
-					+ "This might indicate that the remote task manager was lost.", remoteAddr));
+			try {
+				InetSocketAddress inetRemoteAddr = (InetSocketAddress) remoteAddr;
+				for (RemoteInputChannel remoteInputChannel : inputChannels.values()) {
+					if (remoteInputChannel.getConnectionId().getAddress().equals(inetRemoteAddr)) {
+						LOG.debug("Send fail producer trigger to {}.", remoteInputChannel);
+						remoteInputChannel.triggerFailProducer(cause);
+						break;
+					}
+				}
+			} catch (ClassCastException e) {
+				LOG.warn("On unexpected network error, the channel's remote address is not of type InetSocketAddress. Therefore, it is not possible to identify the culprit remote channel.");
+
+				notifyAllChannelsOfErrorAndClose(cause);
+				super.channelInactive(ctx);
+			}
+		} else {
+			super.channelInactive(ctx);
 		}
-
-		super.channelInactive(ctx);
 	}
 
 	/**

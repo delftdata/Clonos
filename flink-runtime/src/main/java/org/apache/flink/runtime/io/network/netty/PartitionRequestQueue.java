@@ -309,22 +309,31 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 		LOG.error("Encountered error while consuming partitions", cause);
 
 		fatalError = true;
-		releaseAllResources();
+		releaseAllResources(cause);
 
 		if (channel.isActive()) {
 			channel.writeAndFlush(new ErrorResponse(cause)).addListener(ChannelFutureListener.CLOSE);
 		}
 	}
 
-	private void releaseAllResources() throws IOException {
+	private void releaseAllResources(Throwable cause) throws IOException {
 		// note: this is only ever executed by one thread: the Netty IO thread!
 		for (NetworkSequenceViewReader reader : allReaders.values()) {
-			reader.releaseAllResources();
+			if (cause != null) {
+				LOG.debug("Release reader {} because of {}).", reader, cause);
+				reader.releaseAllResources(cause);
+			} else {
+				reader.releaseAllResources();
+			}
 			markAsReleased(reader.getReceiverId());
 		}
 
 		availableReaders.clear();
 		allReaders.clear();
+	}
+
+	private void releaseAllResources() throws IOException {
+		releaseAllResources(null);
 	}
 
 	/**

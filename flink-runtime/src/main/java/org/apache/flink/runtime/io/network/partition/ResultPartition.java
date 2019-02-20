@@ -326,6 +326,10 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 		}
 	}
 
+	public void sendFailConsumerTrigger(int subpartitionIndex, Throwable cause) {
+		partitionConsumableNotifier.requestFailConsumer(partitionId, subpartitionIndex, cause, taskActions);
+	}
+
 	public void destroyBufferPool() {
 		if (bufferPool != null) {
 			bufferPool.lazyDestroy();
@@ -345,7 +349,7 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 
 		ResultSubpartitionView readView = subpartitions[index].createReadView(availabilityListener);
 
-		LOG.debug("Created {}", readView);
+		LOG.debug("Created/Using {} of {}", readView, this);
 
 		return readView;
 	}

@@ -41,6 +41,19 @@ public interface TaskActions {
 		ResultPartitionID resultPartitionId);
 
 	/**
+	 * Trigger failure to producing task that has been disconnected from the network.
+	 *
+	 * @param intermediateDataSetId ID of the parent intermediate data set.
+	 * @param resultPartitionId ID of the result partition that identifies the producing
+	 * execution and partition.
+	 * @param cause The failure that has been intercepted.
+	 */
+	void triggerFailProducer(
+		IntermediateDataSetID intermediateDataSetId,
+		ResultPartitionID resultPartitionId,
+		Throwable cause);
+
+	/**
 	 * Fail the owning task with the given throwable.
 	 *
 	 * @param cause of the failure

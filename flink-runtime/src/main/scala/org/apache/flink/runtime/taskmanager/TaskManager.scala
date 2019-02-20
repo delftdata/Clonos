@@ -1294,7 +1294,8 @@ class TaskManager(
           if (reader != null) {
             Future {
               try {
-                reader.updateInputChannel(partitionInfo)
+                reader.updateInputChannel(partitionInfo, network,
+                  task.getMetricGroup().getIOMetricGroup())
               }
               catch {
                 case t: Throwable =>

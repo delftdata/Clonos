@@ -29,6 +29,9 @@ import org.apache.flink.runtime.io.network.partition.consumer.InputChannel.Buffe
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
 import org.apache.flink.runtime.io.network.partition.consumer.LocalInputChannel;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 
 /**
@@ -38,6 +41,8 @@ import java.io.IOException;
  * handler about non-emptiness, similar to the {@link LocalInputChannel}.
  */
 class CreditBasedSequenceNumberingViewReader implements BufferAvailabilityListener, NetworkSequenceViewReader {
+
+	private static final Logger LOG = LoggerFactory.getLogger(CreditBasedSequenceNumberingViewReader.class);
 
 	private final Object requestLock = new Object();
 
@@ -174,6 +179,7 @@ class CreditBasedSequenceNumberingViewReader implements BufferAvailabilityListen
 
 	@Override
 	public void notifySubpartitionConsumed() throws IOException {
+		LOG.debug("Reader {} issues release notification for subpartition view {}.", this, subpartitionView);
 		subpartitionView.notifySubpartitionConsumed();
 	}
 
@@ -188,7 +194,14 @@ class CreditBasedSequenceNumberingViewReader implements BufferAvailabilityListen
 	}
 
 	@Override
+	public void releaseAllResources(Throwable cause) throws IOException {
+		LOG.debug("Reader {} DOES NOT issue release resources call for subpartition view {}.", this, subpartitionView);
+		subpartitionView.sendFailConsumerTrigger(cause);
+	}
+
+	@Override
 	public void releaseAllResources() throws IOException {
+		LOG.debug("Reader {} issues release resources call for subpartition view {}.", this, subpartitionView);
 		subpartitionView.releaseAllResources();
 	}
 

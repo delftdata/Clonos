@@ -35,6 +35,9 @@ import java.io.Serializable;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
  * Deployment descriptor for a single input channel instance.
  *
@@ -47,6 +50,8 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  */
 public class InputChannelDeploymentDescriptor implements Serializable {
 
+	private static final Logger LOG = LoggerFactory.getLogger(InputChannelDeploymentDescriptor.class);
+
 	private static final long serialVersionUID = 373711381640454080L;
 
 	/** The ID of the partition the input channel is going to consume. */
@@ -55,12 +60,22 @@ public class InputChannelDeploymentDescriptor implements Serializable {
 	/** The location of the partition the input channel is going to consume. */
 	private final ResultPartitionLocation consumedPartitionLocation;
 
+	private final boolean updateConsumersOnFailover;
+
 	public InputChannelDeploymentDescriptor(
 			ResultPartitionID consumedPartitionId,
 			ResultPartitionLocation consumedPartitionLocation) {
+		this(consumedPartitionId, consumedPartitionLocation, false);
+	}
+
+	public InputChannelDeploymentDescriptor(
+			ResultPartitionID consumedPartitionId,
+			ResultPartitionLocation consumedPartitionLocation,
+			boolean updateConsumersOnFailover) {
 
 		this.consumedPartitionId = checkNotNull(consumedPartitionId);
 		this.consumedPartitionLocation = checkNotNull(consumedPartitionLocation);
+		this.updateConsumersOnFailover = updateConsumersOnFailover;
 	}
 
 	public ResultPartitionID getConsumedPartitionId() {
@@ -71,11 +86,15 @@ public class InputChannelDeploymentDescriptor implements Serializable {
 		return consumedPartitionLocation;
 	}
 
+	public boolean getUpdateConsumersOnFailover() {
+		return updateConsumersOnFailover;
+	}
+
 	@Override
 	public String toString() {
 		return String.format("InputChannelDeploymentDescriptor [consumed partition id: %s, " +
-						"consumed partition location: %s]",
-				consumedPartitionId, consumedPartitionLocation);
+						"consumed partition location: %s, updateConsumersOnFailover: %s]",
+				consumedPartitionId, consumedPartitionLocation, updateConsumersOnFailover);
 	}
 
 	// ------------------------------------------------------------------------
@@ -148,6 +167,8 @@ public class InputChannelDeploymentDescriptor implements Serializable {
 
 			icdd[i] = new InputChannelDeploymentDescriptor(
 					consumedPartitionId, partitionLocation);
+
+			LOG.debug("Create InputChannelDeploymentDescriptor {} for execution edge: {}.", icdd[i], edges[i]);
 		}
 
 		return icdd;

@@ -45,11 +45,13 @@ import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.execution.SuppressRestartsException;
 import org.apache.flink.runtime.executiongraph.ArchivedExecutionGraph;
 import org.apache.flink.runtime.executiongraph.Execution;
+import org.apache.flink.runtime.executiongraph.ExecutionVertex;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.ExecutionGraph;
 import org.apache.flink.runtime.executiongraph.ExecutionGraphBuilder;
 import org.apache.flink.runtime.executiongraph.ExecutionJobVertex;
 import org.apache.flink.runtime.executiongraph.IntermediateResult;
+import org.apache.flink.runtime.executiongraph.IntermediateResultPartition;
 import org.apache.flink.runtime.executiongraph.JobStatusListener;
 import org.apache.flink.runtime.executiongraph.restart.RestartStrategy;
 import org.apache.flink.runtime.executiongraph.restart.RestartStrategyResolving;
@@ -626,6 +628,59 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 						+ intermediateResultId + " not found."));
 			}
 		}
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> requestFailProducer(
+			final IntermediateDataSetID intermediateResultId,
+			final ResultPartitionID resultPartitionId,
+			final Throwable cause) {
+
+		Execution producerExecution = executionGraph.getRegisteredExecutions().get(resultPartitionId.getProducerId());
+		if (producerExecution == null) {
+			return CompletableFuture.completedFuture(Acknowledge.get());
+		}
+		else {
+			final IntermediateResult intermediateResult =
+					executionGraph.getAllIntermediateResults().get(intermediateResultId);
+
+			if (intermediateResult != null) {
+				// Try to find the producing execution
+				producerExecution = intermediateResult
+						.getPartitionById(resultPartitionId.getPartitionId())
+						.getProducer()
+						.getCurrentExecutionAttempt();
+
+				producerExecution.fail(cause);
+				return CompletableFuture.completedFuture(Acknowledge.get());
+			} else {
+				return FutureUtils.completedExceptionally(new IllegalArgumentException("Intermediate data set with ID "
+						+ intermediateResultId + " not found."));
+			}
+		}
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> requestFailConsumer(
+			final ResultPartitionID resultPartitionId,
+			int subpartitionIndex,
+			final Throwable cause,
+			final Time timeout) {
+
+		final Execution producerExecution = executionGraph.getRegisteredExecutions().get(resultPartitionId.getProducerId());
+		// If producer failed no need to fail consumer.
+		if (producerExecution == null) {
+			return CompletableFuture.completedFuture(Acknowledge.get());
+		}
+
+		final ExecutionVertex producerExecutionVertex = producerExecution.getVertex();
+		final IntermediateResultPartition irp = producerExecutionVertex.getProducedPartitions().get(resultPartitionId.getPartitionId());
+		final Execution consumerExecution = irp.getConsumers().get(0).get(subpartitionIndex).getTarget().getCurrentExecutionAttempt();
+
+		log.debug("Fail externally consumer execution {} of result partition {} subpartition {} because of {}.", consumerExecution, resultPartitionId, subpartitionIndex, cause);
+		consumerExecution.fail(cause);
+
+		return CompletableFuture.completedFuture(Acknowledge.get());
 	}
 
 	@Override

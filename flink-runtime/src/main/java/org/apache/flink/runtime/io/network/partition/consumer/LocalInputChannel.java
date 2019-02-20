@@ -21,6 +21,8 @@ package org.apache.flink.runtime.io.network.partition.consumer;
 import org.apache.flink.runtime.event.TaskEvent;
 import org.apache.flink.runtime.execution.CancelTaskException;
 import org.apache.flink.runtime.io.network.TaskEventDispatcher;
+import org.apache.flink.runtime.io.network.ConnectionManager;
+import org.apache.flink.runtime.io.network.ConnectionID;
 import org.apache.flink.runtime.io.network.partition.BufferAvailabilityListener;
 import org.apache.flink.runtime.io.network.partition.PartitionNotFoundException;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
@@ -247,20 +249,52 @@ public class LocalInputChannel extends InputChannel implements BufferAvailabilit
 	 * Releases the partition reader
 	 */
 	@Override
-	void releaseAllResources() throws IOException {
-		if (!isReleased) {
-			isReleased = true;
+	void releaseAllResources() throws CancelTaskException, IOException {
+		ResultSubpartitionView view = subpartitionView;
+		try {
+			if (!isReleased) {
+				isReleased = true;
 
-			ResultSubpartitionView view = subpartitionView;
-			if (view != null) {
-				view.releaseAllResources();
-				subpartitionView = null;
+				if (view != null) {
+					subpartitionView = null;
+					checkError();
+					// If releasing because of error don't release subpartition view.
+					view.releaseAllResources();
+				}
 			}
+		} catch (IOException e) {
+			// RunStandbyTaskStrategy
+			LOG.debug("Release (because of error) all resources of channel {} (but not {}).", this, view);
 		}
 	}
 
 	@Override
 	public String toString() {
-		return "LocalInputChannel [" + partitionId + "]";
+		return "LocalInputChannel " + channelIndex + " [" + partitionId + "]";
+	}
+
+	// ------------------------------------------------------------------------
+	// Reincarnation to a local input channel at runtime
+	// ------------------------------------------------------------------------
+
+	public LocalInputChannel toNewLocalInputChannel(ResultPartitionID newPartitionId,
+			ResultPartitionManager partitionManager, TaskEventDispatcher taskEventDispatcher,
+			int initialBackoff, int maxBackoff, TaskIOMetricGroup metrics) throws IOException {
+		releaseAllResources();
+		return new LocalInputChannel(inputGate, channelIndex, newPartitionId,
+				partitionManager, taskEventDispatcher, initialBackoff, maxBackoff, metrics);
+	}
+
+	public RemoteInputChannel toNewRemoteInputChannel(ResultPartitionID newPartitionId,
+			ConnectionID newProducerAddress, ConnectionManager connectionManager,
+			int initialBackoff, int maxBackoff, TaskIOMetricGroup metrics) throws IOException {
+		releaseAllResources();
+		RemoteInputChannel newRemoteInputChannel = new RemoteInputChannel(inputGate, channelIndex, newPartitionId,
+				checkNotNull(newProducerAddress), connectionManager, initialBackoff,
+				maxBackoff, metrics);
+		if (inputGate.isCreditBased()) {
+			inputGate.assignExclusiveSegments((InputChannel) newRemoteInputChannel);
+		}
+		return newRemoteInputChannel;
 	}
 }

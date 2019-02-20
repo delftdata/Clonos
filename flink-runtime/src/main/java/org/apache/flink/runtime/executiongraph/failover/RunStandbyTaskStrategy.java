@@ -105,6 +105,7 @@ public class RunStandbyTaskStrategy extends FailoverStrategy {
 				currentExecutionFuture.whenComplete(
 						(Void ignored, Throwable t) -> {
 							if (t == null) {
+								// this should aalso respect the topological order
 								final CompletableFuture<Void> standbyExecutionFuture =
 									executionVertex.addStandbyExecution();
 								schedulingFutures.add(standbyExecutionFuture);

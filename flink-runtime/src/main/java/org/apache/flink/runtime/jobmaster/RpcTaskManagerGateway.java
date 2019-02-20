@@ -100,6 +100,11 @@ public class RpcTaskManagerGateway implements TaskManagerGateway {
 	}
 
 	@Override
+	public CompletableFuture<Acknowledge> failTask(ExecutionAttemptID executionAttemptID, Throwable t, Time timeout) {
+		return taskExecutorGateway.failTask(executionAttemptID, t, timeout);
+	}
+
+	@Override
 	public CompletableFuture<Acknowledge> stopTask(ExecutionAttemptID executionAttemptID, Time timeout) {
 		return taskExecutorGateway.stopTask(executionAttemptID, timeout);
 	}

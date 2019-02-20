@@ -139,6 +139,11 @@ class PipelinedSubpartition extends ResultSubpartition {
 		}
 	}
 
+	@Override
+	public void sendFailConsumerTrigger(Throwable cause) {
+		parent.sendFailConsumerTrigger(index, cause);
+	}
+
 	@Nullable
 	BufferAndBacklog pollBuffer() {
 		synchronized (buffers) {
@@ -220,13 +225,16 @@ class PipelinedSubpartition extends ResultSubpartition {
 	public PipelinedSubpartitionView createReadView(BufferAvailabilityListener availabilityListener) throws IOException {
 		synchronized (buffers) {
 			checkState(!isReleased);
-			checkState(readView == null,
-					"Subpartition %s of is being (or already has been) consumed, " +
-					"but pipelined subpartitions can only be consumed once.", index, parent.getPartitionId());
 
-			LOG.debug("Creating read view for subpartition {} of partition {}.", index, parent.getPartitionId());
+			if (readView == null) {
+				LOG.debug("Creating read view for {} (index: {}) of partition {}.", this, index, parent.getPartitionId());
 
-			readView = new PipelinedSubpartitionView(this, availabilityListener);
+				readView = new PipelinedSubpartitionView(this, availabilityListener);
+			} else {
+				readView.setAvailabilityListener(availabilityListener);
+				LOG.debug("(Re)using read view {} for {} (index: {}) of partition {}.", readView, this, index, parent.getPartitionId());
+			}
+
 			if (!buffers.isEmpty()) {
 				notifyDataAvailable();
 			}

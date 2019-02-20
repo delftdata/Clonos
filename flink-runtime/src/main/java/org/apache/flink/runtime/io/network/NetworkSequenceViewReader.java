@@ -67,6 +67,8 @@ public interface NetworkSequenceViewReader {
 
 	void releaseAllResources() throws IOException;
 
+	void releaseAllResources(Throwable cause) throws IOException;
+
 	Throwable getFailureCause();
 
 	InputChannelID getReceiverId();

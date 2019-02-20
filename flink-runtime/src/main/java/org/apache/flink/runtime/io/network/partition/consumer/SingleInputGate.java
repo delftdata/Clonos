@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.io.network.partition.consumer;
 
+import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.runtime.deployment.InputChannelDeploymentDescriptor;
@@ -35,6 +36,7 @@ import org.apache.flink.runtime.io.network.buffer.BufferProvider;
 import org.apache.flink.runtime.io.network.buffer.NetworkBufferPool;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionType;
+import org.apache.flink.runtime.io.network.partition.PartitionNotFoundException;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannel.BufferAndAvailability;
 import org.apache.flink.runtime.jobgraph.DistributionPattern;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
@@ -227,6 +229,10 @@ public class SingleInputGate implements InputGate {
 		return consumedResultId;
 	}
 
+	public boolean isCreditBased() {
+		return isCreditBased;
+	}
+
 	/**
 	 * Returns the type of this input channel's consumed result partition.
 	 *
@@ -285,6 +291,13 @@ public class SingleInputGate implements InputGate {
 		this.bufferPool = checkNotNull(bufferPool);
 	}
 
+	private void doAssignExclusiveSegments(InputChannel inputChannel) throws IOException {
+		if (inputChannel instanceof RemoteInputChannel) {
+			((RemoteInputChannel) inputChannel).assignExclusiveSegments(
+				networkBufferPool.requestMemorySegments(networkBuffersPerChannel));
+		}
+	}
+
 	/**
 	 * Assign the exclusive buffers to all remote input channels directly for credit-based mode.
 	 *
@@ -301,11 +314,24 @@ public class SingleInputGate implements InputGate {
 
 		synchronized (requestLock) {
 			for (InputChannel inputChannel : inputChannels.values()) {
-				if (inputChannel instanceof RemoteInputChannel) {
-					((RemoteInputChannel) inputChannel).assignExclusiveSegments(
-						networkBufferPool.requestMemorySegments(networkBuffersPerChannel));
-				}
+				doAssignExclusiveSegments(inputChannel);
 			}
+		}
+	}
+
+	/**
+	 * Assign the exclusive buffers to a specific remote input channel directly for credit-based mode.
+	 * This function will be called at runtime to setup a new remote input channel for a standby task that prepares for running.
+	 * Thus, the input gate will already be setup.
+	 *
+	 * @param networkBufferPool The global pool to request and recycle exclusive buffers
+	 * @param networkBuffersPerChannel The number of exclusive buffers for each channel
+	 */
+	public void assignExclusiveSegments(InputChannel inputChannel) throws IOException {
+		checkState(this.isCreditBased, "Bug in input gate setup logic: exclusive buffers only exist with credit-based flow control.");
+
+		synchronized (requestLock) {
+			doAssignExclusiveSegments(inputChannel);
 		}
 	}
 
@@ -328,7 +354,9 @@ public class SingleInputGate implements InputGate {
 		}
 	}
 
-	public void updateInputChannel(InputChannelDeploymentDescriptor icdd) throws IOException, InterruptedException {
+	public void updateInputChannel(InputChannelDeploymentDescriptor icdd, NetworkEnvironment networkEnvironment,
+			TaskIOMetricGroup metrics)
+		throws IOException, InterruptedException {
 		synchronized (requestLock) {
 			if (isReleased) {
 				// There was a race with a task failure/cancel
@@ -379,6 +407,65 @@ public class SingleInputGate implements InputGate {
 				if (--numberOfUninitializedChannels == 0) {
 					pendingEvents.clear();
 				}
+			} else if (icdd.getUpdateConsumersOnFailover()) {
+				InputChannel newChannel;
+				ResultPartitionLocation newPartitionLocation = icdd.getConsumedPartitionLocation();
+				ResultPartitionID newPartitionId = icdd.getConsumedPartitionId();
+
+				if (current instanceof LocalInputChannel) {
+					LocalInputChannel localChannel = (LocalInputChannel) current;
+					LOG.debug("Update local input channel {}.", localChannel);
+
+					if (newPartitionLocation.isLocal()) {
+						newChannel = localChannel.toNewLocalInputChannel(newPartitionId,
+								networkEnvironment.getResultPartitionManager(),
+								networkEnvironment.getTaskEventDispatcher(),
+								networkEnvironment.getPartitionRequestInitialBackoff(),
+								networkEnvironment.getPartitionRequestMaxBackoff(),
+								metrics);
+					} else {
+						newChannel = localChannel.toNewRemoteInputChannel(newPartitionId,
+								newPartitionLocation.getConnectionId(),
+								networkEnvironment.getConnectionManager(),
+								networkEnvironment.getPartitionRequestInitialBackoff(),
+								networkEnvironment.getPartitionRequestMaxBackoff(),
+								metrics);
+					}
+				} else if (current instanceof RemoteInputChannel) {
+					RemoteInputChannel remoteChannel = (RemoteInputChannel) current;
+					LOG.debug("Update remote input channel " + remoteChannel + ".");
+
+					if (newPartitionLocation.isLocal()) {
+						newChannel = remoteChannel.toNewLocalInputChannel(newPartitionId,
+								networkEnvironment.getResultPartitionManager(),
+								networkEnvironment.getTaskEventDispatcher(),
+								networkEnvironment.getPartitionRequestInitialBackoff(),
+								networkEnvironment.getPartitionRequestMaxBackoff(),
+								metrics);
+					} else {
+						newChannel = remoteChannel.toNewRemoteInputChannel(newPartitionId,
+								newPartitionLocation.getConnectionId(),
+								networkEnvironment.getConnectionManager(),
+								networkEnvironment.getPartitionRequestInitialBackoff(),
+								networkEnvironment.getPartitionRequestMaxBackoff(),
+								metrics);
+					}
+				} else {
+					throw new IllegalStateException("Tried to update local/remote channel with unknown channel.");
+				}
+
+				inputChannels.put(partitionId, newChannel);
+
+				if (requestedPartitionsFlag) {
+					LOG.debug("After input channel update, requesting subpartitions for new channel {}.", newChannel);
+					try {
+						newChannel.requestSubpartition(consumedSubpartitionIndex);
+					} catch (IOException e) {
+						LOG.error("Request subpartition for input channel {} failed. Ignoring failure.",
+								newChannel, e);
+					}
+				}
+
 			}
 		}
 	}
@@ -416,7 +503,12 @@ public class SingleInputGate implements InputGate {
 		}
 	}
 
+	@VisibleForTesting
 	public void releaseAllResources() throws IOException {
+		releaseAllResources(null);
+	}
+
+	public void releaseAllResources(Throwable cause) throws IOException {
 		boolean released = false;
 		synchronized (requestLock) {
 			if (!isReleased) {
@@ -429,6 +521,9 @@ public class SingleInputGate implements InputGate {
 
 					for (InputChannel inputChannel : inputChannels.values()) {
 						try {
+							if (cause != null) {
+								inputChannel.setError(cause);
+							}
 							inputChannel.releaseAllResources();
 						}
 						catch (IOException e) {
@@ -485,7 +580,12 @@ public class SingleInputGate implements InputGate {
 				}
 
 				for (InputChannel inputChannel : inputChannels.values()) {
-					inputChannel.requestSubpartition(consumedSubpartitionIndex);
+					try {
+						inputChannel.requestSubpartition(consumedSubpartitionIndex);
+					} catch (IOException e) {
+						LOG.error("Connecting inputChannel {} failed. Ignore error.",
+								inputChannel);
+					}
 				}
 			}
 
@@ -614,6 +714,10 @@ public class SingleInputGate implements InputGate {
 
 	void triggerPartitionStateCheck(ResultPartitionID partitionId) {
 		taskActions.triggerPartitionProducerStateCheck(jobId, consumedResultId, partitionId);
+	}
+
+	void triggerFailProducer(ResultPartitionID partitionId, Throwable cause) {
+		taskActions.triggerFailProducer(consumedResultId, partitionId, cause);
 	}
 
 	private void queueChannel(InputChannel channel) {

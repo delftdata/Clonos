@@ -159,6 +159,9 @@ public class SingleInputGateTest {
 	@Test
 	public void testBackwardsEventWithUninitializedChannel() throws Exception {
 		// Setup environment
+		int initialBackoff = 137;
+		int maxBackoff = 1001;
+		final NetworkEnvironment netEnv = createNetworkEnvironment(2, 8, initialBackoff, maxBackoff);
 		final TaskEventDispatcher taskEventDispatcher = mock(TaskEventDispatcher.class);
 		when(taskEventDispatcher.publish(any(ResultPartitionID.class), any(TaskEvent.class))).thenReturn(true);
 
@@ -208,7 +211,7 @@ public class SingleInputGateTest {
 		verify(taskEventDispatcher, times(1)).publish(any(ResultPartitionID.class), any(TaskEvent.class));
 
 		// After the update, the pending event should be send to local channel
-		inputGate.updateInputChannel(new InputChannelDeploymentDescriptor(new ResultPartitionID(unknownPartitionId.getPartitionId(), unknownPartitionId.getProducerId()), ResultPartitionLocation.createLocal()));
+		inputGate.updateInputChannel(new InputChannelDeploymentDescriptor(new ResultPartitionID(unknownPartitionId.getPartitionId(), unknownPartitionId.getProducerId()), ResultPartitionLocation.createLocal()), netEnv, UnregisteredMetricGroups.createUnregisteredTaskMetricGroup().getIOMetricGroup());
 
 		verify(partitionManager, times(2)).createSubpartitionView(any(ResultPartitionID.class), anyInt(), any(BufferAvailabilityListener.class));
 		verify(taskEventDispatcher, times(2)).publish(any(ResultPartitionID.class), any(TaskEvent.class));
@@ -222,6 +225,9 @@ public class SingleInputGateTest {
 	 */
 	@Test
 	public void testUpdateChannelBeforeRequest() throws Exception {
+		int initialBackoff = 137;
+		int maxBackoff = 1001;
+		final NetworkEnvironment netEnv = createNetworkEnvironment(2, 8, initialBackoff, maxBackoff);
 		SingleInputGate inputGate = createInputGate(1);
 
 		ResultPartitionManager partitionManager = mock(ResultPartitionManager.class);
@@ -240,7 +246,9 @@ public class SingleInputGateTest {
 		// Update to a local channel and verify that no request is triggered
 		inputGate.updateInputChannel(new InputChannelDeploymentDescriptor(
 			unknown.partitionId,
-			ResultPartitionLocation.createLocal()));
+			ResultPartitionLocation.createLocal()),
+			netEnv,
+			UnregisteredMetricGroups.createUnregisteredTaskMetricGroup().getIOMetricGroup());
 
 		verify(partitionManager, never()).createSubpartitionView(
 			any(ResultPartitionID.class), anyInt(), any(BufferAvailabilityListener.class));
@@ -468,7 +476,9 @@ public class SingleInputGateTest {
 			final ConnectionID connectionId = new ConnectionID(new InetSocketAddress("localhost", 5000), 0);
 			inputGate.updateInputChannel(new InputChannelDeploymentDescriptor(
 				resultPartitionId,
-				ResultPartitionLocation.createRemote(connectionId)));
+				ResultPartitionLocation.createRemote(connectionId)),
+				network,
+				UnregisteredMetricGroups.createUnregisteredTaskMetricGroup().getIOMetricGroup());
 
 			if (enableCreditBasedFlowControl) {
 				verify(bufferPool,
@@ -519,7 +529,9 @@ public class SingleInputGateTest {
 			final ConnectionID remoteConnectionId = new ConnectionID(new InetSocketAddress("localhost", 5000), 0);
 			inputGate.updateInputChannel(new InputChannelDeploymentDescriptor(
 				remoteResultPartitionId,
-				ResultPartitionLocation.createRemote(remoteConnectionId)));
+				ResultPartitionLocation.createRemote(remoteConnectionId)),
+				network,
+				UnregisteredMetricGroups.createUnregisteredTaskMetricGroup().getIOMetricGroup());
 
 			assertThat(inputGate.getInputChannels().get(remoteResultPartitionId.getPartitionId()),
 				is(instanceOf((RemoteInputChannel.class))));
@@ -529,7 +541,9 @@ public class SingleInputGateTest {
 			// Trigger updates to local input channel from unknown input channel
 			inputGate.updateInputChannel(new InputChannelDeploymentDescriptor(
 				localResultPartitionId,
-				ResultPartitionLocation.createLocal()));
+				ResultPartitionLocation.createLocal()),
+				network,
+				UnregisteredMetricGroups.createUnregisteredTaskMetricGroup().getIOMetricGroup());
 
 			assertThat(inputGate.getInputChannels().get(remoteResultPartitionId.getPartitionId()),
 				is(instanceOf((RemoteInputChannel.class))));
@@ -541,6 +555,177 @@ public class SingleInputGateTest {
 		}
 	}
 
+	/**
+	 * Tests that input gate can successfully convert/update an existing local input channel into a new remote/local
+	 * input channel.
+	 */
+	@Test
+	public void testUpdateLocalInputChannel() throws Exception {
+		final SingleInputGate inputGate = createInputGate(2);
+		int buffersPerChannel = 2;
+		final NetworkEnvironment network = createNetworkEnvironment(buffersPerChannel, 8, 0, 0);
+
+		try {
+			final IntermediateResultPartitionID intermediateResultPartitionId1 = new IntermediateResultPartitionID();
+			final ResultPartitionID localResultPartitionId1 = new ResultPartitionID(intermediateResultPartitionId1,
+					new ExecutionAttemptID());
+			final IntermediateResultPartitionID intermediateResultPartitionId2 = new IntermediateResultPartitionID();
+			final ResultPartitionID localResultPartitionId2 = new ResultPartitionID(intermediateResultPartitionId2,
+					new ExecutionAttemptID());
+
+			final ResultSubpartitionView iterator = mock(ResultSubpartitionView.class);
+			when(iterator.getNextBuffer()).thenReturn(
+				new BufferAndBacklog(new NetworkBuffer(MemorySegmentFactory.allocateUnpooledSegment(1024),
+						FreeingBufferRecycler.INSTANCE), false,0, false));
+			final ResultPartitionManager partitionManager = mock(ResultPartitionManager.class);
+			when(partitionManager.createSubpartitionView(
+				any(ResultPartitionID.class),
+				anyInt(),
+				any(BufferAvailabilityListener.class))).thenReturn(iterator);
+			final TaskEventDispatcher taskEventDispatcher = mock(TaskEventDispatcher.class);
+			when(taskEventDispatcher.publish(any(ResultPartitionID.class), any(TaskEvent.class))).thenReturn(true);
+
+			addLocalInputChannel(network, inputGate, localResultPartitionId1, 0);
+			addLocalInputChannel(network, inputGate, localResultPartitionId2, 1);
+			network.setupInputGate(inputGate);
+
+			assertThat(inputGate.getInputChannels().get(localResultPartitionId1.getPartitionId()),
+				is(instanceOf((LocalInputChannel.class))));
+			assertThat(inputGate.getInputChannels().get(localResultPartitionId2.getPartitionId()),
+				is(instanceOf((LocalInputChannel.class))));
+
+			// Trigger conversion to remote input channel from local input channel
+			final ExecutionAttemptID remoteExecutionAttemptId = new ExecutionAttemptID();
+			final ResultPartitionID remoteResultPartitionId = new ResultPartitionID(intermediateResultPartitionId1,
+					remoteExecutionAttemptId);
+			final ConnectionID remoteConnectionId = new ConnectionID(new InetSocketAddress("localhost", 5000), 0);
+			boolean updateConsumersOnFailover = true;
+			inputGate.updateInputChannel(new InputChannelDeploymentDescriptor(
+				remoteResultPartitionId,
+				ResultPartitionLocation.createRemote(remoteConnectionId),
+				updateConsumersOnFailover),
+				network,
+				UnregisteredMetricGroups.createUnregisteredTaskMetricGroup().getIOMetricGroup());
+
+			assertThat(inputGate.getInputChannels().get(remoteResultPartitionId.getPartitionId()),
+				is(instanceOf((RemoteInputChannel.class))));
+			assertThat(inputGate.getInputChannels().get(remoteResultPartitionId.getPartitionId()).
+					getPartitionId(), is(remoteResultPartitionId));
+			assertThat(inputGate.getInputChannels().get(remoteResultPartitionId.getPartitionId()).
+					getPartitionId().getProducerId(), is(remoteExecutionAttemptId));
+			assertThat(inputGate.getInputChannels().get(localResultPartitionId2.getPartitionId()),
+				is(instanceOf((LocalInputChannel.class))));
+
+			// Trigger update to new local input channel from existing local input channel
+			final ExecutionAttemptID localExecutionAttemptId = new ExecutionAttemptID();
+			final ResultPartitionID newLocalResultPartitionId = new ResultPartitionID(intermediateResultPartitionId2,
+					localExecutionAttemptId);
+			inputGate.updateInputChannel(new InputChannelDeploymentDescriptor(
+				newLocalResultPartitionId,
+				ResultPartitionLocation.createLocal(),
+				updateConsumersOnFailover),
+				network,
+				UnregisteredMetricGroups.createUnregisteredTaskMetricGroup().getIOMetricGroup());
+
+			assertThat(inputGate.getInputChannels().get(remoteResultPartitionId.getPartitionId()),
+				is(instanceOf((RemoteInputChannel.class))));
+			assertThat(inputGate.getInputChannels().get(newLocalResultPartitionId.getPartitionId()),
+				is(instanceOf((LocalInputChannel.class))));
+			assertThat(inputGate.getInputChannels().get(newLocalResultPartitionId.getPartitionId()).
+					getPartitionId(), is(newLocalResultPartitionId));
+			assertThat(inputGate.getInputChannels().get(newLocalResultPartitionId.getPartitionId()).
+					getPartitionId().getProducerId(), is(localExecutionAttemptId));
+		} finally {
+			inputGate.releaseAllResources();
+			network.shutdown();
+		}
+	}
+
+	/**
+	 * Tests that input gate can successfully convert/update an existing remote input channel into a new local/remote
+	 * input channel.
+	 */
+	@Test
+	public void testUpdateRemoteInputChannel() throws Exception {
+		final SingleInputGate inputGate = createInputGate(2);
+		int buffersPerChannel = 2;
+		final NetworkEnvironment network = createNetworkEnvironment(buffersPerChannel, 8, 0, 0);
+
+		try {
+			final IntermediateResultPartitionID intermediateResultPartitionId1 = new IntermediateResultPartitionID();
+			final ResultPartitionID remoteResultPartitionId1 = new ResultPartitionID(intermediateResultPartitionId1,
+					new ExecutionAttemptID());
+			final IntermediateResultPartitionID intermediateResultPartitionId2 = new IntermediateResultPartitionID();
+			final ResultPartitionID remoteResultPartitionId2 = new ResultPartitionID(intermediateResultPartitionId2,
+					new ExecutionAttemptID());
+
+			final ResultSubpartitionView iterator = mock(ResultSubpartitionView.class);
+			when(iterator.getNextBuffer()).thenReturn(
+				new BufferAndBacklog(new NetworkBuffer(MemorySegmentFactory.allocateUnpooledSegment(1024),
+						FreeingBufferRecycler.INSTANCE), false,0, false));
+			final ResultPartitionManager partitionManager = mock(ResultPartitionManager.class);
+			when(partitionManager.createSubpartitionView(
+				any(ResultPartitionID.class),
+				anyInt(),
+				any(BufferAvailabilityListener.class))).thenReturn(iterator);
+			final TaskEventDispatcher taskEventDispatcher = mock(TaskEventDispatcher.class);
+			when(taskEventDispatcher.publish(any(ResultPartitionID.class), any(TaskEvent.class))).thenReturn(true);
+			final ConnectionID connectionId = new ConnectionID(new InetSocketAddress("localhost", 5000), 0);
+
+			addRemoteInputChannel(network, inputGate, connectionId, remoteResultPartitionId1, 0);
+			addRemoteInputChannel(network, inputGate, connectionId, remoteResultPartitionId2, 1);
+			network.setupInputGate(inputGate);
+
+			assertThat(inputGate.getInputChannels().get(remoteResultPartitionId1.getPartitionId()),
+				is(instanceOf((RemoteInputChannel.class))));
+			assertThat(inputGate.getInputChannels().get(remoteResultPartitionId2.getPartitionId()),
+				is(instanceOf((RemoteInputChannel.class))));
+
+			// Trigger conversion to remote input channel from local input channel
+			final ExecutionAttemptID localExecutionAttemptId = new ExecutionAttemptID();
+			final ResultPartitionID localResultPartitionId = new ResultPartitionID(intermediateResultPartitionId1,
+					localExecutionAttemptId);
+			boolean updateConsumersOnFailover = true;
+			inputGate.updateInputChannel(new InputChannelDeploymentDescriptor(
+				localResultPartitionId,
+				ResultPartitionLocation.createLocal(),
+				updateConsumersOnFailover),
+				network,
+				UnregisteredMetricGroups.createUnregisteredTaskMetricGroup().getIOMetricGroup());
+
+			assertThat(inputGate.getInputChannels().get(localResultPartitionId.getPartitionId()),
+				is(instanceOf((LocalInputChannel.class))));
+			assertThat(inputGate.getInputChannels().get(localResultPartitionId.getPartitionId()).
+					getPartitionId(), is(localResultPartitionId));
+			assertThat(inputGate.getInputChannels().get(localResultPartitionId.getPartitionId()).
+					getPartitionId().getProducerId(), is(localExecutionAttemptId));
+			assertThat(inputGate.getInputChannels().get(remoteResultPartitionId2.getPartitionId()),
+				is(instanceOf((RemoteInputChannel.class))));
+
+			// Trigger update to new local input channel from existing local input channel
+			final ExecutionAttemptID remoteExecutionAttemptId = new ExecutionAttemptID();
+			final ResultPartitionID newRemoteResultPartitionId = new ResultPartitionID(intermediateResultPartitionId2,
+					remoteExecutionAttemptId);
+			inputGate.updateInputChannel(new InputChannelDeploymentDescriptor(
+				newRemoteResultPartitionId,
+				ResultPartitionLocation.createRemote(connectionId),
+				updateConsumersOnFailover),
+				network,
+				UnregisteredMetricGroups.createUnregisteredTaskMetricGroup().getIOMetricGroup());
+
+			assertThat(inputGate.getInputChannels().get(localResultPartitionId.getPartitionId()),
+				is(instanceOf((LocalInputChannel.class))));
+			assertThat(inputGate.getInputChannels().get(newRemoteResultPartitionId.getPartitionId()),
+				is(instanceOf((RemoteInputChannel.class))));
+			assertThat(inputGate.getInputChannels().get(newRemoteResultPartitionId.getPartitionId()).
+					getPartitionId(), is(newRemoteResultPartitionId));
+			assertThat(inputGate.getInputChannels().get(newRemoteResultPartitionId.getPartitionId()).
+					getPartitionId().getProducerId(), is(remoteExecutionAttemptId));
+		} finally {
+			inputGate.releaseAllResources();
+			network.shutdown();
+		}
+	}
 	// ---------------------------------------------------------------------------------------------
 
 	private NetworkEnvironment createNetworkEnvironment(
@@ -628,6 +813,17 @@ public class SingleInputGateTest {
 			createUnknownInputChannel(network, inputGate, partitionId, channelIndex)
 				.toRemoteInputChannel(connectionId);
 		inputGate.setInputChannel(partitionId.getPartitionId(), remote);
+	}
+
+	private void addLocalInputChannel(
+			NetworkEnvironment network,
+			SingleInputGate inputGate,
+			ResultPartitionID partitionId,
+			int channelIndex) {
+		LocalInputChannel local =
+			createUnknownInputChannel(network, inputGate, partitionId, channelIndex)
+				.toLocalInputChannel();
+		inputGate.setInputChannel(partitionId.getPartitionId(), local);
 	}
 
 	static void verifyBufferOrEvent(

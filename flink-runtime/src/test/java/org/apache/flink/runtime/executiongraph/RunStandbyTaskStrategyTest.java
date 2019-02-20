@@ -57,6 +57,7 @@ import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.same;
 import org.mockito.verification.Timeout;
 
 public class RunStandbyTaskStrategyTest extends TestLogger {
@@ -387,16 +388,23 @@ public class RunStandbyTaskStrategyTest extends TestLogger {
 
 		for (ExecutionJobVertex executionJobVertex : executionGraph.getVerticesTopologically()) {
 			for (ExecutionVertex executionVertex : executionJobVertex.getTaskVertices()) {
-				assertThat(executionVertex.getCurrentExecutionAttempt().getState(), is(ExecutionState.RUNNING));
+				Execution currentExecution = executionVertex.getCurrentExecutionAttempt();
+				assertThat(currentExecution.getState(), is(ExecutionState.RUNNING));
+				ArrayList<Execution> standbyExecutions = executionVertex.getStandbyExecutions();
+				Execution standbyExecution = standbyExecutions.get(0);
 
 				// Standby task is not in STANDBY state, therefore it will be cancelled.
-				executionVertex.getCurrentExecutionAttempt().fail(
-						new Exception("Fail task to kick-start failover strategy."));
+				currentExecution.fail(new Exception("Fail task to kick-start failover strategy."));
 
-				verify(tmg1, new Timeout(500L, times(NUM_TASKS*2))).cancelTask(
-						any(ExecutionAttemptID.class), any(Time.class));
+				// Normal task fails.
+				verify(tmg1, new Timeout(500L, times(NUM_TASKS))).failTask(
+						same(currentExecution.getAttemptId()),
+						any(Throwable.class), any(Time.class));
+				// standby task cancels.
+				verify(tmg1, new Timeout(500L, times(NUM_TASKS))).cancelTask(
+						same(standbyExecution.getAttemptId()), any(Time.class));
 
-				ArrayList<Execution> standbyExecutions = executionVertex.getStandbyExecutions();
+				standbyExecutions = executionVertex.getStandbyExecutions();
 				assertThat(standbyExecutions.size(), is(0));
 			}
 		}
@@ -476,8 +484,8 @@ public class RunStandbyTaskStrategyTest extends TestLogger {
 						new Exception("Fail task to kick-start failover strategy."));
 
 				// The normal task is cancelled (see Execution.fail()).
-				verify(tmg1, new Timeout(500L, times(NUM_TASKS))).cancelTask(
-						any(ExecutionAttemptID.class), any(Time.class));
+				verify(tmg1, new Timeout(500L, times(NUM_TASKS))).failTask(
+						any(ExecutionAttemptID.class), any(Throwable.class), any(Time.class));
 				// The standby task is kick-started.
 				verify(tmg1, new Timeout(500L, times(NUM_TASKS))).switchStandbyTaskToRunning(
 						any(ExecutionAttemptID.class), any(Time.class));

@@ -25,6 +25,7 @@ import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.jobmaster.JobMasterGateway;
 import org.apache.flink.util.Preconditions;
+import org.apache.flink.runtime.messages.Acknowledge;
 
 import java.util.concurrent.CompletableFuture;
 
@@ -43,5 +44,14 @@ public class RpcPartitionStateChecker implements PartitionProducerStateChecker {
 			ResultPartitionID partitionId) {
 
 		return jobMasterGateway.requestPartitionState(resultId, partitionId);
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> triggerFailProducer(
+		final IntermediateDataSetID intermediateDataSetId,
+		final ResultPartitionID resultPartitionId,
+		final Throwable cause) {
+
+		return jobMasterGateway.requestFailProducer(intermediateDataSetId, resultPartitionId, cause);
 	}
 }

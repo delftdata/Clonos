@@ -586,6 +586,25 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 	}
 
 	@Override
+	public CompletableFuture<Acknowledge> failTask(ExecutionAttemptID executionAttemptID, Throwable cause, Time timeout) {
+		final Task task = taskSlotTable.getTask(executionAttemptID);
+
+		if (task != null) {
+			try {
+				task.failExternally(cause);
+				return CompletableFuture.completedFuture(Acknowledge.get());
+			} catch (Throwable t) {
+				return FutureUtils.completedExceptionally(new TaskException("Cannot fail task for execution " + executionAttemptID + '.', t));
+			}
+		} else {
+			final String message = "Cannot find task to fail for execution " + executionAttemptID + '.';
+
+			log.debug(message);
+			return FutureUtils.completedExceptionally(new TaskException(message));
+		}
+	}
+
+	@Override
 	public CompletableFuture<Acknowledge> stopTask(ExecutionAttemptID executionAttemptID, Time timeout) {
 		final Task task = taskSlotTable.getTask(executionAttemptID);
 
@@ -664,7 +683,8 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 					getRpcService().execute(
 						() -> {
 							try {
-								singleInputGate.updateInputChannel(partitionInfo.getInputChannelDeploymentDescriptor());
+								log.debug("Update input channel of task " + task);
+								singleInputGate.updateInputChannel(partitionInfo.getInputChannelDeploymentDescriptor(), networkEnvironment, task.getMetricGroup().getIOMetricGroup());
 							} catch (IOException | InterruptedException e) {
 								log.error("Could not update input data location for task {}. Trying to fail task.", task.getTaskInfo().getTaskName(), e);
 

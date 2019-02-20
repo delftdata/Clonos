@@ -49,6 +49,8 @@ public interface ResultSubpartitionView {
 
 	void notifySubpartitionConsumed() throws IOException;
 
+	void sendFailConsumerTrigger(Throwable cause);
+
 	boolean isReleased();
 
 	Throwable getFailureCause();

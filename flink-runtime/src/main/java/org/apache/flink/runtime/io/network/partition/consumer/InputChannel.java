@@ -193,7 +193,7 @@ public abstract class InputChannel {
 	 * Atomically sets an error for this channel and notifies the input gate about available data to
 	 * trigger querying this channel by the task thread.
 	 */
-	protected void setError(Throwable cause) {
+	public void setError(Throwable cause) {
 		if (this.cause.compareAndSet(null, checkNotNull(cause))) {
 			// Notify the input gate.
 			notifyChannelNonEmpty();

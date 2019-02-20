@@ -608,8 +608,10 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 			}
 
 			if (LOG.isInfoEnabled()) {
-				LOG.info(String.format("Deploying %s (attempt #%d) to %s", vertex.getTaskNameWithSubtaskIndex(),
-						attemptNumber, getAssignedResourceLocation().getHostname()));
+				LOG.info(String.format("Deploying %s to %s (TaskManager location: %s)", this,
+						getAssignedResourceLocation().getHostname(),
+						slot.getTaskManagerLocation()
+						));
 			}
 
 			final TaskDeploymentDescriptor deployment = vertex.createDeploymentDescriptor(
@@ -744,7 +746,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 		sendSwitchStandbyToRunningRpcCall();
 	}
 
-	void scheduleOrUpdateConsumers(List<List<ExecutionEdge>> allConsumers) {
+	void scheduleOrUpdateConsumers(List<List<ExecutionEdge>> allConsumers, boolean updateConsumersOnFailover) {
 		final int numConsumers = allConsumers.size();
 
 		if (numConsumers > 1) {
@@ -761,6 +763,8 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 			final ExecutionState consumerState = consumer.getState();
 
 			final IntermediateResultPartition partition = edge.getSource();
+
+			LOG.debug("Update consumer execution in ExecutionEdge {}.", edge);
 
 			// ----------------------------------------------------------------
 			// Consumer is created => try to deploy and cache input channel
@@ -803,11 +807,11 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 					consumerVertex.sendPartitionInfos();
 				}
 			}
-			// ----------------------------------------------------------------
-			// Consumer is running => send update message now
-			// ----------------------------------------------------------------
+			// --------------------------------------------------------------------------------
+			// Consumer is running (or a standby task called to run) => send update message now
+			// --------------------------------------------------------------------------------
 			else {
-				if (consumerState == RUNNING) {
+				if (consumerState == RUNNING || consumerState == STANDBY) {
 					final LogicalSlot consumerSlot = consumer.getAssignedResource();
 
 					if (consumerSlot == null) {
@@ -839,7 +843,8 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 					}
 
 					final InputChannelDeploymentDescriptor descriptor = new InputChannelDeploymentDescriptor(
-							partitionId, partitionLocation);
+							partitionId, partitionLocation, updateConsumersOnFailover);
+					LOG.debug("New InputChannelDeploymentDescriptor " + descriptor + " for updating consumer " + consumer + ".");
 
 					consumer.sendUpdatePartitionInfoRpcCall(
 						Collections.singleton(
@@ -991,7 +996,9 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 									.getIntermediateResult().getPartitions();
 
 							for (IntermediateResultPartition partition : allPartitions) {
-								scheduleOrUpdateConsumers(partition.getConsumers());
+								boolean updateConsumersOnFailover = false;
+								scheduleOrUpdateConsumers(partition.getConsumers(),
+										updateConsumersOnFailover);
 							}
 						}
 
@@ -1156,7 +1163,11 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 
 					try {
 						if (assignedResource != null) {
-							sendCancelRpcCall();
+							if (t != null) {
+								sendFailRpcCall(t);
+							} else {
+								sendCancelRpcCall();
+							}
 						}
 					} catch (Throwable tt) {
 						// no reason this should ever happen, but log it to be safe
@@ -1252,6 +1263,28 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 					}
 				},
 				executor);
+		}
+	}
+
+	/**
+	 * Sends fail RPC call.
+	 */
+	public void sendFailRpcCall(Throwable t) {
+		final LogicalSlot slot = assignedResource;
+
+		if (slot != null) {
+			final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
+
+			CompletableFuture<Acknowledge> failResultFuture = FutureUtils.retry(
+				() -> taskManagerGateway.failTask(attemptId, t, rpcTimeout),
+				NUM_STOP_CALL_TRIES,
+				executor);
+
+			failResultFuture.exceptionally(
+				failure -> {
+					LOG.info("Failing task of execution {} was not successful. Task may already be dead.", this, failure);
+					return null;
+				});
 		}
 	}
 

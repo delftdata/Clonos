@@ -24,4 +24,5 @@ import org.apache.flink.runtime.taskmanager.TaskActions;
 
 public interface ResultPartitionConsumableNotifier {
 	void notifyPartitionConsumable(JobID jobId, ResultPartitionID partitionId, TaskActions taskActions);
+	void requestFailConsumer(ResultPartitionID partitionId, int subpartitionIndex, Throwable cause, TaskActions taskActions);
 }

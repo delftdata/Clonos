@@ -46,6 +46,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.fail;
 import static org.hamcrest.Matchers.is;
 import static org.mockito.Matchers.any;
@@ -231,6 +232,10 @@ public class ExecutionVertexSchedulingTest {
 
 			// Standby task now in STANDBY state. Try to run it.
 			vertex.runStandbyExecution();
+			Map<ExecutionAttemptID, Execution> currentExecutions = ejv.getGraph().getRegisteredExecutions();
+			Execution getThisStandbyExecutionFromRegistered =
+				currentExecutions.get(thisStandbyExecution.getAttemptId());
+			assertNotNull(getThisStandbyExecutionFromRegistered);
 		}
 		catch (IllegalStateException e) {
 			e.printStackTrace();

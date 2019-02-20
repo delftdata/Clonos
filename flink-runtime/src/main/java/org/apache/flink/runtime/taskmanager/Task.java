@@ -69,6 +69,7 @@ import org.apache.flink.runtime.query.TaskKvStateRegistry;
 import org.apache.flink.runtime.state.CheckpointListener;
 import org.apache.flink.runtime.state.TaskStateManager;
 import org.apache.flink.runtime.util.FatalExitExceptionHandler;
+import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.Preconditions;
@@ -422,6 +423,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 				desc.getNumberOfSubpartitions(),
 				desc.getMaxParallelism(),
 				networkEnvironment.getResultPartitionManager(),
+				// For updating consumers of a partition
 				resultPartitionConsumableNotifier,
 				ioManager,
 				desc.sendScheduleOrUpdateConsumersMessage());
@@ -1211,6 +1213,9 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 			if (!transitionState(ExecutionState.STANDBY, ExecutionState.RUNNING)) {
 				throw new CancelTaskException();
 			}
+			// notify everyone that we switched to running
+			notifyObservers(ExecutionState.RUNNING, null);
+			taskManagerActions.updateTaskExecutionState(new TaskExecutionState(jobId, executionId, ExecutionState.RUNNING));
 		}
 		else if (current == ExecutionState.CREATED || current == ExecutionState.DEPLOYING) {
 			throw new Exception("Standby task still in " + current + " state. Retry.");
@@ -1239,6 +1244,27 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 	// ------------------------------------------------------------------------
 	//  Partition State Listeners
 	// ------------------------------------------------------------------------
+
+	@Override
+	public void triggerFailProducer(
+		final IntermediateDataSetID intermediateDataSetId,
+		final ResultPartitionID resultPartitionId,
+		final Throwable cause) {
+
+		CompletableFuture<Acknowledge> futureFailProducer =
+			partitionProducerStateChecker.triggerFailProducer(
+				intermediateDataSetId,
+				resultPartitionId,
+				cause);
+
+		futureFailProducer.whenCompleteAsync(
+			(Acknowledge ack, Throwable throwable) -> {
+				if (throwable != null) {
+					LOG.warn("Operation to fail producer execution of {} failed.", resultPartitionId, throwable);
+				}
+			},
+			executor);
+	}
 
 	@Override
 	public void triggerPartitionProducerStateCheck(

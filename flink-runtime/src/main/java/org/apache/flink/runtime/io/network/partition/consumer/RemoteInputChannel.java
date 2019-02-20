@@ -23,6 +23,7 @@ import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.runtime.event.TaskEvent;
 import org.apache.flink.runtime.io.network.ConnectionID;
 import org.apache.flink.runtime.io.network.ConnectionManager;
+import org.apache.flink.runtime.io.network.TaskEventDispatcher;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferListener;
 import org.apache.flink.runtime.io.network.buffer.BufferProvider;
@@ -31,6 +32,7 @@ import org.apache.flink.runtime.io.network.buffer.NetworkBuffer;
 import org.apache.flink.runtime.io.network.netty.PartitionRequestClient;
 import org.apache.flink.runtime.io.network.partition.PartitionNotFoundException;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
+import org.apache.flink.runtime.io.network.partition.ResultPartitionManager;
 import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
 import org.apache.flink.util.ExceptionUtils;
 
@@ -46,6 +48,9 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
@@ -54,6 +59,8 @@ import static org.apache.flink.util.Preconditions.checkState;
  * An input channel, which requests a remote partition queue.
  */
 public class RemoteInputChannel extends InputChannel implements BufferRecycler, BufferListener {
+
+	private static final Logger LOG = LoggerFactory.getLogger(RemoteInputChannel.class);
 
 	/** ID to distinguish this channel from other channels sharing the same TCP connection. */
 	private final InputChannelID id = new InputChannelID();
@@ -161,6 +168,8 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 	@Override
 	public void requestSubpartition(int subpartitionIndex) throws IOException, InterruptedException {
 		if (partitionRequestClient == null) {
+			LOG.debug("{}: Requesting REMOTE subpartition {} of partition {}.",
+				this, subpartitionIndex, partitionId);
 			// Create a client and request the partition
 			partitionRequestClient = connectionManager
 				.createPartitionRequestClient(connectionId);
@@ -181,6 +190,10 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 		} else {
 			failPartitionRequest();
 		}
+	}
+
+	public void triggerFailProducer(Throwable cause) {
+		inputGate.triggerFailProducer(partitionId, cause);
 	}
 
 	@Override
@@ -275,7 +288,7 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 
 	@Override
 	public String toString() {
-		return "RemoteInputChannel [" + partitionId + " at " + connectionId + "]";
+		return "RemoteInputChannel " + channelIndex + " [" + partitionId + " at " + connectionId + "]";
 	}
 
 	// ------------------------------------------------------------------------
@@ -444,6 +457,10 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 
 	public InputChannelID getInputChannelId() {
 		return id;
+	}
+
+	public ConnectionID getConnectionId() {
+		return connectionId;
 	}
 
 	public int getInitialCredit() {
@@ -664,5 +681,30 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 		int getAvailableBufferSize() {
 			return floatingBuffers.size() + exclusiveBuffers.size();
 		}
+	}
+
+	// ------------------------------------------------------------------------
+	// Reincarnation to a local input channel at runtime
+	// ------------------------------------------------------------------------
+
+	public RemoteInputChannel toNewRemoteInputChannel(ResultPartitionID newPartitionId,
+			ConnectionID newProducerAddress, ConnectionManager connectionManager,
+			int initialBackoff, int maxBackoff, TaskIOMetricGroup metrics) throws IOException {
+		releaseAllResources();
+		RemoteInputChannel newRemoteInputChannel = new RemoteInputChannel(inputGate, channelIndex, newPartitionId,
+				checkNotNull(newProducerAddress), connectionManager, initialBackoff,
+				maxBackoff, metrics);
+		if (inputGate.isCreditBased()) {
+			inputGate.assignExclusiveSegments((InputChannel) newRemoteInputChannel);
+		}
+		return newRemoteInputChannel;
+	}
+
+	public LocalInputChannel toNewLocalInputChannel(ResultPartitionID newPartitionId,
+			ResultPartitionManager partitionManager, TaskEventDispatcher taskEventDispatcher,
+			int initialBackoff, int maxBackoff, TaskIOMetricGroup metrics) throws IOException {
+		releaseAllResources();
+		return new LocalInputChannel(inputGate, channelIndex, newPartitionId,
+				partitionManager, taskEventDispatcher, initialBackoff, maxBackoff, metrics);
 	}
 }

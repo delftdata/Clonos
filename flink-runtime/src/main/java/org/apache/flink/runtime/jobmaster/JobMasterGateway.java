@@ -138,6 +138,33 @@ public interface JobMasterGateway extends
 			final ResultPartitionID partitionId);
 
 	/**
+	 * Requests to fail the producer of a partition.
+	 *
+	 * @param intermediateResultId The execution attempt ID of the producer task to fail
+	 * @param partitionId The partition ID of the partition of which to fail producer
+	 * @param cause The reason to fail the producer
+	 * @return Future acknowledge of the fail operation
+	 */
+	CompletableFuture<Acknowledge> requestFailProducer(
+			final IntermediateDataSetID intermediateResultId,
+			final ResultPartitionID partitionId,
+			final Throwable cause);
+	/**
+	 * Requests to fail the specified consumer of a partition.
+	 *
+	 * @param partitionId The partition ID of the partition to fail consumer
+	 * @param subpartitionIndex The subpartition that specified the consumer
+	 * @param cause The reason to fail the consumer
+	 * @param timeout before the rpc call fails
+	 * @return Future acknowledge of the fail operation
+	 */
+	CompletableFuture<Acknowledge> requestFailConsumer(
+			final ResultPartitionID partitionId,
+			final int subpartitionIndex,
+			final Throwable cause,
+			@RpcTimeout final Time timeout);
+
+	/**
 	 * Notifies the JobManager about available data for a produced partition.
 	 *
 	 * <p>There is a call to this method for each {@link ExecutionVertex} instance once per produced

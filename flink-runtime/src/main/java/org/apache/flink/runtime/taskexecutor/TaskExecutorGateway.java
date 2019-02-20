@@ -129,6 +129,16 @@ public interface TaskExecutorGateway extends RpcGateway {
 	CompletableFuture<Acknowledge> confirmCheckpoint(ExecutionAttemptID executionAttemptID, long checkpointId, long checkpointTimestamp);
 
 	/**
+	 * Fail the given task.
+	 *
+	 * @param executionAttemptID identifying the task
+	 * @param t cause of failure
+	 * @param timeout for the stop operation
+	 * @return Future acknowledge if the task is successfully failed
+	 */
+	CompletableFuture<Acknowledge> failTask(ExecutionAttemptID executionAttemptID, Throwable t, @RpcTimeout Time timeout);
+
+	/**
 	 * Stop the given task.
 	 *
 	 * @param executionAttemptID identifying the task

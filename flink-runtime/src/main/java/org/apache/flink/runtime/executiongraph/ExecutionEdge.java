@@ -46,6 +46,6 @@ public class ExecutionEdge {
 
 	@Override
 	public String toString() {
-		return "ExecutionEdge [" + source + " <=> " + target + "]";
+		return "ExecutionEdge [" + source.getProducer() + " <=> " + target + "]";
 	}
 }
