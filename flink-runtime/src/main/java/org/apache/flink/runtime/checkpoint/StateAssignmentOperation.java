@@ -240,7 +240,15 @@ public class StateAssignmentOperation {
 
 			if (!statelessTask) {
 				JobManagerTaskRestore taskRestore = new JobManagerTaskRestore(restoreCheckpointId, taskState);
-				executionAttempt.setInitialState(taskRestore);
+				try {
+					executionAttempt.setInitialState(taskRestore);
+				} catch (IllegalStateException e) {
+					// For DISPATCH_STATE_TO_STANDBY_TASKS do nothing.
+					// The standby execution that is the recipient of the state may not be in place yet.
+					if (operation == Operation.RESTORE_STATE) {
+						throw e;
+					}
+				}
 			}
 		}
 	}

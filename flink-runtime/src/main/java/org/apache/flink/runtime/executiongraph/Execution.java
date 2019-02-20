@@ -379,7 +379,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 	 */
 	public void setInitialState(@Nullable JobManagerTaskRestore taskRestore) {
 		checkState(state == CREATED || (isStandby && state == STANDBY),
-				"Can only assign operator state when execution attempt is a) in CREATED state or b) a standby execution attempt in STANDBY state.");
+				"Can only assign operator state when execution attempt is a) in CREATED state or b) a standby execution attempt in STANDBY state. execution: %s, isStandby: %s, state: %s.", this, isStandby, state);
 		this.taskRestore = taskRestore;
 
 		if (isStandby && state == STANDBY) {
