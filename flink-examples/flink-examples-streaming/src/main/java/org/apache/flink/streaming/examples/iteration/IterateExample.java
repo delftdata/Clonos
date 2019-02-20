@@ -48,7 +48,7 @@ import java.util.Random;
  */
 public class IterateExample {
 
-	private static final int BOUND = 100;
+	private static final int BOUND = 1000000000;
 
 	// *************************************************************************
 	// PROGRAM

@@ -102,7 +102,7 @@ public class IncrementalLearningSkeleton {
 		@Override
 		public void run(SourceContext<Integer> ctx) throws Exception {
 			Thread.sleep(15);
-			while (counter < 50) {
+			while (counter < 500000000) {
 				ctx.collect(getNewData());
 			}
 		}
@@ -129,7 +129,7 @@ public class IncrementalLearningSkeleton {
 
 		@Override
 		public void run(SourceContext<Integer> collector) throws Exception {
-			while (counter < 8200) {
+			while (counter < 820000000) {
 				collector.collect(getTrainingData());
 			}
 		}
