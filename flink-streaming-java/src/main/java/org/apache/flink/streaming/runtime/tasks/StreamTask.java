@@ -43,11 +43,13 @@ import org.apache.flink.runtime.taskmanager.DispatcherThreadFactory;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.api.graph.StreamEdge;
+import org.apache.flink.streaming.api.inflightlogging.InFlightLogger;
 import org.apache.flink.streaming.api.operators.OperatorSnapshotFinalizer;
 import org.apache.flink.streaming.api.operators.OperatorSnapshotFutures;
 import org.apache.flink.streaming.api.operators.StreamOperator;
 import org.apache.flink.streaming.api.operators.StreamTaskStateInitializer;
 import org.apache.flink.streaming.api.operators.StreamTaskStateInitializerImpl;
+import org.apache.flink.streaming.runtime.io.OperatorChainOutput;
 import org.apache.flink.streaming.runtime.io.RecordWriterOutput;
 import org.apache.flink.streaming.runtime.io.StreamRecordWriter;
 import org.apache.flink.streaming.runtime.partitioner.ConfigurableStreamPartitioner;
@@ -183,6 +185,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 	private final List<StreamRecordWriter<SerializationDelegate<StreamRecord<OUT>>>> streamRecordWriters;
 
+	private final InFlightLogger<OUT> inFlightLogger;
+
 	// ------------------------------------------------------------------------
 
 	/**
@@ -222,6 +226,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			this.standbyFuture = null;
 		}
 
+		inFlightLogger = new InFlightLogger<>(configuration.getNumberOfOutputs());  //TODO check if correct configuration parameter
 	}
 
 	// ------------------------------------------------------------------------
@@ -579,7 +584,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		return operatorChain;
 	}
 
-	RecordWriterOutput<?>[] getStreamOutputs() {
+	OperatorChainOutput<?>[] getStreamOutputs() {
 		return operatorChain.getStreamOutputs();
 	}
 
@@ -852,6 +857,10 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	@Override
 	public String toString() {
 		return getName();
+	}
+
+	public InFlightLogger<OUT> getInFlightLogger() {
+		return this.inFlightLogger;
 	}
 
 	// ------------------------------------------------------------------------

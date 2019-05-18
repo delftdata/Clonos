@@ -43,7 +43,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * Implementation of {@link Output} that sends data using a {@link RecordWriter}.
  */
 @Internal
-public class RecordWriterOutput<OUT> implements OperatorChain.WatermarkGaugeExposingOutput<StreamRecord<OUT>> {
+public class RecordWriterOutput<OUT> implements OperatorChainOutput<OUT> {
 
 	private StreamRecordWriter<SerializationDelegate<StreamElement>> recordWriter;
 
@@ -125,6 +125,7 @@ public class RecordWriterOutput<OUT> implements OperatorChain.WatermarkGaugeExpo
 		}
 	}
 
+	@Override
 	public void emitStreamStatus(StreamStatus streamStatus) {
 		serializationDelegate.setInstance(streamStatus);
 
@@ -148,10 +149,12 @@ public class RecordWriterOutput<OUT> implements OperatorChain.WatermarkGaugeExpo
 		}
 	}
 
+	@Override
 	public void broadcastEvent(AbstractEvent event) throws IOException {
 		recordWriter.broadcastEvent(event);
 	}
 
+	@Override
 	public void flush() throws IOException {
 		recordWriter.flushAll();
 	}
