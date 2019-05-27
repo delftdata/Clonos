@@ -217,6 +217,10 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 		return bufferPool;
 	}
 
+	public String getTaskName() {
+		return owningTaskName;
+	}
+
 	public int getNumberOfQueuedBuffers() {
 		int totalBuffers = 0;
 
@@ -241,6 +245,8 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 	@Override
 	public void addBufferConsumer(BufferConsumer bufferConsumer, int subpartitionIndex) throws IOException {
 		checkNotNull(bufferConsumer);
+
+		LOG.debug("{}: Add buffer consumer {} for subpartition {}.", owningTaskName, bufferConsumer, subpartitionIndex);
 
 		ResultSubpartition subpartition;
 		try {
@@ -327,6 +333,7 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 	}
 
 	public void sendFailConsumerTrigger(int subpartitionIndex, Throwable cause) {
+		LOG.debug("Task {} sends fail consumer trigger for result partition {} subpartition {}.", owningTaskName, partitionId, subpartitionIndex);
 		partitionConsumableNotifier.requestFailConsumer(partitionId, subpartitionIndex, cause, taskActions);
 	}
 
@@ -349,7 +356,7 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 
 		ResultSubpartitionView readView = subpartitions[index].createReadView(availabilityListener);
 
-		LOG.debug("Created/Using {} of {}", readView, this);
+		LOG.debug("{}: Created/Using {} of {}", owningTaskName, readView, this);
 
 		return readView;
 	}
@@ -385,7 +392,8 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 
 	@Override
 	public String toString() {
-		return "ResultPartition " + partitionId.toString() + " [" + partitionType + ", "
+		return "ResultPartition " + partitionId.toString() + " ["
+				+ partitionType + ", "
 				+ subpartitions.length + " subpartitions, "
 				+ pendingReferences + " pending references]";
 	}
@@ -431,8 +439,8 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 			throw new IllegalStateException("All references released.");
 		}
 
-		LOG.debug("{}: Received release notification for subpartition {} (reference count now at: {}).",
-				this, subpartitionIndex, pendingReferences);
+		LOG.debug("{} {}: Received release notification for subpartition {} (reference count now at: {}).",
+				owningTaskName, this, subpartitionIndex, pendingReferences);
 	}
 
 	ResultSubpartition[] getAllPartitions() {

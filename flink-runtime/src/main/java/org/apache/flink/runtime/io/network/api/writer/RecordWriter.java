@@ -30,6 +30,9 @@ import org.apache.flink.runtime.io.network.buffer.BufferConsumer;
 import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
 import org.apache.flink.util.XORShiftRandom;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import java.util.Optional;
 import java.util.Random;
@@ -51,6 +54,8 @@ import static org.apache.flink.util.Preconditions.checkState;
  * @param <T> the type of the record that can be emitted with this record writer
  */
 public class RecordWriter<T extends IOReadableWritable> {
+
+	private static final Logger LOG = LoggerFactory.getLogger(RecordWriter.class);
 
 	protected final ResultPartitionWriter targetPartition;
 
@@ -139,7 +144,9 @@ public class RecordWriter<T extends IOReadableWritable> {
 					break;
 				}
 			}
+			LOG.debug("{}: sendToTarget() calls requestNewBufferBuilder() for resultPartition {}, targetChannel {}.", targetPartition.getTaskName(), targetPartition, targetChannel);
 			BufferBuilder bufferBuilder = requestNewBufferBuilder(targetChannel);
+			LOG.debug("New BufferBuilder's memory segment hash: {}", bufferBuilder.getMemorySegmentHash());
 
 			result = serializer.continueWritingWithNextBufferBuilder(bufferBuilder);
 		}

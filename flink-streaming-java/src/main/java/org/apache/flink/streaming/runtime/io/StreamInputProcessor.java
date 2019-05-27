@@ -32,6 +32,8 @@ import org.apache.flink.runtime.io.network.api.serialization.SpillingAdaptiveSpa
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.partition.consumer.BufferOrEvent;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
+import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
+import org.apache.flink.runtime.io.network.partition.consumer.UnionInputGate;
 import org.apache.flink.runtime.metrics.groups.OperatorMetricGroup;
 import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
 import org.apache.flink.runtime.plugable.DeserializationDelegate;
@@ -98,6 +100,8 @@ public class StreamInputProcessor<IN> {
 	 */
 	private int currentChannel = -1;
 
+	private String taskName;
+
 	private final StreamStatusMaintainer streamStatusMaintainer;
 
 	private final OneInputStreamOperator<IN, ?> streamOperator;
@@ -124,6 +128,14 @@ public class StreamInputProcessor<IN> {
 			WatermarkGauge watermarkGauge) throws IOException {
 
 		InputGate inputGate = InputGateUtil.createInputGate(inputGates);
+
+		if (inputGate instanceof SingleInputGate) {
+			this.taskName = ((SingleInputGate) inputGate).getTaskName();
+		} else if (inputGate instanceof UnionInputGate) {
+			this.taskName = ((UnionInputGate) inputGate).getTaskName();
+		} else {
+			this.taskName = new String("Unknown");
+		}
 
 		this.barrierHandler = InputProcessorUtil.createCheckpointBarrierHandler(
 			checkpointedTask, checkpointMode, ioManager, inputGate, taskManagerConfig);
@@ -169,6 +181,7 @@ public class StreamInputProcessor<IN> {
 
 		while (true) {
 			if (currentRecordDeserializer != null) {
+				LOG.debug("processInput() of task: {}", taskName);
 				DeserializationResult result = currentRecordDeserializer.getNextRecord(deserializationDelegate);
 
 				if (result.isBufferConsumed()) {
@@ -199,6 +212,7 @@ public class StreamInputProcessor<IN> {
 						synchronized (lock) {
 							numRecordsIn.inc();
 							streamOperator.setKeyContextElement1(record);
+							LOG.debug("Process element no {}: {}.", numRecordsIn, record);
 							streamOperator.processElement(record);
 						}
 						return true;
@@ -235,6 +249,7 @@ public class StreamInputProcessor<IN> {
 		// clear the buffers first. this part should not ever fail
 		for (RecordDeserializer<?> deserializer : recordDeserializers) {
 			Buffer buffer = deserializer.getCurrentBuffer();
+			LOG.debug("cleanup: getCurrentBuffer() {}.", buffer);
 			if (buffer != null && !buffer.isRecycled()) {
 				buffer.recycleBuffer();
 			}

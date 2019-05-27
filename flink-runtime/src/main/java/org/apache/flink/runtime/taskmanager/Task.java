@@ -1251,6 +1251,8 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		final ResultPartitionID resultPartitionId,
 		final Throwable cause) {
 
+		LOG.debug("Task {} triggers fail producer of result partition {} on cause {}.", this, resultPartitionId, cause);
+
 		CompletableFuture<Acknowledge> futureFailProducer =
 			partitionProducerStateChecker.triggerFailProducer(
 				intermediateDataSetId,

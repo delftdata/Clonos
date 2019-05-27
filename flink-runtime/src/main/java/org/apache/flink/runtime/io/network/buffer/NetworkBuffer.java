@@ -25,6 +25,9 @@ import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBufAllocator;
 import org.apache.flink.shaded.netty4.io.netty.buffer.Unpooled;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -44,6 +47,8 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * set via {@link #setAllocator(ByteBufAllocator)}!
  */
 public class NetworkBuffer extends AbstractReferenceCountedByteBuf implements Buffer {
+
+	private static final Logger LOG = LoggerFactory.getLogger(NetworkBuffer.class);
 
 	/** The backing {@link MemorySegment} instance. */
 	private final MemorySegment memorySegment;
@@ -144,6 +149,7 @@ public class NetworkBuffer extends AbstractReferenceCountedByteBuf implements Bu
 
 	@Override
 	public void recycleBuffer() {
+		LOG.debug("Recycle buffer {} (hash: {}, memorySegment hash: {}).", this, System.identityHashCode(this), System.identityHashCode(this.getMemorySegment()));
 		release();
 	}
 

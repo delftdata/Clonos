@@ -60,4 +60,9 @@ public interface ResultPartitionWriter {
 	 * Manually trigger consumption from enqueued {@link BufferConsumer BufferConsumers} in one specified subpartition.
 	 */
 	void flush(int subpartitionIndex);
+
+	/**
+	 * Return the name of the task that owns the ResultPartition.
+	 */
+	String getTaskName();
 }

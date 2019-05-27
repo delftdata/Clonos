@@ -174,6 +174,7 @@ public class LocalInputChannel extends InputChannel implements BufferAvailabilit
 			// they happen in that order (1 - 2 - 3 - 4), flush notification can re-enqueue LocalInputChannel after (or
 			// during) it was released during reading the EndOfPartitionEvent (2).
 			if (isReleased) {
+				LOG.debug("{} is released. getNextBuffer() returns empty.", this);
 				return Optional.empty();
 			}
 
@@ -191,11 +192,13 @@ public class LocalInputChannel extends InputChannel implements BufferAvailabilit
 			if (subpartitionView.isReleased()) {
 				throw new CancelTaskException("Consumed partition " + subpartitionView + " has been released.");
 			} else {
+				LOG.debug("{} getNextBuffer() returns empty.", this);
 				return Optional.empty();
 			}
 		}
 
 		numBytesIn.inc(next.buffer().getSizeUnsafe());
+		LOG.debug("{} getNextBuffer() returns next buffer.", this);
 		return Optional.of(new BufferAndAvailability(next.buffer(), next.isMoreAvailable(), next.buffersInBacklog()));
 	}
 

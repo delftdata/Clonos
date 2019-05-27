@@ -198,6 +198,7 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 
 	@Override
 	Optional<BufferAndAvailability> getNextBuffer() throws IOException {
+		LOG.debug("{} getNextBuffer(). isReleased: {}", this, isReleased());
 		checkState(!isReleased.get(), "Queried for a buffer after channel has been closed.");
 		checkState(partitionRequestClient != null, "Queried for a buffer before requesting a queue.");
 
@@ -212,6 +213,7 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 		}
 
 		numBytesIn.inc(next.getSizeUnsafe());
+		LOG.debug("{} getNextBuffer() returns next buffer of size {}; remaining buffers: {}.", this, next.getSizeUnsafe(), remaining);
 		return Optional.of(new BufferAndAvailability(next, remaining > 0, getSenderBacklog()));
 	}
 
@@ -248,6 +250,7 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 	 */
 	@Override
 	void releaseAllResources() throws IOException {
+		LOG.debug("{} releaseAllResources() called. Current value of isReleased: {}.", this, isReleased());
 		if (isReleased.compareAndSet(false, true)) {
 
 			// Gather all exclusive buffers and recycle them to global pool in batch, because

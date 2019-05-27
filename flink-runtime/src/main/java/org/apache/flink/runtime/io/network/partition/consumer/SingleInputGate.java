@@ -284,6 +284,10 @@ public class SingleInputGate implements InputGate {
 		return 0;
 	}
 
+	public String getTaskName() {
+		return owningTaskName;
+	}
+
 	// ------------------------------------------------------------------------
 	// Setup/Life-cycle
 	// ------------------------------------------------------------------------
@@ -418,7 +422,8 @@ public class SingleInputGate implements InputGate {
 
 				if (current instanceof LocalInputChannel) {
 					LocalInputChannel localChannel = (LocalInputChannel) current;
-					LOG.debug("Update local input channel {}.", localChannel);
+					LOG.debug("{}: Update local input channel {} to {}.",
+							owningTaskName, localChannel, newPartitionLocation);
 
 					if (newPartitionLocation.isLocal()) {
 						newChannel = localChannel.toNewLocalInputChannel(newPartitionId,
@@ -441,7 +446,8 @@ public class SingleInputGate implements InputGate {
 					}
 				} else if (current instanceof RemoteInputChannel) {
 					RemoteInputChannel remoteChannel = (RemoteInputChannel) current;
-					LOG.debug("Update remote input channel " + remoteChannel + ".");
+					LOG.debug("{}: Update remote input channel {} to {}.",
+							owningTaskName, remoteChannel, newPartitionLocation);
 
 					if (newPartitionLocation.isLocal()) {
 						newChannel = remoteChannel.toNewLocalInputChannel(newPartitionId,
@@ -477,6 +483,8 @@ public class SingleInputGate implements InputGate {
 				synchronized(inputChannelsWithData) {
 					inputChannelsWithData.remove(current);
 				}
+
+				LOG.debug("{}: Input channel {} has been updated to {}.", owningTaskName, current, newChannel);
 
 				inputChannels.put(partitionId, newChannel);
 
@@ -516,7 +524,7 @@ public class SingleInputGate implements InputGate {
 
 				checkNotNull(ch, "Unknown input channel with ID " + partitionId);
 
-				LOG.debug("Retriggering partition request {}:{}.", ch.partitionId, consumedSubpartitionIndex);
+				LOG.debug("{}: Retriggering partition request {}:{}.", owningTaskName, ch.partitionId, consumedSubpartitionIndex);
 
 				if (ch.getClass() == RemoteInputChannel.class) {
 					final RemoteInputChannel rch = (RemoteInputChannel) ch;
@@ -647,6 +655,7 @@ public class SingleInputGate implements InputGate {
 	}
 
 	private Optional<BufferOrEvent> getNextBufferOrEvent(boolean blocking) throws IOException, InterruptedException {
+		LOG.debug("{}: getNextBufferOrEvent() blocking? {}", owningTaskName, blocking);
 		if (hasReceivedAllEndOfPartitionEvents) {
 			return Optional.empty();
 		}
@@ -679,6 +688,7 @@ public class SingleInputGate implements InputGate {
 				currentChannel = inputChannelsWithData.remove();
 				enqueuedInputChannelsWithData.clear(currentChannel.getChannelIndex());
 				moreAvailable = inputChannelsWithData.size() > 0;
+				LOG.debug("{}: current channel {} has data. Call its getNextBuffer().", owningTaskName, currentChannel);
 			}
 
 			result = currentChannel.getNextBuffer();
@@ -868,8 +878,8 @@ public class SingleInputGate implements InputGate {
 			inputGate.setInputChannel(partitionId.getPartitionId(), inputChannels[i]);
 		}
 
-		LOG.debug("Created {} input channels (local: {}, remote: {}, unknown: {}).",
-			inputChannels.length,
+		LOG.debug("{}: Created {} input channels (local: {}, remote: {}, unknown: {}).",
+			owningTaskName, inputChannels.length,
 			numLocalChannels,
 			numRemoteChannels,
 			numUnknownChannels);

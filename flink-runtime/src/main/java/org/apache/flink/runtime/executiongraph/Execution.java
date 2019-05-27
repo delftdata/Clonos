@@ -743,6 +743,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 			throw new IllegalStateException("Tried to run a standby execution that is not in STANDBY state, but in " + current + " state.");
 		}
 
+		LOG.debug("Run standby execution {}.", this);
 		sendSwitchStandbyToRunningRpcCall();
 	}
 

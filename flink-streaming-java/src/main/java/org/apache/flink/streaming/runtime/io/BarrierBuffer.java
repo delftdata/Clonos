@@ -162,9 +162,11 @@ public class BarrierBuffer implements CheckpointBarrierHandler {
 			// process buffered BufferOrEvents before grabbing new ones
 			Optional<BufferOrEvent> next;
 			if (currentBuffered == null) {
+				LOG.debug("getNextBufferOrEvent() from input gate.");
 				next = inputGate.getNextBufferOrEvent();
 			}
 			else {
+				LOG.debug("getNextBufferOrEvent from buffered.");
 				next = Optional.ofNullable(currentBuffered.getNext());
 				if (!next.isPresent()) {
 					completeBufferedSequence();

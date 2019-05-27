@@ -270,16 +270,19 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 				}
 			}
 
+			LOG.debug("barrierHandler.getNextNonBlocked().");
 			final BufferOrEvent bufferOrEvent = barrierHandler.getNextNonBlocked();
 			if (bufferOrEvent != null) {
 
 				if (bufferOrEvent.isBuffer()) {
+					LOG.debug("Get buffer.");
 					currentChannel = bufferOrEvent.getChannelIndex();
 					currentRecordDeserializer = recordDeserializers[currentChannel];
 					currentRecordDeserializer.setNextBuffer(bufferOrEvent.getBuffer());
 
 				} else {
 					// Event received
+					LOG.debug("Get event.");
 					final AbstractEvent event = bufferOrEvent.getEvent();
 					if (event.getClass() != EndOfPartitionEvent.class) {
 						throw new IOException("Unexpected event: " + event);
@@ -300,6 +303,7 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 		// clear the buffers first. this part should not ever fail
 		for (RecordDeserializer<?> deserializer : recordDeserializers) {
 			Buffer buffer = deserializer.getCurrentBuffer();
+			LOG.debug("cleanup: getCurrentBuffer() {}.", buffer);
 			if (buffer != null && !buffer.isRecycled()) {
 				buffer.recycleBuffer();
 			}

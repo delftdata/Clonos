@@ -188,6 +188,7 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 			for (int i = 0; i < size; i++) {
 				NetworkSequenceViewReader reader = pollAvailableReader();
 				if (reader.getReceiverId().equals(toCancel)) {
+					LOG.warn("Reader {} received cancel request from channel {}.", reader, toCancel);
 					reader.releaseAllResources();
 					markAsReleased(reader.getReceiverId());
 				} else {
@@ -255,6 +256,7 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 						next.buffersInBacklog());
 
 					if (isEndOfPartitionEvent(next.buffer())) {
+						LOG.warn("Reader {} received end of partition event.", reader);
 						reader.notifySubpartitionConsumed();
 						reader.releaseAllResources();
 
@@ -326,11 +328,13 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 
 	private void releaseAllResources(Throwable cause) throws IOException {
 		// note: this is only ever executed by one thread: the Netty IO thread!
+		LOG.debug("Release resources of {} readers with cause {}.", allReaders.size(), cause);
 		for (NetworkSequenceViewReader reader : allReaders.values()) {
 			if (cause != null) {
 				LOG.debug("Release reader {} because of {}).", reader, cause);
 				reader.releaseAllResources(cause);
 			} else {
+				LOG.debug("Release reader {} with no error.", reader, cause);
 				reader.releaseAllResources();
 			}
 			markAsReleased(reader.getReceiverId());

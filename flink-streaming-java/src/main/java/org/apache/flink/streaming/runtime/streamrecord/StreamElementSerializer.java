@@ -28,10 +28,15 @@ import org.apache.flink.api.common.typeutils.TypeSerializerConfigSnapshot;
 import org.apache.flink.api.common.typeutils.UnloadableDummyTypeSerializer;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.core.memory.DataInputView;
+import org.apache.flink.core.memory.DataInputDeserializer;
 import org.apache.flink.core.memory.DataOutputView;
+import org.apache.flink.core.memory.DataOutputSerializer;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatus;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 
@@ -48,6 +53,8 @@ import static java.util.Objects.requireNonNull;
  */
 @Internal
 public final class StreamElementSerializer<T> extends TypeSerializer<StreamElement> {
+
+	private static final Logger LOG = LoggerFactory.getLogger(StreamElementSerializer.class);
 
 	private static final long serialVersionUID = 1L;
 
@@ -199,6 +206,12 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 	@Override
 	public StreamElement deserialize(DataInputView source) throws IOException {
 		int tag = source.readByte();
+		if (source instanceof DataInputDeserializer) {
+			DataInputDeserializer s = (DataInputDeserializer) source;
+			LOG.debug("Deserialize source DataInputView {} has {} bytes available.", source, s.available());
+		} else {
+			LOG.debug("Deserialize source DataInputView {}.", source);
+		}
 		if (tag == TAG_REC_WITH_TIMESTAMP) {
 			long timestamp = source.readLong();
 			return new StreamRecord<T>(typeSerializer.deserialize(source), timestamp);
@@ -216,6 +229,7 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 			return new LatencyMarker(source.readLong(), new OperatorID(source.readLong(), source.readLong()), source.readInt());
 		}
 		else {
+			LOG.debug("On crash source line is: {}.", source.readLine());
 			throw new IOException("Corrupt stream, found tag: " + tag);
 		}
 	}

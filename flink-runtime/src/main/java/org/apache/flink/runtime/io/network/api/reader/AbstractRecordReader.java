@@ -26,6 +26,9 @@ import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.partition.consumer.BufferOrEvent;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 
 /**
@@ -36,6 +39,8 @@ import java.io.IOException;
  * @param <T> The type of the record that can be read with this record reader.
  */
 abstract class AbstractRecordReader<T extends IOReadableWritable> extends AbstractReader implements ReaderBase {
+
+	private static final Logger LOG = LoggerFactory.getLogger(AbstractRecordReader.class);
 
 	private final RecordDeserializer<T>[] recordDeserializers;
 
@@ -73,6 +78,8 @@ abstract class AbstractRecordReader<T extends IOReadableWritable> extends Abstra
 
 				if (result.isBufferConsumed()) {
 					final Buffer currentBuffer = currentRecordDeserializer.getCurrentBuffer();
+
+					LOG.debug("Recycle buffer {}.", currentBuffer);
 
 					currentBuffer.recycleBuffer();
 					currentRecordDeserializer = null;
@@ -117,6 +124,7 @@ abstract class AbstractRecordReader<T extends IOReadableWritable> extends Abstra
 	public void clearBuffers() {
 		for (RecordDeserializer<?> deserializer : recordDeserializers) {
 			Buffer buffer = deserializer.getCurrentBuffer();
+			LOG.debug("clearBuffers(): getCurrentBuffer() {}.", buffer);
 			if (buffer != null && !buffer.isRecycled()) {
 				buffer.recycleBuffer();
 			}
