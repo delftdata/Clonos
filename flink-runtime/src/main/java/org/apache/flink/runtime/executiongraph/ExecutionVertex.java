@@ -48,6 +48,8 @@ import org.apache.flink.runtime.jobmaster.LogicalSlot;
 import org.apache.flink.runtime.jobmaster.slotpool.SlotProvider;
 import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
 import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
+import org.apache.flink.runtime.util.clock.Clock;
+import org.apache.flink.runtime.util.clock.SystemClock;
 import org.apache.flink.runtime.util.EvictingBoundedList;
 import org.apache.flink.types.Either;
 import org.apache.flink.util.ExceptionUtils;
@@ -97,6 +99,19 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 	private final ArrayList<Execution> standbyExecutions;
 
 	private final Time timeout;
+
+	/** Use clock to track attempts to kill the current execution in face of an error
+	 *  depending on relative time of occurence.
+	 */
+	private final Clock clock;
+
+	/** If two subsequent fail signals for an execution span less than the following time range
+	 *  then it's probably the same signal triggered by many neighbors.
+	 */
+	private final Time failSignalTimeSpan;
+
+	/** When in relative time given by the above clock was the last fail signal recorded. */
+	private long lastKillSignal;
 
 	/** The name in the format "myTask (2/7)", cached to avoid frequent string concatenations. */
 	private final String taskNameWithSubtask;
@@ -190,6 +205,12 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 		getExecutionGraph().registerExecution(currentExecution);
 
 		this.timeout = timeout;
+
+		this.clock = SystemClock.getInstance();
+
+		this.failSignalTimeSpan = Time.milliseconds(2000L);
+
+		this.lastKillSignal = -1L;
 	}
 
 
@@ -777,6 +798,18 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 		else {
 			return finishedBlockingPartitions;
 		}
+	}
+
+	public boolean concurrentFailExecutionSignal() {
+		final long currentRelativeTimeMillis = clock.relativeTimeMillis();
+		if (lastKillSignal == -1 ||
+				currentRelativeTimeMillis - lastKillSignal > failSignalTimeSpan.toMilliseconds()) {
+			lastKillSignal = currentRelativeTimeMillis;
+			LOG.debug("Allow fail current execution {}.", currentExecution);
+			return false;
+		}
+		LOG.debug("Ignore subsequent signal to fail current execution of vertex {}.", this);
+		return true;
 	}
 
 	// --------------------------------------------------------------------------------------------

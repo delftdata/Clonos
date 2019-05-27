@@ -645,13 +645,21 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 					executionGraph.getAllIntermediateResults().get(intermediateResultId);
 
 			if (intermediateResult != null) {
-				// Try to find the producing execution
-				producerExecution = intermediateResult
-						.getPartitionById(resultPartitionId.getPartitionId())
-						.getProducer()
-						.getCurrentExecutionAttempt();
+				final ExecutionVertex producerVertex = intermediateResult
+								.getPartitionById(resultPartitionId.getPartitionId())
+								.getProducer();
 
-				producerExecution.fail(cause);
+				// Check whether another fail signal for the same vertex was sent recently
+				if (producerVertex.concurrentFailExecutionSignal()) {
+					return CompletableFuture.completedFuture(Acknowledge.get());
+				}
+
+				// Try to find the producing execution
+				producerExecution = producerVertex.getCurrentExecutionAttempt();
+
+				if (producerExecution.getState() == ExecutionState.RUNNING) {
+					producerExecution.fail(cause);
+				}
 				return CompletableFuture.completedFuture(Acknowledge.get());
 			} else {
 				return FutureUtils.completedExceptionally(new IllegalArgumentException("Intermediate data set with ID "
@@ -675,10 +683,18 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 
 		final ExecutionVertex producerExecutionVertex = producerExecution.getVertex();
 		final IntermediateResultPartition irp = producerExecutionVertex.getProducedPartitions().get(resultPartitionId.getPartitionId());
-		final Execution consumerExecution = irp.getConsumers().get(0).get(subpartitionIndex).getTarget().getCurrentExecutionAttempt();
+		final ExecutionVertex consumerVertex = irp.getConsumers().get(0).get(subpartitionIndex).getTarget();
 
-		log.debug("Fail externally consumer execution {} of result partition {} subpartition {} because of {}.", consumerExecution, resultPartitionId, subpartitionIndex, cause);
-		consumerExecution.fail(cause);
+		// Check whether another fail signal for the same vertex was sent recently
+		if (consumerVertex.concurrentFailExecutionSignal()) {
+			return CompletableFuture.completedFuture(Acknowledge.get());
+		}
+
+		final Execution consumerExecution = consumerVertex.getCurrentExecutionAttempt();
+		if (consumerExecution.getState() == ExecutionState.RUNNING) {
+			log.debug("Fail externally consumer execution {} of result partition {} subpartition {} because of {}.", consumerExecution, resultPartitionId, subpartitionIndex, cause);
+			consumerExecution.fail(cause);
+		}
 
 		return CompletableFuture.completedFuture(Acknowledge.get());
 	}
