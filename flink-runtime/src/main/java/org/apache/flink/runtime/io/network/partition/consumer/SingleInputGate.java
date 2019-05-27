@@ -485,8 +485,9 @@ public class SingleInputGate implements InputGate {
 					try {
 						newChannel.requestSubpartition(consumedSubpartitionIndex);
 					} catch (IOException e) {
-						LOG.error("Request subpartition for input channel {} failed. Ignoring failure.",
-								newChannel, e);
+						LOG.error("{}: Request subpartition for input channel {} failed. Ignoring failure and sending fail trigger for producer (chances are it is dead).",
+							owningTaskName, newChannel, e);
+						triggerFailProducer(newPartitionId, e);
 					}
 				}
 
@@ -619,11 +620,14 @@ public class SingleInputGate implements InputGate {
 				}
 
 				for (InputChannel inputChannel : inputChannels.values()) {
+					LOG.debug("Request subpartition for input channel with index {} partition id {}.",
+							inputChannel.getChannelIndex(), inputChannel.getPartitionId());
 					try {
 						inputChannel.requestSubpartition(consumedSubpartitionIndex);
 					} catch (IOException e) {
-						LOG.error("Connecting inputChannel {} failed. Ignore error.",
-								inputChannel);
+						LOG.error("{}: Connecting inputChannel {} failed. Ignoring failure and sending fail trigger to producer (chances are it is dead).",
+								owningTaskName, inputChannel);
+						triggerFailProducer(inputChannel.getPartitionId(), e);
 					}
 				}
 			}
