@@ -473,6 +473,11 @@ public class SingleInputGate implements InputGate {
 					throw new IllegalStateException("Tried to update local/remote channel with unknown channel.");
 				}
 
+				// Remove the old channel from the list of enqueued channels with available data.
+				synchronized(inputChannelsWithData) {
+					inputChannelsWithData.remove(current);
+				}
+
 				inputChannels.put(partitionId, newChannel);
 
 				if (requestedPartitionsFlag) {
