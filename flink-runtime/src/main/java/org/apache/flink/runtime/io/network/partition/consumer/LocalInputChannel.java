@@ -280,7 +280,6 @@ public class LocalInputChannel extends InputChannel implements BufferAvailabilit
 	public LocalInputChannel toNewLocalInputChannel(ResultPartitionID newPartitionId,
 			ResultPartitionManager partitionManager, TaskEventDispatcher taskEventDispatcher,
 			int initialBackoff, int maxBackoff, TaskIOMetricGroup metrics) throws IOException {
-		releaseAllResources();
 		return new LocalInputChannel(inputGate, channelIndex, newPartitionId,
 				partitionManager, taskEventDispatcher, initialBackoff, maxBackoff, metrics);
 	}
