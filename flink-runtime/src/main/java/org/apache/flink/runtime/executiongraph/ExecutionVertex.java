@@ -683,8 +683,6 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 		}
 
 		Execution firstStandbyExecution = this.standbyExecutions.get(0);
-		firstStandbyExecution.runStandbyExecution();
-
 		priorExecutions.add(currentExecution);
 		currentExecution = firstStandbyExecution;
 
@@ -711,6 +709,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			currentExecution.scheduleOrUpdateConsumers(partition.getConsumers(),
 					updateConsumersOnFailover);
 		}
+		currentExecution.runStandbyExecution();
 	}
 
 	/**
