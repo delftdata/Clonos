@@ -24,6 +24,7 @@ import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.netty.NettyMessage.ErrorResponse;
+import org.apache.flink.runtime.io.network.netty.exception.RemoteTransportException;
 import org.apache.flink.runtime.io.network.partition.ProducerFailedException;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannel.BufferAndAvailability;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
@@ -41,6 +42,7 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.Nullable;
 
 import java.io.IOException;
+import java.net.SocketAddress;
 import java.util.ArrayDeque;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -295,7 +297,13 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 
 	@Override
 	public void channelInactive(ChannelHandlerContext ctx) throws Exception {
-		releaseAllResources();
+		LOG.debug("Channel {} inactive. Release all resources.", ctx.channel());
+
+		final SocketAddress remoteAddr = ctx.channel().remoteAddress();
+		RemoteTransportException cause = new RemoteTransportException(
+				"In producer side: Connection unexpectedly closed by remote task manager '" + remoteAddr + "'. "
+					+ "This might indicate that the remote task manager was lost.", remoteAddr);
+		releaseAllResources(cause);
 
 		ctx.fireChannelInactive();
 	}

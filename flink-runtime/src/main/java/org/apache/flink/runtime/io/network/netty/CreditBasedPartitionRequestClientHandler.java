@@ -149,6 +149,7 @@ class CreditBasedPartitionRequestClientHandler extends ChannelInboundHandlerAdap
 				for (RemoteInputChannel remoteInputChannel : inputChannels.values()) {
 					if (remoteInputChannel.getConnectionId().getAddress().equals(inetRemoteAddr)) {
 						LOG.debug("Send fail producer trigger to {}.", remoteInputChannel);
+						removeInputChannel(remoteInputChannel);
 						remoteInputChannel.triggerFailProducer(cause);
 						break;
 					}
@@ -182,13 +183,28 @@ class CreditBasedPartitionRequestClientHandler extends ChannelInboundHandlerAdap
 			if (cause instanceof IOException && cause.getMessage().equals("Connection reset by peer")) {
 				tex = new RemoteTransportException("Lost connection to task manager '" + remoteAddr + "'. " +
 					"This indicates that the remote task manager was lost.", remoteAddr, cause);
+				try {
+					InetSocketAddress inetRemoteAddr = (InetSocketAddress) remoteAddr;
+					for (RemoteInputChannel remoteInputChannel : inputChannels.values()) {
+						if (remoteInputChannel.getConnectionId().getAddress().equals(inetRemoteAddr)) {
+							LOG.debug("Send fail producer trigger to {}.", remoteInputChannel);
+							removeInputChannel(remoteInputChannel);
+							remoteInputChannel.triggerFailProducer(cause);
+							break;
+						}
+					}
+				} catch (ClassCastException e) {
+					LOG.warn("On unexpected network error, the channel's remote address is not of type InetSocketAddress. Therefore, it is not possible to identify the culprit remote channel.");
+
+					notifyAllChannelsOfErrorAndClose(tex);
+				}
 			} else {
 				final SocketAddress localAddr = ctx.channel().localAddress();
 				tex = new LocalTransportException(
 					String.format("%s (connection to '%s')", cause.getMessage(), remoteAddr), localAddr, cause);
+				notifyAllChannelsOfErrorAndClose(tex);
 			}
 
-			notifyAllChannelsOfErrorAndClose(tex);
 		}
 	}
 
