@@ -35,6 +35,8 @@ import org.apache.flink.runtime.io.network.buffer.BufferPool;
 import org.apache.flink.runtime.io.network.buffer.FreeingBufferRecycler;
 import org.apache.flink.runtime.io.network.buffer.NetworkBuffer;
 import org.apache.flink.runtime.io.network.buffer.NetworkBufferPool;
+import org.apache.flink.runtime.io.network.netty.PartitionRequestClient;
+import org.apache.flink.runtime.io.network.netty.NettyConnectionManager;
 import org.apache.flink.runtime.io.network.partition.BufferAvailabilityListener;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionManager;
@@ -564,6 +566,8 @@ public class SingleInputGateTest {
 		final SingleInputGate inputGate = createInputGate(2);
 		int buffersPerChannel = 2;
 		final NetworkEnvironment network = createNetworkEnvironment(buffersPerChannel, 8, 0, 0);
+		final PartitionRequestClient partitionRequestClient = mock(PartitionRequestClient.class);
+		when(network.getConnectionManager().createPartitionRequestClient(any(ConnectionID.class))).thenReturn(partitionRequestClient);
 
 		try {
 			final IntermediateResultPartitionID intermediateResultPartitionId1 = new IntermediateResultPartitionID();
@@ -650,6 +654,8 @@ public class SingleInputGateTest {
 		final SingleInputGate inputGate = createInputGate(2);
 		int buffersPerChannel = 2;
 		final NetworkEnvironment network = createNetworkEnvironment(buffersPerChannel, 8, 0, 0);
+		final PartitionRequestClient partitionRequestClient = mock(PartitionRequestClient.class);
+		when(network.getConnectionManager().createPartitionRequestClient(any(ConnectionID.class))).thenReturn(partitionRequestClient);
 
 		try {
 			final IntermediateResultPartitionID intermediateResultPartitionId1 = new IntermediateResultPartitionID();
@@ -735,7 +741,7 @@ public class SingleInputGateTest {
 			int maxBackoff) {
 		return new NetworkEnvironment(
 			spy(new NetworkBufferPool(100, 32)),
-			new LocalConnectionManager(),
+			mock(NettyConnectionManager.class),
 			new ResultPartitionManager(),
 			new TaskEventDispatcher(),
 			new KvStateRegistry(),
