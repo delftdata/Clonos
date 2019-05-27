@@ -27,6 +27,7 @@ import org.apache.flink.runtime.deployment.ResultPartitionLocation;
 import org.apache.flink.runtime.event.AbstractEvent;
 import org.apache.flink.runtime.event.TaskEvent;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
+import org.apache.flink.runtime.io.network.ConnectionID;
 import org.apache.flink.runtime.io.network.NetworkEnvironment;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
@@ -184,6 +185,9 @@ public class SingleInputGate implements InputGate {
 
 	/** A timer to retrigger local partition requests. Only initialized if actually needed. */
 	private Timer retriggerLocalRequestTimer;
+
+	/** History of released remote channels to check before updating the current channel. */
+	private final Map<IntermediateResultPartitionID, List<ConnectionID>> releasedRemoteChannels = new HashMap<>();
 
 	public SingleInputGate(
 		String owningTaskName,
@@ -424,6 +428,10 @@ public class SingleInputGate implements InputGate {
 								networkEnvironment.getPartitionRequestMaxBackoff(),
 								metrics);
 					} else {
+						if (newChannelIsReleased(partitionId, newPartitionLocation)) {
+							return;
+						}
+
 						newChannel = localChannel.toNewRemoteInputChannel(newPartitionId,
 								newPartitionLocation.getConnectionId(),
 								networkEnvironment.getConnectionManager(),
@@ -443,6 +451,10 @@ public class SingleInputGate implements InputGate {
 								networkEnvironment.getPartitionRequestMaxBackoff(),
 								metrics);
 					} else {
+						if (newChannelIsReleased(partitionId, newPartitionLocation)) {
+							return;
+						}
+
 						newChannel = remoteChannel.toNewRemoteInputChannel(newPartitionId,
 								newPartitionLocation.getConnectionId(),
 								networkEnvironment.getConnectionManager(),
@@ -450,6 +462,13 @@ public class SingleInputGate implements InputGate {
 								networkEnvironment.getPartitionRequestMaxBackoff(),
 								metrics);
 					}
+
+					List<ConnectionID> connectionIds = releasedRemoteChannels.get(partitionId);
+					if (connectionIds == null) {
+						connectionIds = new ArrayList<ConnectionID>();
+					}
+					connectionIds.add(remoteChannel.getConnectionId());
+					releasedRemoteChannels.put(partitionId, connectionIds);
 				} else {
 					throw new IllegalStateException("Tried to update local/remote channel with unknown channel.");
 				}
@@ -468,6 +487,21 @@ public class SingleInputGate implements InputGate {
 
 			}
 		}
+	}
+
+	/**
+	 * Checks whether a new input channel to update has been released in the past.
+	 * Calls to updateInputChannel() are made async thereby potentially mixing their order.
+	 * Thus, it is possible that an older call may be executed after a more recent one.
+	 * The unfortunate result is that a channel is setup to a producer task that is no longer alive.
+	 */
+	private boolean newChannelIsReleased(IntermediateResultPartitionID partitionId, ResultPartitionLocation partitionLocation) {
+		List<ConnectionID> connectionIds = releasedRemoteChannels.get(partitionId);
+		if (connectionIds != null && connectionIds.contains(partitionLocation.getConnectionId())) {
+			LOG.debug("{}: DO NOT update input channel to {} because it was released in the past.", owningTaskName, partitionLocation);
+			return true;
+		}
+		return false;
 	}
 
 	/**
