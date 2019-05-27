@@ -480,17 +480,13 @@ public class SingleInputGate implements InputGate {
 
 				inputChannels.put(partitionId, newChannel);
 
-				if (requestedPartitionsFlag) {
-					LOG.debug("After input channel update, requesting subpartitions for new channel {}.", newChannel);
-					try {
-						newChannel.requestSubpartition(consumedSubpartitionIndex);
-					} catch (IOException e) {
-						LOG.error("{}: Request subpartition for input channel {} failed. Ignoring failure and sending fail trigger for producer (chances are it is dead).",
-							owningTaskName, newChannel, e);
-						triggerFailProducer(newPartitionId, e);
-					}
+				try {
+					newChannel.requestSubpartition(consumedSubpartitionIndex);
+				} catch (IOException e) {
+					LOG.error("{}: Request subpartition for input channel {} failed. Ignoring failure and sending fail trigger for producer (chances are it is dead).",
+						owningTaskName, newChannel, e);
+					triggerFailProducer(newPartitionId, e);
 				}
-
 			}
 		}
 	}
