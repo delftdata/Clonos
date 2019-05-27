@@ -55,6 +55,7 @@ class PipelinedSubpartition extends ResultSubpartition {
 	/** Flag indicating whether the subpartition has been released. */
 	private volatile boolean isReleased;
 
+	private boolean consumerFailed;
 	// ------------------------------------------------------------------------
 
 	PipelinedSubpartition(int index, ResultPartition parent) {
@@ -141,6 +142,7 @@ class PipelinedSubpartition extends ResultSubpartition {
 
 	@Override
 	public void sendFailConsumerTrigger(Throwable cause) {
+		consumerFailed = true;
 		parent.sendFailConsumerTrigger(index, cause);
 	}
 
@@ -156,7 +158,8 @@ class PipelinedSubpartition extends ResultSubpartition {
 			while (!buffers.isEmpty()) {
 				BufferConsumer bufferConsumer = buffers.peek();
 
-				buffer = bufferConsumer.build();
+				buffer = bufferConsumer.build(consumerFailed);
+				consumerFailed = false;
 
 				checkState(bufferConsumer.isFinished() || buffers.size() == 1,
 					"When there are multiple buffers, an unfinished bufferConsumer can not be at the head of the buffers queue.");
@@ -189,6 +192,7 @@ class PipelinedSubpartition extends ResultSubpartition {
 			// Do not report last remaining buffer on buffers as available to read (assuming it's unfinished).
 			// It will be reported for reading either on flush or when the number of buffers in the queue
 			// will be 2 or more.
+			LOG.debug("{}:{}:{}: Polled buffer {} (hash: {})", parent, index, this, buffer, System.identityHashCode(buffer));
 			return new BufferAndBacklog(
 				buffer,
 				isAvailableUnsafe(),

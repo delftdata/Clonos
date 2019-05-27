@@ -25,6 +25,9 @@ import javax.annotation.concurrent.ThreadSafe;
 
 import java.nio.ByteBuffer;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
 
@@ -34,6 +37,8 @@ import static org.apache.flink.util.Preconditions.checkState;
  */
 @NotThreadSafe
 public class BufferBuilder {
+	private static final Logger LOG = LoggerFactory.getLogger(BufferBuilder.class);
+
 	private final MemorySegment memorySegment;
 
 	private final BufferRecycler recycler;
@@ -41,6 +46,10 @@ public class BufferBuilder {
 	private final SettablePositionMarker positionMarker = new SettablePositionMarker();
 
 	private boolean bufferConsumerCreated = false;
+
+	private boolean enableFirstFullRecordPositionMarker = false;
+
+	private final SettablePositionMarker firstFullRecordPositionMarker = new SettablePositionMarker();
 
 	public BufferBuilder(MemorySegment memorySegment, BufferRecycler recycler) {
 		this.memorySegment = checkNotNull(memorySegment);
@@ -54,10 +63,12 @@ public class BufferBuilder {
 	public BufferConsumer createBufferConsumer() {
 		checkState(!bufferConsumerCreated, "There can not exists two BufferConsumer for one BufferBuilder");
 		bufferConsumerCreated = true;
+		LOG.debug("New BufferConsumer wrapping memory segment {} (hash: {}) with positionMarker {} and firstFullRecordPositionMarker {}", memorySegment, System.identityHashCode(memorySegment), positionMarker.getCached(), firstFullRecordPositionMarker.getCached());
 		return new BufferConsumer(
 			memorySegment,
 			recycler,
-			positionMarker);
+			positionMarker,
+			firstFullRecordPositionMarker);
 	}
 
 	/**
@@ -82,6 +93,15 @@ public class BufferBuilder {
 		int available = getMaxCapacity() - positionMarker.getCached();
 		int toCopy = Math.min(needed, available);
 
+		if (enableFirstFullRecordPositionMarker) {
+			firstFullRecordPositionMarker.set(positionMarker.getCached());
+			firstFullRecordPositionMarker.commit();
+			enableFirstFullRecordPositionMarker = false;
+			LOG.debug("Set firstFullRecordPositionMarker {} (== positionMarker {}) of memorySegment (hash: {}) where first whole record begins", firstFullRecordPositionMarker.getCached(), positionMarker.getCached(), System.identityHashCode(memorySegment));
+		}
+
+		LOG.debug("append to memorySegment (hash: {}): positionMarker: {}, needed: {}, available: {}, toCopy: {}", System.identityHashCode(memorySegment), positionMarker.getCached(), needed, available, toCopy);
+
 		memorySegment.put(positionMarker.getCached(), source, toCopy);
 		positionMarker.move(toCopy);
 		return toCopy;
@@ -104,6 +124,9 @@ public class BufferBuilder {
 	 * @return number of written bytes.
 	 */
 	public int finish() {
+		int available = getMaxCapacity() - positionMarker.getCached();
+		LOG.debug("Finished putting data to memory segment (hash: {}): positionMarker: {}, available: {}", System.identityHashCode(memorySegment), positionMarker.getCached(), available);
+
 		positionMarker.markFinished();
 		commit();
 		return getWrittenBytes();
@@ -124,6 +147,14 @@ public class BufferBuilder {
 
 	public int getMaxCapacity() {
 		return memorySegment.size();
+	}
+
+	public int getMemorySegmentHash() {
+		return System.identityHashCode(memorySegment);
+	}
+
+	public void enableFirstFullRecordPositionMarker() {
+		enableFirstFullRecordPositionMarker = true;
 	}
 
 	private int getWrittenBytes() {

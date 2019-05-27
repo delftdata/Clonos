@@ -25,6 +25,9 @@ import org.apache.flink.runtime.io.network.buffer.BufferBuilder;
 
 import javax.annotation.Nullable;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -37,6 +40,8 @@ import java.nio.ByteOrder;
  * @param <T> The type of the records that are serialized.
  */
 public class SpanningRecordSerializer<T extends IOReadableWritable> implements RecordSerializer<T> {
+
+	private static final Logger LOG = LoggerFactory.getLogger(SpanningRecordSerializer.class);
 
 	/** Flag to enable/disable checks, if buffer not set/full or pending serialization. */
 	private static final boolean CHECKED = false;
@@ -107,13 +112,19 @@ public class SpanningRecordSerializer<T extends IOReadableWritable> implements R
 		targetBuffer = buffer;
 
 		boolean mustCommit = false;
+		LOG.debug("continueWritingWithNextBufferBuilder(): lengthBuffer state: {}, hasRemaining? {}", lengthBuffer.toString(), lengthBuffer.hasRemaining());
 		if (lengthBuffer.hasRemaining()) {
-			targetBuffer.append(lengthBuffer);
+			int toCopy = targetBuffer.append(lengthBuffer);
+			LOG.debug("Copied {} remaining length bytes to MemorySegment {}", toCopy, targetBuffer.getMemorySegmentHash());
+			targetBuffer.enableFirstFullRecordPositionMarker();
 			mustCommit = true;
 		}
 
+		LOG.debug("continueWritingWithNextBufferBuilder(): dataBuffer state: {}, hasRemaining? {}", dataBuffer.toString(), dataBuffer.hasRemaining());
 		if (dataBuffer.hasRemaining()) {
-			targetBuffer.append(dataBuffer);
+			int toCopy = targetBuffer.append(dataBuffer);
+			LOG.debug("Copied {} remaining data bytes to MemorySegment {}", toCopy, targetBuffer.getMemorySegmentHash());
+			targetBuffer.enableFirstFullRecordPositionMarker();
 			mustCommit = true;
 		}
 
@@ -122,6 +133,7 @@ public class SpanningRecordSerializer<T extends IOReadableWritable> implements R
 		}
 
 		SerializationResult result = getSerializationResult();
+		LOG.debug("SerializationResult isFullRecord? {}, isFullBuffer? {}", result.isFullRecord(), result.isFullBuffer());
 
 		// make sure we don't hold onto the large buffers for too long
 		if (result.isFullRecord()) {
