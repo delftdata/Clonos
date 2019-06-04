@@ -23,20 +23,20 @@ public class InFlightLogger<OUT> {
 		}
 	}
 
-	public void createSlice(String barrierId){
+	public void createSlice(String checkpointId){
 		StreamSlice<OUT>[] newSlices = new StreamSlice[this.numOutgoingChannels];
 
-		for(int i = 0; i < this.numOutgoingChannels; i++) newSlices[i] = new StreamSlice<>(barrierId);
+		for(int i = 0; i < this.numOutgoingChannels; i++) newSlices[i] = new StreamSlice<>(checkpointId);
 
 
-		slicedLog.put(barrierId, newSlices);
+		slicedLog.put(checkpointId, newSlices);
 
 		boolean[] newSliceAcknowledgements = new boolean[this.numOutgoingChannels];
-		acknowledgements.put(barrierId, newSliceAcknowledgements);
+		acknowledgements.put(checkpointId, newSliceAcknowledgements);
 	}
 
-	public void addAcknowledgment(String barrierId, int outgoingChannelIndex) {
-		boolean[] acknowledgementsOfBarrier = acknowledgements.get(barrierId);
+	public void addAcknowledgment(String checkpointId, int outgoingChannelIndex) {
+		boolean[] acknowledgementsOfBarrier = acknowledgements.get(checkpointId);
 		if(acknowledgementsOfBarrier == null) {
 			//TODO can I throw exceptions? What is the protocol
 		}
@@ -44,21 +44,21 @@ public class InFlightLogger<OUT> {
 
 		// If all outgoing channels have acknowledged barrier, remove from log
 		if(!Arrays.asList(acknowledgementsOfBarrier).contains(false)){
-			if(!slicedLog.firstKey().equals(barrierId)){
+			if(!slicedLog.firstKey().equals(checkpointId)){
 				//TODO check if can throw exceptions
 			}
 
-			slicedLog.remove(barrierId);
-			acknowledgements.remove(barrierId);
+			slicedLog.remove(checkpointId);
+			acknowledgements.remove(checkpointId);
 		}
 	}
 
 	public Iterable<StreamRecord<OUT>> getReplayLog(int outgoingChannelIndex) throws Exception {
 		List<Iterator<StreamRecord<OUT>>> wrappedIterators = new ArrayList<>(slicedLog.keySet().size());
 
-		for(String barrierId : slicedLog.keySet()) {
-			StreamSlice<OUT> sliceOfChannel = slicedLog.get(barrierId)[outgoingChannelIndex];
-			if(acknowledgements.get(barrierId)[outgoingChannelIndex] == false) //Only add to replay if outgoing channel hasnt acknowledged
+		for(String checkpointId : slicedLog.keySet()) {
+			StreamSlice<OUT> sliceOfChannel = slicedLog.get(checkpointId)[outgoingChannelIndex];
+			if(acknowledgements.get(checkpointId)[outgoingChannelIndex] == false) //Only add to replay if outgoing channel hasnt acknowledged
 				wrappedIterators.add(sliceOfChannel.getSliceRecords().iterator());
 		}
 
@@ -126,9 +126,9 @@ public class InFlightLogger<OUT> {
 		//TODO why did the other author clear the ListState? Just because it was persisted?
 	}
 
-	private void discardSlice(String barrierId) {
-		slicedLog.remove(barrierId);
-		acknowledgements.remove(barrierId);
+	private void discardSlice(String checkpointId) {
+		slicedLog.remove(checkpointId);
+		acknowledgements.remove(checkpointId);
 		//TODO why did the other author clear the ListState? Just because it was persisted?
 	}
 
