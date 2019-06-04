@@ -87,6 +87,8 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 
 	private final Object lock;
 
+
+
 	// ---------------- Status and Watermark Valves ------------------
 
 	/**
