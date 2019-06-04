@@ -721,6 +721,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 				for (StreamOperator<?> operator : operatorChain.getAllOperators()) {
 					if (operator != null) {
 						operator.notifyCheckpointComplete(checkpointId);
+						inFlightLogger.discardSlice(checkpointId);
 					}
 				}
 			}
