@@ -138,6 +138,9 @@ class SequenceNumberingViewReader implements BufferAvailabilityListener, Network
 	}
 
 	@Override
+	public void releaseAllResources(Throwable cause) throws IOException {}
+
+	@Override
 	public void notifyDataAvailable() {
 		requestQueue.notifyReaderNonEmpty(this);
 	}
