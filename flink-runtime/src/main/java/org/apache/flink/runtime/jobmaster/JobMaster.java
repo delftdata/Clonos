@@ -636,8 +636,8 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 			final ResultPartitionID resultPartitionId,
 			final Throwable cause) {
 
-		Execution producerExecution = executionGraph.getRegisteredExecutions().get(resultPartitionId.getProducerId());
-		if (producerExecution == null) {
+		Execution producerExecutionToFail = executionGraph.getRegisteredExecutions().get(resultPartitionId.getProducerId());
+		if (producerExecutionToFail == null) {
 			return CompletableFuture.completedFuture(Acknowledge.get());
 		}
 		else {
@@ -649,16 +649,12 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 								.getPartitionById(resultPartitionId.getPartitionId())
 								.getProducer();
 
-				// Check whether another fail signal for the same vertex was sent recently
-				if (producerVertex.concurrentFailExecutionSignal()) {
-					return CompletableFuture.completedFuture(Acknowledge.get());
-				}
-
 				// Try to find the producing execution
-				producerExecution = producerVertex.getCurrentExecutionAttempt();
+				Execution producerExecutionCurrent = producerVertex.getCurrentExecutionAttempt();
 
-				if (producerExecution.getState() == ExecutionState.RUNNING) {
-					producerExecution.fail(cause);
+				if (producerExecutionToFail.getAttemptNumber() == producerExecutionCurrent.getAttemptNumber() &&
+					producerExecutionCurrent.getState() == ExecutionState.RUNNING) {
+					producerExecutionCurrent.fail(cause);
 				}
 				return CompletableFuture.completedFuture(Acknowledge.get());
 			} else {

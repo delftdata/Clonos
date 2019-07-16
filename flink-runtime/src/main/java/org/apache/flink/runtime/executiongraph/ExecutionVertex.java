@@ -48,8 +48,6 @@ import org.apache.flink.runtime.jobmaster.LogicalSlot;
 import org.apache.flink.runtime.jobmaster.slotpool.SlotProvider;
 import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
 import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
-import org.apache.flink.runtime.util.clock.Clock;
-import org.apache.flink.runtime.util.clock.SystemClock;
 import org.apache.flink.runtime.util.EvictingBoundedList;
 import org.apache.flink.types.Either;
 import org.apache.flink.util.ExceptionUtils;
@@ -73,6 +71,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 import static org.apache.flink.runtime.execution.ExecutionState.FINISHED;
+import static org.apache.flink.runtime.execution.ExecutionState.RUNNING;
 
 /**
  * The ExecutionVertex is a parallel subtask of the execution. It may be executed once, or several times, each of
@@ -100,18 +99,13 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 
 	private final Time timeout;
 
-	/** Use clock to track attempts to kill the current execution in face of an error
-	 *  depending on relative time of occurence.
-	 */
-	private final Clock clock;
-
 	/** If two subsequent fail signals for an execution span less than the following time range
 	 *  then it's probably the same signal triggered by many neighbors.
 	 */
 	private final Time failSignalTimeSpan;
 
-	/** When in relative time given by the above clock was the last fail signal recorded. */
-	private long lastKillSignal;
+	/** When in absolute time was the last fail signal recorded. */
+	private int lastKillAttemptNumber;
 
 	/** The name in the format "myTask (2/7)", cached to avoid frequent string concatenations. */
 	private final String taskNameWithSubtask;
@@ -206,11 +200,9 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 
 		this.timeout = timeout;
 
-		this.clock = SystemClock.getInstance();
-
 		this.failSignalTimeSpan = Time.milliseconds(2000L);
 
-		this.lastKillSignal = -1L;
+		this.lastKillAttemptNumber = -1;
 	}
 
 
@@ -801,14 +793,25 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 	}
 
 	public boolean concurrentFailExecutionSignal() {
-		final long currentRelativeTimeMillis = clock.relativeTimeMillis();
-		if (lastKillSignal == -1 ||
-				currentRelativeTimeMillis - lastKillSignal > failSignalTimeSpan.toMilliseconds()) {
-			lastKillSignal = currentRelativeTimeMillis;
-			LOG.debug("Allow fail current execution {}.", currentExecution);
-			return false;
+		final long currentTimeMillis = System.currentTimeMillis();
+		final int currentAttemptNumber = currentExecution.getAttemptNumber();
+		final long currentRunningTime = currentExecution.getStateTimestamp(RUNNING);
+
+		if (currentExecution.getState() == RUNNING &&
+				// The following condition states that a standby execution is running
+				// at least for a minimal amount of time. This is an empirical rule
+				// to try and rule out subsequent fail signals that arrive late.
+				(currentAttemptNumber > 0 && currentTimeMillis - currentRunningTime >
+									failSignalTimeSpan.toMilliseconds() ||
+				currentAttemptNumber == 0)) {
+			// Ignore subsequent signals for failing the same execution instance.
+			if (currentAttemptNumber > lastKillAttemptNumber) {
+				lastKillAttemptNumber = currentAttemptNumber;
+				LOG.debug("Allow to fail current execution {}.", currentExecution);
+				return false;
+			}
 		}
-		LOG.debug("Ignore subsequent signal to fail current execution of vertex {}.", this);
+		LOG.debug("Ignore subsequent signal to fail current execution {} of vertex {}.", currentExecution, this);
 		return true;
 	}
 
