@@ -20,6 +20,7 @@ package org.apache.flink.streaming.examples.ml;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.environment.CheckpointConfig;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.AssignerWithPunctuatedWatermarks;
 import org.apache.flink.streaming.api.functions.co.CoMapFunction;
@@ -61,6 +62,8 @@ public class IncrementalLearningSkeleton {
 		final ParameterTool params = ParameterTool.fromArgs(args);
 
 		StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+		env.enableCheckpointing(2000L);
+		env.getCheckpointConfig().enableExternalizedCheckpoints(CheckpointConfig.ExternalizedCheckpointCleanup.RETAIN_ON_CANCELLATION);
 		env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
 
 		DataStream<Integer> trainingData = env.addSource(new FiniteTrainingDataSource());
@@ -115,7 +118,7 @@ public class IncrementalLearningSkeleton {
 		private Integer getNewData() throws InterruptedException {
 			Thread.sleep(5);
 			counter++;
-			return 1;
+			return counter;
 		}
 	}
 
@@ -141,7 +144,7 @@ public class IncrementalLearningSkeleton {
 
 		private Integer getTrainingData() throws InterruptedException {
 			counter++;
-			return 1;
+			return counter;
 		}
 	}
 
