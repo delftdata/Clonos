@@ -113,7 +113,8 @@ class SpillableSubpartitionView implements ResultSubpartitionView {
 				int numBuffers = buffers.size();
 				for (int i = 0; i < numBuffers; i++) {
 					try (BufferConsumer bufferConsumer = buffers.remove()) {
-						Buffer buffer = bufferConsumer.build();
+						// TODO: revisit the following: hard-coded input
+						Buffer buffer = bufferConsumer.build(false);
 						checkState(bufferConsumer.isFinished(), "BufferConsumer must be finished before " +
 							"spilling. Otherwise we would not be able to simply remove it from the queue. This should " +
 							"be guaranteed by creating ResultSubpartitionView only once Subpartition isFinished.");
@@ -152,7 +153,8 @@ class SpillableSubpartitionView implements ResultSubpartitionView {
 			if (isReleased.get()) {
 				return null;
 			} else if (nextBuffer != null) {
-				current = nextBuffer.build();
+				// TODO: revisit the following: hard-coded input
+				current = nextBuffer.build(false);
 				checkState(nextBuffer.isFinished(),
 					"We can only read from SpillableSubpartition after it was finished");
 

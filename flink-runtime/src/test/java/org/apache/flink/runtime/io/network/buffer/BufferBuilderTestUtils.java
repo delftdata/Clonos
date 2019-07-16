@@ -57,12 +57,12 @@ public class BufferBuilderTestUtils {
 
 	public static Buffer buildSingleBuffer(BufferBuilder bufferBuilder) {
 		try (BufferConsumer bufferConsumer = bufferBuilder.createBufferConsumer()) {
-			return bufferConsumer.build();
+			return bufferConsumer.build(false);
 		}
 	}
 
 	public static Buffer buildSingleBuffer(BufferConsumer bufferConsumer) {
-		Buffer buffer = bufferConsumer.build();
+		Buffer buffer = bufferConsumer.build(false);
 		bufferConsumer.close();
 		return buffer;
 	}

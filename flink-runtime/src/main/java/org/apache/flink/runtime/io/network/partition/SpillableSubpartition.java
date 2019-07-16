@@ -253,7 +253,8 @@ class SpillableSubpartition extends ResultSubpartition {
 
 		while (!buffers.isEmpty()) {
 			BufferConsumer bufferConsumer = buffers.getFirst();
-			Buffer buffer = bufferConsumer.build();
+			// TODO: Revisit the following: hard-coded input
+			Buffer buffer = bufferConsumer.build(false);
 			updateStatistics(buffer);
 			int bufferSize = buffer.getSize();
 			spilledBytes += bufferSize;

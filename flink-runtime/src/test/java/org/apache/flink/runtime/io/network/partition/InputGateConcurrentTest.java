@@ -224,7 +224,7 @@ public class InputGateConcurrentTest {
 		void addBufferConsumer(BufferConsumer bufferConsumer) throws Exception {
 			checkState(bufferConsumer.isFinished(), "Handling of non finished buffers is not yet implemented");
 			try {
-				channel.onBuffer(bufferConsumer.build(), seq++, -1);
+				channel.onBuffer(bufferConsumer.build(false), seq++, -1);
 			}
 			finally {
 				bufferConsumer.close();
