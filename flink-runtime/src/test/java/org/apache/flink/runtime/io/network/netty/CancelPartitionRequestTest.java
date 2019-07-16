@@ -206,6 +206,10 @@ public class CancelPartitionRequestTest {
 		}
 
 		@Override
+		public void sendFailConsumerTrigger(Throwable cause) {
+		}
+
+		@Override
 		public void notifySubpartitionConsumed() throws IOException {
 		}
 

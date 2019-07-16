@@ -116,8 +116,6 @@ public abstract class ResultSubpartition {
 
 	abstract public boolean isReleased();
 
-	abstract public void sendFailConsumerTrigger(Throwable cause);
-
 	/**
 	 * Gets the number of non-event buffers in this subpartition.
 	 *

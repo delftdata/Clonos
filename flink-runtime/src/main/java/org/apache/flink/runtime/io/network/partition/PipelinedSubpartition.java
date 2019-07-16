@@ -140,7 +140,6 @@ class PipelinedSubpartition extends ResultSubpartition {
 		}
 	}
 
-	@Override
 	public void sendFailConsumerTrigger(Throwable cause) {
 		consumerFailed = true;
 		parent.sendFailConsumerTrigger(index, cause);

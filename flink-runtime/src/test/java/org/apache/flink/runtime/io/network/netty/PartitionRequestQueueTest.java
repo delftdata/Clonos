@@ -407,5 +407,9 @@ public class PartitionRequestQueueTest {
 		public boolean isAvailable() {
 			return false;
 		}
+
+		@Override
+		public void sendFailConsumerTrigger(Throwable cause) {
+		}
 	}
 }

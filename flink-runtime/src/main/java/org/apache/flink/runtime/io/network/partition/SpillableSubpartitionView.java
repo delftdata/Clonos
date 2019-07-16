@@ -268,6 +268,9 @@ class SpillableSubpartitionView implements ResultSubpartitionView {
 	}
 
 	@Override
+	public void sendFailConsumerTrigger(Throwable cause) {}
+
+	@Override
 	public String toString() {
 		boolean hasSpilled = spilledView != null;
 
