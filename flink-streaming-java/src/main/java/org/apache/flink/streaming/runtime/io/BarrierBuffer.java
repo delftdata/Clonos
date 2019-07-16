@@ -198,6 +198,7 @@ public class BarrierBuffer implements CheckpointBarrierHandler {
 			}
 			else if (bufferOrEvent.getEvent().getClass() == CheckpointBarrier.class) {
 				if (!endOfStream) {
+					LOG.debug("process barrier {} for channel {}.", (CheckpointBarrier) bufferOrEvent.getEvent(), bufferOrEvent.getChannelIndex());
 					// process barriers only if there is a chance of the checkpoint completing
 					processBarrier((CheckpointBarrier) bufferOrEvent.getEvent(), bufferOrEvent.getChannelIndex());
 				}
@@ -284,6 +285,8 @@ public class BarrierBuffer implements CheckpointBarrierHandler {
 				LOG.debug("Received all barriers, triggering checkpoint {} at {}",
 						receivedBarrier.getId(), receivedBarrier.getTimestamp());
 			}
+			LOG.debug("Received all barriers, triggering checkpoint {} at {}",
+					receivedBarrier.getId(), receivedBarrier.getTimestamp());
 
 			releaseBlocksAndResetBarriers();
 			notifyCheckpoint(receivedBarrier);
@@ -313,6 +316,7 @@ public class BarrierBuffer implements CheckpointBarrierHandler {
 				if (LOG.isDebugEnabled()) {
 					LOG.debug("Checkpoint {} canceled, aborting alignment", barrierId);
 				}
+				LOG.debug("Checkpoint {} canceled, aborting alignment", barrierId);
 
 				releaseBlocksAndResetBarriers();
 				notifyAbortOnCancellationBarrier(barrierId);
@@ -351,6 +355,7 @@ public class BarrierBuffer implements CheckpointBarrierHandler {
 			if (LOG.isDebugEnabled()) {
 				LOG.debug("Checkpoint {} canceled, skipping alignment", barrierId);
 			}
+			LOG.debug("Checkpoint {} canceled, skipping alignment", barrierId);
 
 			notifyAbortOnCancellationBarrier(barrierId);
 		}
@@ -448,6 +453,7 @@ public class BarrierBuffer implements CheckpointBarrierHandler {
 		if (LOG.isDebugEnabled()) {
 			LOG.debug("Starting stream alignment for checkpoint " + checkpointId + '.');
 		}
+		LOG.debug("Starting stream alignment for checkpoint " + checkpointId + '.');
 	}
 
 	/**
@@ -474,6 +480,7 @@ public class BarrierBuffer implements CheckpointBarrierHandler {
 			if (LOG.isDebugEnabled()) {
 				LOG.debug("Received barrier from channel " + channelIndex);
 			}
+			LOG.debug("Received barrier from channel " + channelIndex);
 		}
 		else {
 			throw new IOException("Stream corrupt: Repeated barrier for same checkpoint on input " + channelIndex);
@@ -518,6 +525,8 @@ public class BarrierBuffer implements CheckpointBarrierHandler {
 			LOG.debug("Size of buffered data: {} bytes",
 					currentBuffered == null ? 0L : currentBuffered.size());
 		}
+		LOG.debug("Size of buffered data: {} bytes",
+				currentBuffered == null ? 0L : currentBuffered.size());
 
 		// the next barrier that comes must assume it is the first
 		numBarriersReceived = 0;

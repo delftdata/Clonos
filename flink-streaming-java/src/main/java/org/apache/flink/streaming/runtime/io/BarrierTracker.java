@@ -154,6 +154,7 @@ public class BarrierTracker implements CheckpointBarrierHandler {
 		if (LOG.isDebugEnabled()) {
 			LOG.debug("Received barrier for checkpoint {} from channel {}", barrierId, channelIndex);
 		}
+		LOG.debug("Received barrier for checkpoint {} from channel {}", barrierId, channelIndex);
 
 		// find the checkpoint barrier in the queue of pending barriers
 		CheckpointBarrierCount cbc = null;
@@ -183,6 +184,7 @@ public class BarrierTracker implements CheckpointBarrierHandler {
 					if (LOG.isDebugEnabled()) {
 						LOG.debug("Received all barriers for checkpoint {}", barrierId);
 					}
+					LOG.debug("Received all barriers for checkpoint {}", barrierId);
 
 					notifyCheckpoint(receivedBarrier.getId(), receivedBarrier.getTimestamp(), receivedBarrier.getCheckpointOptions());
 				}
@@ -211,6 +213,7 @@ public class BarrierTracker implements CheckpointBarrierHandler {
 		if (LOG.isDebugEnabled()) {
 			LOG.debug("Received cancellation barrier for checkpoint {} from channel {}", checkpointId, channelIndex);
 		}
+		LOG.debug("Received cancellation barrier for checkpoint {} from channel {}", checkpointId, channelIndex);
 
 		// fast path for single channel trackers
 		if (totalNumberOfInputChannels == 1) {

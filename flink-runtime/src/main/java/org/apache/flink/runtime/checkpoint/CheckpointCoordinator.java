@@ -435,6 +435,7 @@ public class CheckpointCoordinator {
 						currentPeriodicTrigger.cancel(false);
 						currentPeriodicTrigger = null;
 					}
+					LOG.debug("Trigger checkpoint aborted: too many concurrent checkpoints.");
 					return new CheckpointTriggerResult(CheckpointDeclineReason.TOO_MANY_CONCURRENT_CHECKPOINTS);
 				}
 
@@ -452,6 +453,7 @@ public class CheckpointCoordinator {
 							new ScheduledTrigger(),
 							durationTillNextMillis, baseInterval, TimeUnit.MILLISECONDS);
 
+					LOG.debug("Trigger checkpoint aborted: minimum time between checkpoints.");
 					return new CheckpointTriggerResult(CheckpointDeclineReason.MINIMUM_TIME_BETWEEN_CHECKPOINTS);
 				}
 			}
@@ -771,7 +773,6 @@ public class CheckpointCoordinator {
 							message.getTaskExecutionId(), message.getJob());
 
 						discardSubtaskState(message.getJob(), message.getTaskExecutionId(), message.getCheckpointId(), message.getSubtaskState());
-
 						break;
 					case DISCARDED:
 						LOG.warn("Could not acknowledge the checkpoint {} for task {} of job {}, " +
