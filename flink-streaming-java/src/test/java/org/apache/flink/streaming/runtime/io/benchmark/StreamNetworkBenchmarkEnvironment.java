@@ -287,11 +287,22 @@ public class StreamNetworkBenchmarkEnvironment<T extends IOReadableWritable> {
 
 		@Override
 		public void failExternally(Throwable cause) {}
+
+		@Override
+		public void triggerFailProducer(
+			IntermediateDataSetID intermediateDataSetId,
+			ResultPartitionID resultPartitionId,
+			Throwable cause) {}
+
 	}
 
 	private static final class NoOpResultPartitionConsumableNotifier implements ResultPartitionConsumableNotifier {
 
 		@Override
 		public void notifyPartitionConsumable(JobID j, ResultPartitionID p, TaskActions t) {}
+
+		@Override
+		public void requestFailConsumer(ResultPartitionID partitionId, int subpartitionIndex, Throwable cause, TaskActions taskActions) {}
+
 	}
 }

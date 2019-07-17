@@ -25,6 +25,7 @@ import org.apache.flink.runtime.instance.ActorGateway;
 import org.apache.flink.runtime.io.network.netty.PartitionProducerStateChecker;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
+import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.messages.JobManagerMessages;
 import org.apache.flink.util.Preconditions;
 
@@ -63,6 +64,16 @@ public class ActorGatewayPartitionProducerStateChecker implements PartitionProdu
 			.mapTo(ClassTag$.MODULE$.<ExecutionState>apply(ExecutionState.class));
 
 		return FutureUtils.toJava(futureResponse);
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> triggerFailProducer(
+			final IntermediateDataSetID intermediateDataSetId,
+			final ResultPartitionID resultPartitionId,
+			final Throwable cause) {
+
+		// TODO: revisit the following: hard-coded input
+		return FutureUtils.toJava(null);
 	}
 
 }
