@@ -78,6 +78,14 @@ public class SimpleAckingTaskManagerGateway implements TaskManagerGateway {
 	}
 
 	@Override
+	public CompletableFuture<Acknowledge> failTask(
+		ExecutionAttemptID executionAttemptID,
+		Throwable t,
+		Time timeout) {
+		return FutureUtils.completedExceptionally(new UnsupportedOperationException());
+	}
+
+	@Override
 	public void disconnectFromJobManager(InstanceID instanceId, Exception cause) {}
 
 	@Override

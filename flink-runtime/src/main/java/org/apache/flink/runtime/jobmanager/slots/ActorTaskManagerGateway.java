@@ -160,6 +160,16 @@ public class ActorTaskManagerGateway implements TaskManagerGateway {
 	}
 
 	@Override
+	public CompletableFuture<Acknowledge> failTask(
+		ExecutionAttemptID executionAttemptID,
+		Throwable t,
+		Time timeout) {
+
+		// TODO revisit the following: hard-coded input
+		return FutureUtils.toJava(null);
+	}
+
+	@Override
 	public CompletableFuture<Acknowledge> dispatchStateToStandbyTask(ExecutionAttemptID executionAttemptID, JobManagerTaskRestore taskRestore, Time timeout) {
 		Preconditions.checkNotNull(executionAttemptID);
 		Preconditions.checkNotNull(taskRestore);
