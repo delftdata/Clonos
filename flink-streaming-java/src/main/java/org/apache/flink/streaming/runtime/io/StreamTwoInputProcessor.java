@@ -32,6 +32,8 @@ import org.apache.flink.runtime.io.network.api.serialization.SpillingAdaptiveSpa
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.partition.consumer.BufferOrEvent;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
+import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
+import org.apache.flink.runtime.io.network.partition.consumer.UnionInputGate;
 import org.apache.flink.runtime.metrics.groups.OperatorMetricGroup;
 import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
 import org.apache.flink.runtime.plugable.DeserializationDelegate;
@@ -39,6 +41,7 @@ import org.apache.flink.runtime.plugable.NonReusingDeserializationDelegate;
 import org.apache.flink.streaming.api.CheckpointingMode;
 import org.apache.flink.streaming.api.operators.TwoInputStreamOperator;
 import org.apache.flink.streaming.api.watermark.Watermark;
+import org.apache.flink.streaming.runtime.io.RecordWriterOutput;
 import org.apache.flink.streaming.runtime.metrics.WatermarkGauge;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElementSerializer;
@@ -85,9 +88,9 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 
 	private final CheckpointBarrierHandler barrierHandler;
 
+	private final RecordWriterOutput<?>[] recordWriterOutputs;
+
 	private final Object lock;
-
-
 
 	// ---------------- Status and Watermark Valves ------------------
 
@@ -113,6 +116,8 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 	 * the watermarks and watermark statuses to the correct channel index of the correct valve.
 	 */
 	private int currentChannel = -1;
+
+	private String taskName;
 
 	private final StreamStatusMaintainer streamStatusMaintainer;
 
@@ -142,12 +147,23 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 			TwoInputStreamOperator<IN1, IN2, ?> streamOperator,
 			TaskIOMetricGroup metrics,
 			WatermarkGauge input1WatermarkGauge,
-			WatermarkGauge input2WatermarkGauge) throws IOException {
+			WatermarkGauge input2WatermarkGauge,
+			RecordWriterOutput<?>[] recordWriterOutputs) throws IOException {
 
 		final InputGate inputGate = InputGateUtil.createInputGate(inputGates1, inputGates2);
 
+		if (inputGate instanceof SingleInputGate) {
+			this.taskName = ((SingleInputGate) inputGate).getTaskName();
+		} else if (inputGate instanceof UnionInputGate) {
+			this.taskName = ((UnionInputGate) inputGate).getTaskName();
+		} else {
+			this.taskName = new String("Unknown");
+		}
+
 		this.barrierHandler = InputProcessorUtil.createCheckpointBarrierHandler(
 			checkpointedTask, checkpointMode, ioManager, inputGate, taskManagerConfig);
+
+		this.recordWriterOutputs = recordWriterOutputs;
 
 		this.lock = checkNotNull(lock);
 
@@ -201,8 +217,11 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 			}
 		}
 
+		checkReplayInFlightLog();
+
 		while (true) {
 			if (currentRecordDeserializer != null) {
+				LOG.debug("processInput() of task: {}", taskName);
 				DeserializationResult result;
 				if (currentChannel < numInputChannels1) {
 					result = currentRecordDeserializer.getNextRecord(deserializationDelegate1);
@@ -237,6 +256,7 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 							synchronized (lock) {
 								numRecordsIn.inc();
 								streamOperator.setKeyContextElement1(record);
+								LOG.debug("{}: Process element no {}: {}.", taskName, numRecordsIn.getCount(), record);
 								streamOperator.processElement1(record);
 							}
 							return true;
@@ -264,6 +284,7 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 							synchronized (lock) {
 								numRecordsIn.inc();
 								streamOperator.setKeyContextElement2(record);
+								LOG.debug("{}: Process element no {}: {}.", taskName, numRecordsIn.getCount(), record);
 								streamOperator.processElement2(record);
 							}
 							return true;
@@ -314,6 +335,13 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 
 		// cleanup the barrier handler resources
 		barrierHandler.cleanup();
+	}
+
+	private void checkReplayInFlightLog() throws Exception {
+		LOG.debug("{}: Check in-flight log for replay ({} recordWriterOutputs).", taskName, recordWriterOutputs.length);
+		for (RecordWriterOutput output : recordWriterOutputs) {
+			output.checkReplayInFlightLog();
+		}
 	}
 
 	private class ForwardingValveOutputHandler1 implements StatusWatermarkValve.ValveOutputHandler {

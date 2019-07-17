@@ -25,6 +25,7 @@ import org.apache.flink.runtime.deployment.InputChannelDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.InputGateDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.ResultPartitionLocation;
 import org.apache.flink.runtime.event.AbstractEvent;
+import org.apache.flink.runtime.event.InFlightLogRequestEvent;
 import org.apache.flink.runtime.event.TaskEvent;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.io.network.ConnectionID;
@@ -490,11 +491,18 @@ public class SingleInputGate implements InputGate {
 
 				try {
 					newChannel.requestSubpartition(consumedSubpartitionIndex);
+					LOG.debug("{}: send in-flight log request event for channel {}.",
+								owningTaskName, newChannel.getChannelIndex());
+					newChannel.sendTaskEvent(new InFlightLogRequestEvent(newChannel.getChannelIndex()));
 				} catch (IOException e) {
-					LOG.error("{}: Request subpartition for input channel {} failed. Ignoring failure and sending fail trigger for producer (chances are it is dead).",
+					LOG.error("{}: Request subpartition or send task event for input channel {} failed. Ignoring failure and sending fail trigger for producer (chances are it is dead).",
 						owningTaskName, newChannel, e);
 					triggerFailProducer(newPartitionId, e);
+				} catch (IllegalStateException e) {
+					LOG.error("{}: Send task event for input channel {} failed. Ignoring failure and sending fail trigger for producer (chances are it is dead).",
+						owningTaskName, newChannel, e);
 				}
+
 			}
 		}
 	}
@@ -630,7 +638,7 @@ public class SingleInputGate implements InputGate {
 						inputChannel.requestSubpartition(consumedSubpartitionIndex);
 					} catch (IOException e) {
 						LOG.error("{}: Connecting inputChannel {} failed. Ignoring failure and sending fail trigger to producer (chances are it is dead).",
-								owningTaskName, inputChannel);
+								owningTaskName, inputChannel, e);
 						triggerFailProducer(inputChannel.getPartitionId(), e);
 					}
 				}

@@ -40,6 +40,8 @@ import org.apache.flink.runtime.checkpoint.decline.CheckpointDeclineTaskNotReady
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.deployment.InputGateDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.ResultPartitionDeploymentDescriptor;
+import org.apache.flink.runtime.event.InFlightLogRequestEvent;
+import org.apache.flink.runtime.event.InFlightLogRequestEventListener;
 import org.apache.flink.runtime.execution.CancelTaskException;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.execution.ExecutionState;
@@ -770,6 +772,16 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 				taskManagerActions.updateTaskExecutionState(new TaskExecutionState(jobId, executionId, ExecutionState.RUNNING));
 			}
 
+			// Subscribe to consumer in-flight log requests
+			for (ResultPartition partition : producedPartitions) {
+				InFlightLogRequestEventListener iflrel =
+						new InFlightLogRequestEventListener(userCodeClassLoader);
+				network.getTaskEventDispatcher().subscribeToEvent(partition.getPartitionId(),
+						iflrel, InFlightLogRequestEvent.class);
+				LOG.debug("Set inFlightLogRequestEventListener {} for resultPartition {}.", iflrel, partition);
+				partition.setInFlightLogRequestEventListener(iflrel);
+			}
+
 			// make sure the user code classloader is accessible thread-locally
 			executingThread.setContextClassLoader(userCodeClassLoader);
 
@@ -1189,6 +1201,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		try {
 			// Invokable should be an instance of an operator class in the hierarchy of StreamTask.
 			invokable.initializeState();
+			invokable.updateInFlightLoggerCheckpointId(taskRestore.getRestoreCheckpointId());
 		} catch (NoSuchMethodException e) {
 			throw new FlinkException("Standby task has no initializeState() method; it is not an instance in the StreamTask hierarchy.", e);
 		} catch (Exception ee) {

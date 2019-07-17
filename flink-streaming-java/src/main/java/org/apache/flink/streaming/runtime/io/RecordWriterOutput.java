@@ -37,13 +37,18 @@ import org.apache.flink.util.OutputTag;
 
 import java.io.IOException;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
  * Implementation of {@link Output} that sends data using a {@link RecordWriter}.
  */
 @Internal
-public class RecordWriterOutput<OUT> implements OperatorChainOutput<OUT> {
+public class RecordWriterOutput<OUT> implements OperatorChain.WatermarkGaugeExposingOutput<StreamRecord<OUT>> {
+
+	private static final Logger LOG = LoggerFactory.getLogger(RecordWriterOutput.class);
 
 	private StreamRecordWriter<SerializationDelegate<StreamElement>> recordWriter;
 
@@ -125,7 +130,6 @@ public class RecordWriterOutput<OUT> implements OperatorChainOutput<OUT> {
 		}
 	}
 
-	@Override
 	public void emitStreamStatus(StreamStatus streamStatus) {
 		serializationDelegate.setInstance(streamStatus);
 
@@ -149,12 +153,10 @@ public class RecordWriterOutput<OUT> implements OperatorChainOutput<OUT> {
 		}
 	}
 
-	@Override
 	public void broadcastEvent(AbstractEvent event) throws IOException {
 		recordWriter.broadcastEvent(event);
 	}
 
-	@Override
 	public void flush() throws IOException {
 		recordWriter.flushAll();
 	}
@@ -168,4 +170,10 @@ public class RecordWriterOutput<OUT> implements OperatorChainOutput<OUT> {
 	public Gauge<Long> getWatermarkGauge() {
 		return watermarkGauge;
 	}
+
+	public void checkReplayInFlightLog() throws Exception {
+		LOG.debug("Check in-flight log for replay.");
+		recordWriter.checkReplayInFlightLog();
+	}
+
 }

@@ -29,6 +29,7 @@ import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
 import org.apache.flink.runtime.execution.CancelTaskException;
 import org.apache.flink.runtime.execution.Environment;
+import org.apache.flink.runtime.inflightlogging.InFlightLogger;
 import org.apache.flink.runtime.io.network.api.CancelCheckpointMarker;
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 import org.apache.flink.runtime.jobgraph.OperatorID;
@@ -43,13 +44,11 @@ import org.apache.flink.runtime.taskmanager.DispatcherThreadFactory;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.api.graph.StreamEdge;
-import org.apache.flink.streaming.api.inflightlogging.InFlightLogger;
 import org.apache.flink.streaming.api.operators.OperatorSnapshotFinalizer;
 import org.apache.flink.streaming.api.operators.OperatorSnapshotFutures;
 import org.apache.flink.streaming.api.operators.StreamOperator;
 import org.apache.flink.streaming.api.operators.StreamTaskStateInitializer;
 import org.apache.flink.streaming.api.operators.StreamTaskStateInitializerImpl;
-import org.apache.flink.streaming.runtime.io.OperatorChainOutput;
 import org.apache.flink.streaming.runtime.io.RecordWriterOutput;
 import org.apache.flink.streaming.runtime.io.StreamRecordWriter;
 import org.apache.flink.streaming.runtime.partitioner.ConfigurableStreamPartitioner;
@@ -185,8 +184,6 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 	private final List<StreamRecordWriter<SerializationDelegate<StreamRecord<OUT>>>> streamRecordWriters;
 
-	private final InFlightLogger<OUT> inFlightLogger;
-
 	// ------------------------------------------------------------------------
 
 	/**
@@ -226,7 +223,6 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			this.standbyFuture = null;
 		}
 
-		inFlightLogger = new InFlightLogger<>(configuration.getNumberOfOutputs());  //TODO check if correct configuration parameter
 	}
 
 	// ------------------------------------------------------------------------
@@ -584,8 +580,16 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		return operatorChain;
 	}
 
-	OperatorChainOutput<?>[] getStreamOutputs() {
+	RecordWriterOutput<?>[] getStreamOutputs() {
 		return operatorChain.getStreamOutputs();
+	}
+
+	List<InFlightLogger> getInFlightLoggers() {
+		List<InFlightLogger> inFlightLoggers = new ArrayList<>();
+		for (StreamRecordWriter<SerializationDelegate<StreamRecord<OUT>>> streamRecordWriter : streamRecordWriters) {
+			inFlightLoggers.add(streamRecordWriter.getInFlightLogger());
+		}
+		return inFlightLoggers;
 	}
 
 	// ------------------------------------------------------------------------
@@ -678,6 +682,13 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 				// Step (3): Take the state snapshot. This should be largely asynchronous, to not
 				//           impact progress of the streaming topology
 				checkpointState(checkpointMetaData, checkpointOptions, checkpointMetrics);
+
+				String checkpointId = String.valueOf(checkpointMetaData.getCheckpointId());
+				for (InFlightLogger inFlightLogger : getInFlightLoggers()) {
+					LOG.debug("Create slices of InFlightLogger {} for new checkpoint (previous checkpoint id is {}).", inFlightLogger, checkpointId);
+					inFlightLogger.createSlices(checkpointId);
+				}
+
 				return true;
 			}
 			else {
@@ -721,7 +732,10 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 				for (StreamOperator<?> operator : operatorChain.getAllOperators()) {
 					if (operator != null) {
 						operator.notifyCheckpointComplete(checkpointId);
-						inFlightLogger.discardSlice(checkpointId);
+						for (InFlightLogger inFlightLogger : getInFlightLoggers()) {
+							LOG.debug("Discard slices of InFlightLogger {} for checkpoint {}.", inFlightLogger, checkpointId);
+							inFlightLogger.discardSlice(String.valueOf(checkpointId));
+						}
 					}
 				}
 			}
@@ -778,6 +792,14 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			if (null != operator) {
 				operator.initializeState();
 			}
+		}
+	}
+
+	@Override
+	public void updateInFlightLoggerCheckpointId(Long checkpointIdNumber) {
+		String checkpointId = String.valueOf(checkpointIdNumber);
+		for (InFlightLogger inFlightLogger : getInFlightLoggers()) {
+			inFlightLogger.updateCheckpointId(checkpointId);
 		}
 	}
 
@@ -858,10 +880,6 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	@Override
 	public String toString() {
 		return getName();
-	}
-
-	public InFlightLogger<OUT> getInFlightLogger() {
-		return this.inFlightLogger;
 	}
 
 	// ------------------------------------------------------------------------

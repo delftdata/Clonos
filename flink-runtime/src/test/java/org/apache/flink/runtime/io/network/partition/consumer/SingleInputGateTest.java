@@ -581,12 +581,14 @@ public class SingleInputGateTest {
 			when(iterator.getNextBuffer()).thenReturn(
 				new BufferAndBacklog(new NetworkBuffer(MemorySegmentFactory.allocateUnpooledSegment(1024),
 						FreeingBufferRecycler.INSTANCE), false,0, false));
-			final ResultPartitionManager partitionManager = mock(ResultPartitionManager.class);
+			// mock object
+			final ResultPartitionManager partitionManager = network.getResultPartitionManager();
 			when(partitionManager.createSubpartitionView(
 				any(ResultPartitionID.class),
 				anyInt(),
 				any(BufferAvailabilityListener.class))).thenReturn(iterator);
-			final TaskEventDispatcher taskEventDispatcher = mock(TaskEventDispatcher.class);
+			// mock object
+			final TaskEventDispatcher taskEventDispatcher = network.getTaskEventDispatcher();
 			when(taskEventDispatcher.publish(any(ResultPartitionID.class), any(TaskEvent.class))).thenReturn(true);
 
 			addLocalInputChannel(network, inputGate, localResultPartitionId1, 0);
@@ -669,12 +671,14 @@ public class SingleInputGateTest {
 			when(iterator.getNextBuffer()).thenReturn(
 				new BufferAndBacklog(new NetworkBuffer(MemorySegmentFactory.allocateUnpooledSegment(1024),
 						FreeingBufferRecycler.INSTANCE), false,0, false));
-			final ResultPartitionManager partitionManager = mock(ResultPartitionManager.class);
+			// mock object
+			final ResultPartitionManager partitionManager = network.getResultPartitionManager();
 			when(partitionManager.createSubpartitionView(
 				any(ResultPartitionID.class),
 				anyInt(),
 				any(BufferAvailabilityListener.class))).thenReturn(iterator);
-			final TaskEventDispatcher taskEventDispatcher = mock(TaskEventDispatcher.class);
+			// mock object
+			final TaskEventDispatcher taskEventDispatcher = network.getTaskEventDispatcher();
 			when(taskEventDispatcher.publish(any(ResultPartitionID.class), any(TaskEvent.class))).thenReturn(true);
 			final ConnectionID connectionId = new ConnectionID(new InetSocketAddress("localhost", 5000), 0);
 
@@ -687,7 +691,7 @@ public class SingleInputGateTest {
 			assertThat(inputGate.getInputChannels().get(remoteResultPartitionId2.getPartitionId()),
 				is(instanceOf((RemoteInputChannel.class))));
 
-			// Trigger conversion to remote input channel from local input channel
+			// Trigger conversion to local input channel from remote input channel
 			final ExecutionAttemptID localExecutionAttemptId = new ExecutionAttemptID();
 			final ResultPartitionID localResultPartitionId = new ResultPartitionID(intermediateResultPartitionId1,
 					localExecutionAttemptId);
@@ -708,7 +712,7 @@ public class SingleInputGateTest {
 			assertThat(inputGate.getInputChannels().get(remoteResultPartitionId2.getPartitionId()),
 				is(instanceOf((RemoteInputChannel.class))));
 
-			// Trigger update to new local input channel from existing local input channel
+			// Trigger update to new remote input channel from existing remote input channel
 			final ExecutionAttemptID remoteExecutionAttemptId = new ExecutionAttemptID();
 			final ResultPartitionID newRemoteResultPartitionId = new ResultPartitionID(intermediateResultPartitionId2,
 					remoteExecutionAttemptId);
@@ -742,8 +746,8 @@ public class SingleInputGateTest {
 		return new NetworkEnvironment(
 			spy(new NetworkBufferPool(100, 32)),
 			mock(NettyConnectionManager.class),
-			new ResultPartitionManager(),
-			new TaskEventDispatcher(),
+			mock(ResultPartitionManager.class),
+			mock(TaskEventDispatcher.class),
 			new KvStateRegistry(),
 			null,
 			null,

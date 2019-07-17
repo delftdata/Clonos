@@ -22,12 +22,15 @@ import org.apache.flink.core.io.IOReadableWritable;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.SimpleCounter;
 import org.apache.flink.runtime.event.AbstractEvent;
+import org.apache.flink.runtime.inflightlogging.InFlightLogger;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
 import org.apache.flink.runtime.io.network.api.serialization.RecordSerializer;
 import org.apache.flink.runtime.io.network.api.serialization.SpanningRecordSerializer;
 import org.apache.flink.runtime.io.network.buffer.BufferBuilder;
 import org.apache.flink.runtime.io.network.buffer.BufferConsumer;
+import org.apache.flink.runtime.io.network.partition.ResultPartition;
 import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
+import org.apache.flink.runtime.plugable.SerializationDelegate;
 import org.apache.flink.util.XORShiftRandom;
 
 import org.slf4j.Logger;
@@ -76,6 +79,8 @@ public class RecordWriter<T extends IOReadableWritable> {
 
 	private Counter numBytesOut = new SimpleCounter();
 
+	private final InFlightLogger<T, ?> inFlightLogger;
+
 	public RecordWriter(ResultPartitionWriter writer) {
 		this(writer, new RoundRobinChannelSelector<T>());
 	}
@@ -91,6 +96,8 @@ public class RecordWriter<T extends IOReadableWritable> {
 		this.channelSelector = channelSelector;
 
 		this.numChannels = writer.getNumberOfSubpartitions();
+
+		this.inFlightLogger = new InFlightLogger<>(this.numChannels);
 
 		/*
 		 * The runtime exposes a channel abstraction for the produced results
@@ -132,6 +139,16 @@ public class RecordWriter<T extends IOReadableWritable> {
 		RecordSerializer<T> serializer = serializers[targetChannel];
 
 		SerializationResult result = serializer.addRecord(record);
+
+		if (!inFlightLogger.replaying()) {
+			if (record instanceof SerializationDelegate && targetPartition instanceof ResultPartition) {
+				LOG.debug("Log record {} of task {} for channel {} to inFLightLogger.", ((SerializationDelegate) record).getInstance(), ((ResultPartition) targetPartition).getTaskName(), targetChannel);
+			} else {
+				LOG.debug("Log record {} of partition {} for channel {} to inFLightLogger.", record, targetPartition, targetChannel);
+			}
+		}
+
+		inFlightLogger.logRecord(record, targetChannel);
 
 		while (result.isFullBuffer()) {
 			if (tryFinishCurrentBufferBuilder(targetChannel, serializer)) {
@@ -225,4 +242,61 @@ public class RecordWriter<T extends IOReadableWritable> {
 			bufferBuilders[targetChannel] = Optional.empty();
 		}
 	}
+
+	public InFlightLogger getInFlightLogger() {
+		return inFlightLogger;
+	}
+
+	public void checkReplayInFlightLog() throws Exception {
+		LOG.debug("Check for in-flight log request.");
+		if (inFlightLogRequestSignalled()) {
+			int channelIndex = getInFlightLogRequestSignalledChannel();
+			int replayCounter = 0;
+			LOG.debug("In-flight log request has been signalled for channel {}.", channelIndex);
+			Iterable<T> records = inFlightLogger.getReplayLog(channelIndex);
+
+			LOG.debug("Start to replay records.");
+
+			for (T record : records) {
+				if (targetPartition instanceof ResultPartition && record instanceof SerializationDelegate) {
+					LOG.debug("{}: Replay record at pos {}: {} of task {}.", inFlightLogger, replayCounter, ((SerializationDelegate) record).getInstance(), ((ResultPartition) targetPartition).getTaskName());
+				} else {
+					LOG.debug("{}: Replay record at pos {}: {} of partition {}.", inFlightLogger, replayCounter, record, targetPartition);
+				}
+				sendToTarget(record, channelIndex);
+				replayCounter++;
+			}
+
+			LOG.debug("Replaying {} records completed. Reset in-flight log request flag.", replayCounter);
+			resetInFlightLogRequestSignalled();
+		}
+	}
+
+	private boolean inFlightLogRequestSignalled() throws IOException {
+		if (targetPartition instanceof ResultPartition) {
+			ResultPartition targetResultPartition = (ResultPartition) targetPartition;
+			return targetResultPartition.inFlightLogRequestSignalled();
+		} else {
+			throw new IOException("Unable to check whether in-flight log request is received for partition of type " + targetPartition + ".");
+		}
+	}
+
+	private int getInFlightLogRequestSignalledChannel() throws IOException {
+		if (targetPartition instanceof ResultPartition) {
+			ResultPartition targetResultPartition = (ResultPartition) targetPartition;
+			return targetResultPartition.getInFlightLogRequestSignalledChannel();
+		} else {
+			throw new IOException("Unable to get in-flight log request signalled channel for partition of type " + targetPartition + ".");
+		}
+	}
+
+	private void resetInFlightLogRequestSignalled() throws IOException {
+		if (targetPartition instanceof ResultPartition) {
+			ResultPartition targetResultPartition = (ResultPartition) targetPartition;
+			targetResultPartition.resetInFlightLogRequestSignalled();
+		} else {
+			throw new IOException("Unable to reset in-flight log request flag for partition of type " + targetPartition + ".");
+		}
+	}
+
 }

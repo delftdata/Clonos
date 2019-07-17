@@ -313,13 +313,27 @@ public class PendingCheckpoint {
 				return TaskAcknowledgeResult.DISCARDED;
 			}
 
-			final ExecutionVertex vertex = notYetAcknowledgedTasks.remove(executionAttemptId);
+			ExecutionVertex vertex = notYetAcknowledgedTasks.remove(executionAttemptId);
 
 			if (vertex == null) {
 				if (acknowledgedTasks.contains(executionAttemptId)) {
 					return TaskAcknowledgeResult.DUPLICATE;
 				} else {
-					return TaskAcknowledgeResult.UNKNOWN;
+					// Check again because a new (standby) execution instance may be running.
+					LOG.debug("Check whether executionAttemptId {} is fresh.", executionAttemptId);
+					for (Map.Entry<ExecutionAttemptID, ExecutionVertex> attemptAndVertex : notYetAcknowledgedTasks.entrySet()) {
+						LOG.debug("Check vertex {} (executionAttemptId {}) with keyed executionAttemptId {}.", attemptAndVertex.getValue(), attemptAndVertex.getValue().getCurrentExecutionAttempt().getAttemptId(), attemptAndVertex.getKey());
+						if (attemptAndVertex.getValue().getCurrentExecutionAttempt().getAttemptId().toString().equals(executionAttemptId.toString())) {
+							LOG.debug("ExecutionAttemptID {} matched {}.", executionAttemptId, attemptAndVertex.getValue());
+							ExecutionAttemptID previousExecutionAttemptId = attemptAndVertex.getKey();
+							vertex = notYetAcknowledgedTasks.remove(previousExecutionAttemptId);
+							acknowledgedTasks.add(previousExecutionAttemptId);
+							break;
+						}
+					}
+					if (vertex == null) {
+						return TaskAcknowledgeResult.UNKNOWN;
+					}
 				}
 			} else {
 				acknowledgedTasks.add(executionAttemptId);

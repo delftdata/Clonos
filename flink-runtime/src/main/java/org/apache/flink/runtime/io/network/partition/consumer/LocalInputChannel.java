@@ -224,6 +224,7 @@ public class LocalInputChannel extends InputChannel implements BufferAvailabilit
 
 	@Override
 	void sendTaskEvent(TaskEvent event) throws IOException {
+		LOG.debug("Send task event {} from channel {}.", event, this);
 		checkError();
 		checkState(subpartitionView != null, "Tried to send task event to producer before requesting the subpartition.");
 

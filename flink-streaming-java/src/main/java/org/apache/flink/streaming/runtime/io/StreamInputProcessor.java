@@ -41,6 +41,7 @@ import org.apache.flink.runtime.plugable.NonReusingDeserializationDelegate;
 import org.apache.flink.streaming.api.CheckpointingMode;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.api.watermark.Watermark;
+import org.apache.flink.streaming.runtime.io.RecordWriterOutput;
 import org.apache.flink.streaming.runtime.metrics.WatermarkGauge;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElementSerializer;
@@ -84,6 +85,8 @@ public class StreamInputProcessor<IN> {
 
 	private final CheckpointBarrierHandler barrierHandler;
 
+	private final RecordWriterOutput<?>[] recordWriterOutputs;
+
 	private final Object lock;
 
 	// ---------------- Status and Watermark Valve ------------------
@@ -125,7 +128,8 @@ public class StreamInputProcessor<IN> {
 			StreamStatusMaintainer streamStatusMaintainer,
 			OneInputStreamOperator<IN, ?> streamOperator,
 			TaskIOMetricGroup metrics,
-			WatermarkGauge watermarkGauge) throws IOException {
+			WatermarkGauge watermarkGauge,
+			RecordWriterOutput<?>[] recordWriterOutputs) throws IOException {
 
 		InputGate inputGate = InputGateUtil.createInputGate(inputGates);
 
@@ -139,6 +143,8 @@ public class StreamInputProcessor<IN> {
 
 		this.barrierHandler = InputProcessorUtil.createCheckpointBarrierHandler(
 			checkpointedTask, checkpointMode, ioManager, inputGate, taskManagerConfig);
+
+		this.recordWriterOutputs = recordWriterOutputs;
 
 		this.lock = checkNotNull(lock);
 
@@ -179,6 +185,8 @@ public class StreamInputProcessor<IN> {
 			}
 		}
 
+		checkReplayInFlightLog();
+
 		while (true) {
 			if (currentRecordDeserializer != null) {
 				LOG.debug("processInput() of task: {}", taskName);
@@ -212,7 +220,7 @@ public class StreamInputProcessor<IN> {
 						synchronized (lock) {
 							numRecordsIn.inc();
 							streamOperator.setKeyContextElement1(record);
-							LOG.debug("Process element no {}: {}.", numRecordsIn, record);
+							LOG.debug("{}: Process element no {}: {}.", taskName, numRecordsIn.getCount(), record);
 							streamOperator.processElement(record);
 						}
 						return true;
@@ -258,6 +266,13 @@ public class StreamInputProcessor<IN> {
 
 		// cleanup the barrier handler resources
 		barrierHandler.cleanup();
+	}
+
+	private void checkReplayInFlightLog() throws Exception {
+		LOG.debug("{}: Check in-flight log for replay ({} recordWriterOutputs).", taskName, recordWriterOutputs.length);
+		for (RecordWriterOutput output : recordWriterOutputs) {
+			output.checkReplayInFlightLog();
+		}
 	}
 
 	private class ForwardingValveOutputHandler implements StatusWatermarkValve.ValveOutputHandler {

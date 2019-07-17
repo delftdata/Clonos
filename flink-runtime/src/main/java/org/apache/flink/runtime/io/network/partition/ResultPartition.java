@@ -19,6 +19,8 @@
 package org.apache.flink.runtime.io.network.partition;
 
 import org.apache.flink.api.common.JobID;
+import org.apache.flink.runtime.event.InFlightLogRequestEvent;
+import org.apache.flink.runtime.event.InFlightLogRequestEventListener;
 import org.apache.flink.runtime.executiongraph.IntermediateResultPartition;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
@@ -97,6 +99,8 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 	private final ResultPartitionManager partitionManager;
 
 	private final ResultPartitionConsumableNotifier partitionConsumableNotifier;
+
+	private InFlightLogRequestEventListener inFlightLogRequestEventListener;
 
 	public final int numTargetKeyGroups;
 
@@ -239,6 +243,29 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 	public ResultPartitionType getPartitionType() {
 		return partitionType;
 	}
+
+	public void setInFlightLogRequestEventListener(InFlightLogRequestEventListener iflrel) {
+		this.inFlightLogRequestEventListener = iflrel;
+	}
+
+	public boolean inFlightLogRequestSignalled() {
+		boolean inFlightLogRequestSignalled = false;
+		try {
+			inFlightLogRequestSignalled = inFlightLogRequestEventListener.inFlightLogRequestSignalled();
+		} catch (NullPointerException e) {
+			LOG.error("Requested inFlightLogRequestEventListener, but none has been set for resultPartition {}. Caught exception: {}", this, e);
+		}
+		return inFlightLogRequestSignalled;
+	}
+
+	public int getInFlightLogRequestSignalledChannel() {
+		return inFlightLogRequestEventListener.getInFlightLogRequestSignalledChannel();
+	}
+
+	public void resetInFlightLogRequestSignalled() {
+		inFlightLogRequestEventListener.resetInFlightLogRequestSignalled();
+	}
+
 
 	// ------------------------------------------------------------------------
 

@@ -37,12 +37,10 @@ import org.apache.flink.streaming.api.collector.selector.DirectedOutput;
 import org.apache.flink.streaming.api.collector.selector.OutputSelector;
 import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.api.graph.StreamEdge;
-import org.apache.flink.streaming.api.inflightlogging.InFlightLoggingRecordWriterOutputWrapper;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.api.operators.Output;
 import org.apache.flink.streaming.api.operators.StreamOperator;
 import org.apache.flink.streaming.api.watermark.Watermark;
-import org.apache.flink.streaming.runtime.io.OperatorChainOutput;
 import org.apache.flink.streaming.runtime.io.RecordWriterOutput;
 import org.apache.flink.streaming.runtime.io.StreamRecordWriter;
 import org.apache.flink.streaming.runtime.metrics.WatermarkGauge;
@@ -82,7 +80,7 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 
 	private final StreamOperator<?>[] allOperators;
 
-	private final OperatorChainOutput<?>[] streamOutputs;
+	private final RecordWriterOutput<?>[] streamOutputs;
 
 	private final WatermarkGaugeExposingOutput<StreamRecord<OUT>> chainEntryPoint;
 
@@ -111,21 +109,22 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 		// create the final output stream writers
 		// we iterate through all the out edges from this job vertex and create a stream output
 		List<StreamEdge> outEdgesInOrder = configuration.getOutEdgesInOrder(userCodeClassloader);
-		Map<StreamEdge, OperatorChainOutput<?>> streamOutputMap = new HashMap<>(outEdgesInOrder.size());
-		this.streamOutputs = new OperatorChainOutput<?>[outEdgesInOrder.size()];
+		Map<StreamEdge, RecordWriterOutput<?>> streamOutputMap = new HashMap<>(outEdgesInOrder.size());
+		this.streamOutputs = new RecordWriterOutput<?>[outEdgesInOrder.size()];
 
 		// from here on, we need to make sure that the output writers are shut down again on failure
 		boolean success = false;
 		try {
 			for (int i = 0; i < outEdgesInOrder.size(); i++) {
 				StreamEdge outEdge = outEdgesInOrder.get(i);
-				OperatorChainOutput<OUT> streamOutput = createStreamOutput(
+
+				RecordWriterOutput<?> streamOutput = createStreamOutput(
 					streamRecordWriters.get(i),
 					outEdge,
 					chainedConfigs.get(outEdge.getSourceId()),
 					containingTask.getEnvironment());
 
-				this.streamOutputs[i] = new InFlightLoggingRecordWriterOutputWrapper<OUT>(streamOutput,0,containingTask.getInFlightLogger());
+				this.streamOutputs[i] = streamOutput;
 				streamOutputMap.put(outEdge, streamOutput);
 			}
 
@@ -157,7 +156,7 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 			// make sure we clean up after ourselves in case of a failure after acquiring
 			// the first resources
 			if (!success) {
-				for (OperatorChainOutput<?> output : this.streamOutputs) {
+				for (RecordWriterOutput<?> output : this.streamOutputs) {
 					if (output != null) {
 						output.close();
 					}
@@ -190,7 +189,7 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 			this.streamStatus = status;
 
 			// try and forward the stream status change to all outgoing connections
-			for (OperatorChainOutput<?> streamOutput : streamOutputs) {
+			for (RecordWriterOutput<?> streamOutput : streamOutputs) {
 				streamOutput.emitStreamStatus(status);
 			}
 		}
@@ -198,14 +197,14 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 
 	public void broadcastCheckpointBarrier(long id, long timestamp, CheckpointOptions checkpointOptions) throws IOException {
 		CheckpointBarrier barrier = new CheckpointBarrier(id, timestamp, checkpointOptions);
-		for (OperatorChainOutput<?> streamOutput : streamOutputs) {
+		for (RecordWriterOutput<?> streamOutput : streamOutputs) {
 			streamOutput.broadcastEvent(barrier);
 		}
 	}
 
 	public void broadcastCheckpointCancelMarker(long id) throws IOException {
 		CancelCheckpointMarker barrier = new CancelCheckpointMarker(id);
-		for (OperatorChainOutput<?> streamOutput : streamOutputs) {
+		for (RecordWriterOutput<?> streamOutput : streamOutputs) {
 			streamOutput.broadcastEvent(barrier);
 		}
 	}
@@ -222,7 +221,7 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 		}
 	}
 
-	public OperatorChainOutput<?>[] getStreamOutputs() {
+	public RecordWriterOutput<?>[] getStreamOutputs() {
 		return streamOutputs;
 	}
 
@@ -242,7 +241,7 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 	 * @throws IOException Thrown, if the buffered data cannot be pushed into the output streams.
 	 */
 	public void flushOutputs() throws IOException {
-		for (OperatorChainOutput<?> streamOutput : getStreamOutputs()) {
+		for (RecordWriterOutput<?> streamOutput : getStreamOutputs()) {
 			streamOutput.flush();
 		}
 	}
@@ -255,7 +254,7 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 	 * <p>This method should never fail.
 	 */
 	public void releaseOutputs() {
-		for (OperatorChainOutput<?> streamOutput : streamOutputs) {
+		for (RecordWriterOutput<?> streamOutput : streamOutputs) {
 			streamOutput.close();
 		}
 	}
@@ -277,7 +276,7 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 			StreamConfig operatorConfig,
 			Map<Integer, StreamConfig> chainedConfigs,
 			ClassLoader userCodeClassloader,
-			Map<StreamEdge, OperatorChainOutput<?>> streamOutputs,
+			Map<StreamEdge, RecordWriterOutput<?>> streamOutputs,
 			List<StreamOperator<?>> allOperators) {
 		List<Tuple2<WatermarkGaugeExposingOutput<StreamRecord<T>>, StreamEdge>> allOutputs = new ArrayList<>(4);
 
@@ -354,7 +353,7 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 			StreamConfig operatorConfig,
 			Map<Integer, StreamConfig> chainedConfigs,
 			ClassLoader userCodeClassloader,
-			Map<StreamEdge, OperatorChainOutput<?>> streamOutputs,
+			Map<StreamEdge, RecordWriterOutput<?>> streamOutputs,
 			List<StreamOperator<?>> allOperators,
 			OutputTag<IN> outputTag) {
 		// create the output that the operator writes to first. this may recursively create more operators
