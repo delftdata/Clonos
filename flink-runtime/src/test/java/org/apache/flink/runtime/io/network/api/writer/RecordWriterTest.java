@@ -401,6 +401,11 @@ public class RecordWriterTest {
 		}
 
 		@Override
+		public String getTaskName() {
+			return null;
+		}
+
+		@Override
 		public BufferProvider getBufferProvider() {
 			return bufferProvider;
 		}
@@ -455,6 +460,11 @@ public class RecordWriterTest {
 
 		private RecyclingPartitionWriter(BufferProvider bufferProvider) {
 			this.bufferProvider = bufferProvider;
+		}
+
+		@Override
+		public String getTaskName() {
+			return null;
 		}
 
 		@Override

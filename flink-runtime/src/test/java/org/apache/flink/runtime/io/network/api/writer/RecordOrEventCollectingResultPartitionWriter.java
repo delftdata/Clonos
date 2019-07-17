@@ -75,4 +75,9 @@ public class RecordOrEventCollectingResultPartitionWriter<T> extends AbstractCol
 			output.add(event);
 		}
 	}
+
+	@Override
+	public String getTaskName() {
+		return null;
+	}
 }

@@ -61,4 +61,10 @@ public class RecordCollectingResultPartitionWriter extends AbstractCollectingRes
 			}
 		}
 	}
+
+	@Override
+	public String getTaskName() {
+		return null;
+	}
+
 }
