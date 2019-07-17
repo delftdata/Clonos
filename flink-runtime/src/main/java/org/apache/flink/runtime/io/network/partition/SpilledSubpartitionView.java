@@ -233,6 +233,9 @@ class SpilledSubpartitionView implements ResultSubpartitionView, NotificationLis
 	}
 
 	@Override
+	public void sendFailConsumerTrigger(Throwable cause) {}
+
+	@Override
 	public String toString() {
 		return String.format("SpilledSubpartitionView(index: %d, buffers: %d) of ResultPartition %s",
 			parent.index,
