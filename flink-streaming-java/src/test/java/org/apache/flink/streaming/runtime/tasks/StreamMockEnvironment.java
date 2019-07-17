@@ -47,6 +47,7 @@ import org.apache.flink.runtime.operators.testutils.MockInputSplitProvider;
 import org.apache.flink.runtime.query.KvStateRegistry;
 import org.apache.flink.runtime.query.TaskKvStateRegistry;
 import org.apache.flink.runtime.state.TaskStateManager;
+import org.apache.flink.runtime.taskmanager.Task;
 import org.apache.flink.runtime.taskmanager.TaskManagerRuntimeInfo;
 import org.apache.flink.runtime.util.TestingTaskManagerRuntimeInfo;
 import org.apache.flink.util.Preconditions;
@@ -191,6 +192,11 @@ public class StreamMockEnvironment implements Environment {
 	@Override
 	public Configuration getTaskConfiguration() {
 		return this.taskConfiguration;
+	}
+
+	@Override
+	public Task getContainingTask() {
+		return null;
 	}
 
 	@Override

@@ -46,6 +46,7 @@ import org.apache.flink.runtime.query.KvStateRegistry;
 import org.apache.flink.runtime.query.TaskKvStateRegistry;
 import org.apache.flink.runtime.state.TaskStateManager;
 import org.apache.flink.runtime.taskmanager.TaskManagerRuntimeInfo;
+import org.apache.flink.runtime.taskmanager.Task;
 import org.apache.flink.runtime.util.TestingTaskManagerRuntimeInfo;
 import org.apache.flink.types.Record;
 import org.apache.flink.util.MutableObjectIterator;
@@ -337,5 +338,10 @@ public class MockEnvironment implements Environment, AutoCloseable {
 
 	public Optional<Throwable> getActualExternalFailureCause() {
 		return actualExternalFailureCause;
+	}
+
+	@Override
+	public Task getContainingTask() {
+		throw new UnsupportedOperationException();
 	}
 }

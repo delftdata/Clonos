@@ -43,6 +43,7 @@ import org.apache.flink.runtime.query.TaskKvStateRegistry;
 import org.apache.flink.runtime.state.TaskStateManager;
 import org.apache.flink.runtime.state.TestTaskStateManager;
 import org.apache.flink.runtime.taskmanager.TaskManagerRuntimeInfo;
+import org.apache.flink.runtime.taskmanager.Task;
 import org.apache.flink.runtime.util.TestingTaskManagerRuntimeInfo;
 
 import java.util.Collections;
@@ -85,6 +86,11 @@ public class DummyEnvironment implements Environment {
 
 	public KvStateRegistry getKvStateRegistry() {
 		return kvStateRegistry;
+	}
+
+	@Override
+	public Task getContainingTask() {
+		return null;
 	}
 
 	@Override
