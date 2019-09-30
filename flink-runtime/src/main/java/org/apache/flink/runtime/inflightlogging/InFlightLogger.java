@@ -95,7 +95,7 @@ public class InFlightLogger<T, REC> {
 		LOG.debug("Create {} slices for checkpoint no {}.", numOutgoingChannels, currentCheckpointId);
 	}
 
-	public Iterable<T> getReplayLog(int outgoingChannelIndex) throws Exception {
+	public Iterable<T> getReplayLog(int outgoingChannelIndex) throws IOException {
 
 		List<Iterator<REC>> wrappedIterators = new ArrayList<>(slicedLog.keySet().size());
 

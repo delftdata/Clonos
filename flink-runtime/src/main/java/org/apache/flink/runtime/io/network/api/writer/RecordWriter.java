@@ -247,7 +247,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 		return inFlightLogger;
 	}
 
-	public void checkReplayInFlightLog() throws Exception {
+	public void checkReplayInFlightLog() throws IOException, InterruptedException {
 		LOG.debug("Check for in-flight log request.");
 		if (inFlightLogRequestSignalled()) {
 			int channelIndex = getInFlightLogRequestSignalledChannel();
