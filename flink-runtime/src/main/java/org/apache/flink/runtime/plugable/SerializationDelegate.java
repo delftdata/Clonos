@@ -37,7 +37,8 @@ public class SerializationDelegate<T> implements IOReadableWritable {
 
 	private final TypeSerializer<T> serializer;
 
-	public SerializationDelegate(SerializationDelegate<T> serializationDelegate) {
+	/* Use a fake argument copyConstructor to disambiguate between the twoo constructors. */
+	public SerializationDelegate(SerializationDelegate<T> serializationDelegate, boolean copyConstructor) {
 		this.serializer = serializationDelegate.serializer;
 	}
 

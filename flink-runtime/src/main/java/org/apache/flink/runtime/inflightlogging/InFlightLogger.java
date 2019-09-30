@@ -56,7 +56,8 @@ public class InFlightLogger<T, REC> {
 		if (!(serializedRecord instanceof SerializationDelegate)) {
 			throw new IOException("Record is not serialized within SerializationDelegate. It can not be logged to InFlightLogger.");
 		}
-		serializationDelegate = new SerializationDelegate<REC>((SerializationDelegate) serializedRecord);
+		boolean copyConstructor = true;
+		serializationDelegate = new SerializationDelegate<REC>((SerializationDelegate) serializedRecord, copyConstructor);
 		LOG.debug("Construct new serialization delegate {} from {}.", serializationDelegate, serializedRecord);
 
 		// At the start of new epoch checkpoint id is unknown until triggerCheckpoint().
