@@ -185,8 +185,6 @@ public class StreamInputProcessor<IN> {
 			}
 		}
 
-		checkReplayInFlightLog();
-
 		while (true) {
 			if (currentRecordDeserializer != null) {
 				LOG.debug("processInput() of task: {}", taskName);

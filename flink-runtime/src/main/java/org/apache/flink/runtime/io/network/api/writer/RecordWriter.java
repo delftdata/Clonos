@@ -146,9 +146,11 @@ public class RecordWriter<T extends IOReadableWritable> {
 			} else {
 				LOG.debug("Log record {} of partition {} for channel {} to inFLightLogger.", record, targetPartition, targetChannel);
 			}
-		}
 
-		inFlightLogger.logRecord(record, targetChannel);
+			inFlightLogger.logRecord(record, targetChannel);
+
+			checkReplayInFlightLog();
+		}
 
 		while (result.isFullBuffer()) {
 			if (tryFinishCurrentBufferBuilder(targetChannel, serializer)) {
