@@ -100,7 +100,7 @@ public class IncrementalLearningSkeleton {
 	 */
 	public static class FiniteNewDataSource implements SourceFunction<Integer> {
 		private static final long serialVersionUID = 1L;
-		private int counter;
+		private int counter = 0;
 
 		@Override
 		public void run(SourceContext<Integer> ctx) throws Exception {
@@ -205,7 +205,7 @@ public class IncrementalLearningSkeleton {
 			// Update model
 			partialModel = value;
 			batchModel = getBatchModel();
-			return 1;
+			return 0;
 		}
 
 		// pulls model built with batch-job on the old training data
@@ -215,7 +215,7 @@ public class IncrementalLearningSkeleton {
 
 		// performs newData using the two models
 		protected Integer predict(Integer inTuple) {
-			return 0;
+			return inTuple;
 		}
 
 	}
