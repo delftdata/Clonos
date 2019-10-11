@@ -106,6 +106,8 @@ parallelism.default: 1
 #
 state.backend: rocksdb
 
+state.checkpoints.num-retained: 5
+
 # Directory for checkpoints filesystem, when using any of the default bundled
 # state backends.
 #
