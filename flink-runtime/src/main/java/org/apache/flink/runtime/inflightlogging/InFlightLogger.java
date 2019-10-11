@@ -95,13 +95,17 @@ public class InFlightLogger<T, REC> {
 		LOG.debug("Create {} slices for checkpoint no {}.", numOutgoingChannels, currentCheckpointId);
 	}
 
-	public Iterable<T> getReplayLog(int outgoingChannelIndex) throws IOException {
+	public Iterable<T> getReplayLog(int outgoingChannelIndex, long downstreamCheckpointId) throws IOException {
 
 		List<Iterator<REC>> wrappedIterators = new ArrayList<>(slicedLog.keySet().size());
 
 		int totalRecordsToReplay = 0;
 
 		for(String checkpointId : slicedLog.keySet()) {
+			if (Long.valueOf(checkpointId) <= downstreamCheckpointId) {
+				continue;
+			}
+
 			StreamSlice<REC> sliceOfChannel = slicedLog.get(checkpointId)[outgoingChannelIndex];
 			wrappedIterators.add(sliceOfChannel.getSliceRecords().iterator());
 			int recordsToReplay = sliceOfChannel.getSliceRecords().size();

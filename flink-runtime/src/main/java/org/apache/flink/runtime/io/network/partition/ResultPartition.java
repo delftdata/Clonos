@@ -262,6 +262,10 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 		return inFlightLogRequestEventListener.getInFlightLogRequestSignalledChannel();
 	}
 
+	public long getInFlightLogRequestSignalledCheckpointId() {
+		return inFlightLogRequestEventListener.getInFlightLogRequestSignalledCheckpointId();
+	}
+
 	public void resetInFlightLogRequestSignalled() {
 		inFlightLogRequestEventListener.resetInFlightLogRequestSignalled();
 	}

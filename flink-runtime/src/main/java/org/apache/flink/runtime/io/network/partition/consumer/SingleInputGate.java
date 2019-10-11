@@ -190,6 +190,9 @@ public class SingleInputGate implements InputGate {
 	/** History of released remote channels to check before updating the current channel. */
 	private final Map<IntermediateResultPartitionID, List<ConnectionID>> releasedRemoteChannels = new HashMap<>();
 
+	/** Required to signal a request to upstream(s) for replaying data. */
+	private long latestCompletedCheckpointId;
+
 	public SingleInputGate(
 		String owningTaskName,
 		JobID jobId,
@@ -219,6 +222,8 @@ public class SingleInputGate implements InputGate {
 
 		this.taskActions = checkNotNull(taskActions);
 		this.isCreditBased = isCreditBased;
+
+		this.latestCompletedCheckpointId = 0;
 	}
 
 	// ------------------------------------------------------------------------
@@ -287,6 +292,11 @@ public class SingleInputGate implements InputGate {
 
 	public String getTaskName() {
 		return owningTaskName;
+	}
+
+	public void updateInFlightLoggerCheckpointId(long checkpointId) {
+		LOG.debug("Update InFlightLogger checkpoint id to {}.", checkpointId);
+		latestCompletedCheckpointId = checkpointId;
 	}
 
 	// ------------------------------------------------------------------------
@@ -493,7 +503,7 @@ public class SingleInputGate implements InputGate {
 					newChannel.requestSubpartition(consumedSubpartitionIndex);
 					LOG.debug("{}: send in-flight log request event for channel {}.",
 								owningTaskName, newChannel.getChannelIndex());
-					newChannel.sendTaskEvent(new InFlightLogRequestEvent(newChannel.getChannelIndex()));
+					newChannel.sendTaskEvent(new InFlightLogRequestEvent(newChannel.getChannelIndex(), latestCompletedCheckpointId));
 				} catch (IOException e) {
 					LOG.error("{}: Request subpartition or send task event for input channel {} failed. Ignoring failure and sending fail trigger for producer (chances are it is dead).",
 						owningTaskName, newChannel, e);

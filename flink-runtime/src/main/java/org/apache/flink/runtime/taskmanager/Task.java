@@ -1201,7 +1201,11 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		try {
 			// Invokable should be an instance of an operator class in the hierarchy of StreamTask.
 			invokable.initializeState();
-			invokable.updateInFlightLoggerCheckpointId(taskRestore.getRestoreCheckpointId());
+			long checkpointId = taskRestore.getRestoreCheckpointId();
+			invokable.updateInFlightLoggerCheckpointId(checkpointId);
+			for (SingleInputGate inputGate : inputGates) {
+				inputGate.updateInFlightLoggerCheckpointId(checkpointId);
+			}
 		} catch (NoSuchMethodException e) {
 			throw new FlinkException("Standby task has no initializeState() method; it is not an instance in the StreamTask hierarchy.", e);
 		} catch (Exception ee) {

@@ -149,7 +149,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 
 			inFlightLogger.logRecord(record, targetChannel);
 
-			checkReplayInFlightLog();
+			//checkReplayInFlightLog();
 		}
 
 		while (result.isFullBuffer()) {
@@ -253,9 +253,10 @@ public class RecordWriter<T extends IOReadableWritable> {
 		LOG.debug("Check for in-flight log request.");
 		if (inFlightLogRequestSignalled()) {
 			int channelIndex = getInFlightLogRequestSignalledChannel();
+			long checkpointId = getInFlightLogRequestSignalledCheckpointId();
 			int replayCounter = 0;
-			LOG.debug("In-flight log request has been signalled for channel {}.", channelIndex);
-			Iterable<T> records = inFlightLogger.getReplayLog(channelIndex);
+			LOG.debug("In-flight log request has been signalled for channel {}, checkpoint id {}.", channelIndex, checkpointId);
+			Iterable<T> records = inFlightLogger.getReplayLog(channelIndex, checkpointId);
 
 			LOG.debug("Start to replay records.");
 
@@ -289,6 +290,15 @@ public class RecordWriter<T extends IOReadableWritable> {
 			return targetResultPartition.getInFlightLogRequestSignalledChannel();
 		} else {
 			throw new IOException("Unable to get in-flight log request signalled channel for partition of type " + targetPartition + ".");
+		}
+	}
+
+	private long getInFlightLogRequestSignalledCheckpointId() throws IOException {
+		if (targetPartition instanceof ResultPartition) {
+			ResultPartition targetResultPartition = (ResultPartition) targetPartition;
+			return targetResultPartition.getInFlightLogRequestSignalledCheckpointId();
+		} else {
+			throw new IOException("Unable to get in-flight log request signalled checkpoint for partition of type " + targetPartition + ".");
 		}
 	}
 

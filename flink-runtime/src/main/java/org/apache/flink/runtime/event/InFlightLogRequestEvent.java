@@ -30,6 +30,7 @@ import java.io.IOException;
 public class InFlightLogRequestEvent extends TaskEvent {
 
 	private int channelIndex;
+	private long checkpointId;
 
 	/**
 	 * Default constructor (should only be used for deserialization).
@@ -39,23 +40,30 @@ public class InFlightLogRequestEvent extends TaskEvent {
 		// should only be used for deserialization
 	}
 
-	public InFlightLogRequestEvent(int channelIndex) {
+	public InFlightLogRequestEvent(int channelIndex, long checkpointId) {
 		this.channelIndex = channelIndex;
+		this.checkpointId = checkpointId;
 	}
 
 	public int getChannelIndex() {
 		return channelIndex;
 	}
 
+	public long getCheckpointId() {
+		return checkpointId;
+	}
+
 
 	@Override
 	public void write(final DataOutputView out) throws IOException {
 		out.writeInt(this.channelIndex);
+		out.writeLong(this.checkpointId);
 	}
 
 	@Override
 	public void read(final DataInputView in) throws IOException {
 		this.channelIndex = in.readInt();
+		this.checkpointId = in.readLong();
 	}
 
 	@Override
@@ -73,6 +81,6 @@ public class InFlightLogRequestEvent extends TaskEvent {
 
 		final InFlightLogRequestEvent inFlightLogRequestEvent = (InFlightLogRequestEvent) obj;
 
-		return (this.channelIndex == inFlightLogRequestEvent.getChannelIndex());
+		return (this.channelIndex == inFlightLogRequestEvent.getChannelIndex() && this.checkpointId == inFlightLogRequestEvent.checkpointId);
 	}
 }

@@ -33,6 +33,8 @@ public class InFlightLogRequestEventListener implements EventListener<TaskEvent>
 
 	private int channelIndex = -1;
 
+	private long checkpointId = -1;
+
 	public InFlightLogRequestEventListener(ClassLoader userCodeClassLoader) {
 		this.userCodeClassLoader = userCodeClassLoader;
 	}
@@ -49,6 +51,7 @@ public class InFlightLogRequestEventListener implements EventListener<TaskEvent>
 			inFlightLogRequestSignalled = true;
 			InFlightLogRequestEvent inFlightLogRequestEvent = (InFlightLogRequestEvent) event;
 			channelIndex = inFlightLogRequestEvent.getChannelIndex();
+			checkpointId = inFlightLogRequestEvent.getCheckpointId();
 		}
 		else {
 			throw new IllegalArgumentException("Unknown event type.");
@@ -57,6 +60,10 @@ public class InFlightLogRequestEventListener implements EventListener<TaskEvent>
 
 	public int getInFlightLogRequestSignalledChannel() {
 		return channelIndex;
+	}
+
+	public long getInFlightLogRequestSignalledCheckpointId() {
+		return checkpointId;
 	}
 
 	public boolean inFlightLogRequestSignalled() {
