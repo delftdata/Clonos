@@ -149,7 +149,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 
 			inFlightLogger.logRecord(record, targetChannel);
 
-			//checkReplayInFlightLog();
+			checkReplayInFlightLog();
 		}
 
 		while (result.isFullBuffer()) {
