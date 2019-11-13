@@ -161,6 +161,11 @@ public class BufferBuilder {
 		return positionMarker.getCached();
 	}
 
+	@Override
+	public String toString() {
+		return String.format("BufferBuilder [isFinished: %b, isFull: %b, isEmpty: %b, max capacity: %d, memory segment hash: %d, written bytes: %d]", isFinished(), isFull(), isEmpty(), getMaxCapacity(), getMemorySegmentHash(), getWrittenBytes());
+	}
+
 	/**
 	 * Holds a reference to the current writer position. Negative values indicate that writer ({@link BufferBuilder}
 	 * has finished. Value {@code Integer.MIN_VALUE} represents finished empty buffer.

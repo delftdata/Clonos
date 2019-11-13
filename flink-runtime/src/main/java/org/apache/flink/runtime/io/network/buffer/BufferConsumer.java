@@ -109,13 +109,17 @@ public class BufferConsumer implements Closeable {
 	 * counter with the parent {@link BufferConsumer} - in order to recycle memory both of them must be recycled/closed.
 	 */
 	public Buffer build(boolean consumerFailed) {
-		LOG.debug("Build buffer: writerPosition before: {}, readerPosition before: {}, consumerFailed? {}", writerPosition.getCached(), currentReaderPosition, consumerFailed);
 		writerPosition.update();
+		LOG.debug("Build buffer with writerPosition: {}, readerPosition: {}, consumerFailed? {}", writerPosition.getCached(), currentReaderPosition, consumerFailed);
 
 		if (consumerFailed && writerPosition.getCached() > currentReaderPosition && currentReaderPosition == 0) {
-			firstFullRecordPosition.update();
-			LOG.debug("firstFullRecordPosition: {}, currentReaderPosition: {}, writerPosition: {}", firstFullRecordPosition.getCached(), currentReaderPosition, writerPosition.getCached());
-			currentReaderPosition += firstFullRecordPosition.getCached();
+			if (firstFullRecordPosition != null) {
+				firstFullRecordPosition.update();
+				LOG.debug("firstFullRecordPosition: {}, currentReaderPosition: {}, writerPosition: {}", firstFullRecordPosition.getCached(), currentReaderPosition, writerPosition.getCached());
+				currentReaderPosition += firstFullRecordPosition.getCached();
+			} else {
+				LOG.debug("firstFullRecordPosition: null, currentReaderPosition: {}, writerPosition: {}", currentReaderPosition, writerPosition.getCached());
+			}
 		}
 
 		Buffer slice = buffer.readOnlySlice(currentReaderPosition, writerPosition.getCached() - currentReaderPosition);

@@ -344,6 +344,7 @@ class CreditBasedPartitionRequestClientHandler extends ChannelInboundHandlerAdap
 
 				Buffer buffer = inputChannel.requestBuffer();
 				if (buffer != null) {
+					LOG.debug("decodeBufferOrEvent(): {} received buffer {}.", inputChannel, buffer);
 					nettyBuffer.readBytes(buffer.asByteBuf(), receivedSize);
 
 					inputChannel.onBuffer(buffer, bufferOrEvent.sequenceNumber, bufferOrEvent.backlog);

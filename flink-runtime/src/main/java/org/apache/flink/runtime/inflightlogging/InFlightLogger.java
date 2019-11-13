@@ -103,6 +103,7 @@ public class InFlightLogger<T, REC> {
 
 		for(String checkpointId : slicedLog.keySet()) {
 			if (Long.valueOf(checkpointId) <= downstreamCheckpointId) {
+				LOG.debug("Skip replaying of records for checkpoint {}. Downstream has snapshot of checkpoint {}.", checkpointId, downstreamCheckpointId);
 				continue;
 			}
 

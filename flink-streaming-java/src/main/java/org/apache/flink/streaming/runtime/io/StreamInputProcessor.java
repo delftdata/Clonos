@@ -187,7 +187,7 @@ public class StreamInputProcessor<IN> {
 
 		while (true) {
 			if (currentRecordDeserializer != null) {
-				LOG.debug("processInput() of task: {}", taskName);
+				LOG.debug("processInput() of task: {} from buffer {}, channel {}", taskName, currentRecordDeserializer.getBuffer(), currentChannel);
 				DeserializationResult result = currentRecordDeserializer.getNextRecord(deserializationDelegate);
 
 				if (result.isBufferConsumed()) {

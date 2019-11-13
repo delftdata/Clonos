@@ -23,6 +23,9 @@ import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
 import org.apache.flink.runtime.plugable.SerializationDelegate;
 import org.apache.flink.util.Collector;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collections;
@@ -33,6 +36,8 @@ import java.util.List;
  * The OutputCollector tracks to which writers a deep-copy must be given and which not.
  */
 public class OutputCollector<T> implements Collector<T> {
+
+	private static final Logger LOG = LoggerFactory.getLogger(OutputCollector.class);
 
 	// list of writers
 	private final RecordWriter<SerializationDelegate<T>>[] writers;
@@ -81,6 +86,7 @@ public class OutputCollector<T> implements Collector<T> {
 	@Override
 	public void close() {
 		for (RecordWriter<?> writer : writers) {
+			LOG.debug("Close writer {}.");
 			writer.clearBuffers();
 			writer.flushAll();
 		}

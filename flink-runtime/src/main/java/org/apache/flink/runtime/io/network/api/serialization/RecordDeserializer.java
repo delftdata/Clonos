@@ -60,6 +60,8 @@ public interface RecordDeserializer<T extends IOReadableWritable> {
 
 	Buffer getCurrentBuffer();
 
+	Buffer getBuffer();
+
 	void clear();
 
 	boolean hasUnfinishedData();

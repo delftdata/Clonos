@@ -25,6 +25,9 @@ import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 
 import java.io.IOException;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import static org.apache.flink.util.Preconditions.checkArgument;
 
 /**
@@ -35,6 +38,8 @@ import static org.apache.flink.util.Preconditions.checkArgument;
  */
 @Internal
 public class StreamRecordWriter<T extends IOReadableWritable> extends RecordWriter<T> {
+
+	private static final Logger LOG = LoggerFactory.getLogger(StreamRecordWriter.class);
 
 	/** Default name for teh output flush thread, if no name with a task reference is given. */
 	private static final String DEFAULT_OUTPUT_FLUSH_THREAD_NAME = "OutputFlusher";
@@ -97,6 +102,7 @@ public class StreamRecordWriter<T extends IOReadableWritable> extends RecordWrit
 	 * Closes the writer. This stops the flushing thread (if there is one).
 	 */
 	public void close() {
+		LOG.debug("Close writer {}.", this);
 		clearBuffers();
 		// make sure we terminate the thread in any case
 		if (outputFlusher != null) {

@@ -59,6 +59,6 @@ public class StreamSlice<T> {
 
 	public void addRecord(T newRecord) {
 		this.sliceRecords.add(newRecord);
-		LOG.debug("Added record {} to position {} of StreamSlice for checkpoint id {}.", newRecord, this.sliceRecords.size() - 1, sliceId);
+		LOG.debug("Logged record {} to position {} of StreamSlice for checkpoint id {}.", newRecord, this.sliceRecords.size() - 1, sliceId);
 	}
 }

@@ -94,9 +94,18 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 	@Override
 	public Buffer getCurrentBuffer () {
 		Buffer tmp = currentBuffer;
-		LOG.debug("getCurrentBuffer() {} (hash: {}).", currentBuffer, System.identityHashCode(currentBuffer));
+		if (currentBuffer != null) {
+			LOG.debug("getCurrentBuffer() {} (hash: {}, memory segment hash: {}).", currentBuffer, System.identityHashCode(currentBuffer), System.identityHashCode(currentBuffer.getMemorySegment()));
+		} else {
+			LOG.debug("getCurrentBuffer(): null.");
+		}
 		currentBuffer = null;
 		return tmp;
+	}
+
+	@Override
+	public Buffer getBuffer() {
+		return currentBuffer;
 	}
 
 	@Override

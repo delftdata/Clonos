@@ -220,6 +220,7 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 		try {
 			while (true) {
 				NetworkSequenceViewReader reader = pollAvailableReader();
+				LOG.debug("writeAndFlushNextMessageIfPossible(): Reader {} is available.", reader);
 
 				// No queue with available data. We allow this here, because
 				// of the write callbacks that are executed after each write.
@@ -265,6 +266,7 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 
 					// Write and flush and wait until this is done before
 					// trying to continue with the next buffer.
+					LOG.debug("writeAndFlushNextMessageIfPossible(): Send buffer {}.", next.buffer());
 					channel.writeAndFlush(msg).addListener(writeListener);
 
 					return;
