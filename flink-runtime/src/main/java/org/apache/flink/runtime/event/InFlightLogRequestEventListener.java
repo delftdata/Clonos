@@ -21,56 +21,30 @@ package org.apache.flink.runtime.event;
 //import org.apache.flink.runtime.event.TaskEvent;
 import org.apache.flink.runtime.util.event.EventListener;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 
 /**
- * A listener to in-flight log requests.
+ * A listener to in-flight log requests for replay.
  */
-public class InFlightLogRequestEventListener implements EventListener<TaskEvent> {
+public class InFlightLogRequestEventListener extends InFlightLogEventListener {
 
-	private final ClassLoader userCodeClassLoader;
-
-	private boolean inFlightLogRequestSignalled = false;
-
-	private int channelIndex = -1;
-
-	private long checkpointId = -1;
+	private static final Logger LOG = LoggerFactory.getLogger(InFlightLogRequestEventListener.class);
 
 	public InFlightLogRequestEventListener(ClassLoader userCodeClassLoader) {
-		this.userCodeClassLoader = userCodeClassLoader;
-	}
-
-	/** Setup the in-flight log request listener */
-	public void setup() {
-
+		super(userCodeClassLoader);
 	}
 
 	/** Barrier will turn the in-flight log request signal to true */
 	@Override
 	public void onEvent(TaskEvent event) {
+		LOG.debug("{} received event {}.", this, event);
 		if (event instanceof InFlightLogRequestEvent) {
-			inFlightLogRequestSignalled = true;
-			InFlightLogRequestEvent inFlightLogRequestEvent = (InFlightLogRequestEvent) event;
-			channelIndex = inFlightLogRequestEvent.getChannelIndex();
-			checkpointId = inFlightLogRequestEvent.getCheckpointId();
+			inFlightLogEvents.add((InFlightLogRequestEvent) event);
 		}
 		else {
-			throw new IllegalArgumentException("Unknown event type.");
+			throw new IllegalArgumentException(String.format("Unknown event type: %s.", event));
 		}
-	}
-
-	public int getInFlightLogRequestSignalledChannel() {
-		return channelIndex;
-	}
-
-	public long getInFlightLogRequestSignalledCheckpointId() {
-		return checkpointId;
-	}
-
-	public boolean inFlightLogRequestSignalled() {
-		return inFlightLogRequestSignalled;
-	}
-
-	public void resetInFlightLogRequestSignalled() {
-		inFlightLogRequestSignalled = false;
 	}
 }

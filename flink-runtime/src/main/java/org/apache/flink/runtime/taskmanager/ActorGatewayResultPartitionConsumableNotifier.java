@@ -78,4 +78,7 @@ public class ActorGatewayResultPartitionConsumableNotifier implements ResultPart
 
 	@Override
 	public void requestFailConsumer(ResultPartitionID partitionId, int subpartitionIndex, Throwable cause, TaskActions taskActions) {}
+
+	@Override
+	public void ackInFlightLogPrepareRequest(ResultPartitionID partitionId, int subpartitionIndex, TaskActions taskActions) {}
 }

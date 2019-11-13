@@ -18,31 +18,38 @@
 
 package org.apache.flink.runtime.event;
 
-import org.apache.flink.core.memory.DataInputView;
-import org.apache.flink.core.memory.DataOutputView;
-import org.apache.flink.runtime.event.TaskEvent;
+//import org.apache.flink.runtime.event.TaskEvent;
+import org.apache.flink.runtime.util.event.EventListener;
 
-import java.io.IOException;
+import java.util.ArrayDeque;
 
 /**
- * Event sent from downstream for replaying in-flight tuples for specific output channel, that is subpartition index, starting from the next appointed checkpoint.
+ * A listener to in-flight log requests.
  */
-public class InFlightLogRequestEvent extends InFlightLogEvent {
+public abstract class InFlightLogEventListener implements EventListener<TaskEvent> {
 
-	/**
-	 * Default constructor (should only be used for deserialization).
-	 */
-	public InFlightLogRequestEvent() {
-		// default constructor implementation.
-		// should only be used for deserialization
+	private final ClassLoader userCodeClassLoader;
+
+	protected ArrayDeque<InFlightLogEvent> inFlightLogEvents = new ArrayDeque<>();
+
+	public InFlightLogEventListener(ClassLoader userCodeClassLoader) {
+		this.userCodeClassLoader = userCodeClassLoader;
 	}
 
-	public InFlightLogRequestEvent(int subpartitionIndex, long checkpointId) {
-		super(subpartitionIndex, checkpointId);
+	/** Setup the in-flight log request listener */
+	public void setup() {
+
 	}
 
+	/** Barrier will turn the in-flight log request signal to true */
 	@Override
-	public String toString() {
-		return String.format("InFlightLogRequestEvent ") + super.toString();
+	public abstract void onEvent(TaskEvent event);
+
+	public boolean inFlightLogSignalled() {
+		return !inFlightLogEvents.isEmpty();
+	}
+
+	public InFlightLogEvent getInFlightLogEvent() {
+		return inFlightLogEvents.poll();
 	}
 }

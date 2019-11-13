@@ -80,4 +80,22 @@ public class RpcResultPartitionConsumableNotifier implements ResultPartitionCons
 			},
 			executor);
 	}
+
+	@Override
+	public void ackInFlightLogPrepareRequest(ResultPartitionID partitionId, int subpartitionIndex, final TaskActions taskActions) {
+		LOG.debug("Ack InFlightLogPrepareRequest of partition {} subpartition {}.", partitionId, subpartitionIndex);
+
+		CompletableFuture<Acknowledge> acknowledgeFuture = jobMasterGateway.ackInFlightLogPrepareRequest(partitionId, subpartitionIndex, timeout);
+
+		acknowledgeFuture.whenCompleteAsync(
+			(Acknowledge ack, Throwable throwable) -> {
+				if (throwable != null) {
+					LOG.error("Could not ack InFlightLogPrepareRequest at the JobManager.", throwable);
+
+					taskActions.failExternally(new RuntimeException("Could not notify JobManager to ack InFlightLogPrepareRequest.", throwable));
+				}
+			},
+			executor);
+	}
 }
+

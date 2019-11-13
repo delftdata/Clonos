@@ -19,6 +19,7 @@
 package org.apache.flink.runtime.io.network.partition.consumer;
 
 import org.apache.flink.runtime.event.TaskEvent;
+import org.apache.flink.runtime.event.InFlightLogEvent;
 import org.apache.flink.runtime.execution.CancelTaskException;
 import org.apache.flink.runtime.io.network.TaskEventDispatcher;
 import org.apache.flink.runtime.io.network.ConnectionManager;
@@ -226,7 +227,7 @@ public class LocalInputChannel extends InputChannel implements BufferAvailabilit
 	void sendTaskEvent(TaskEvent event) throws IOException {
 		LOG.debug("Send task event {} from channel {}.", event, this);
 		checkError();
-		checkState(subpartitionView != null, "Tried to send task event to producer before requesting the subpartition.");
+		checkState(subpartitionView != null || event instanceof InFlightLogEvent, "Tried to send task event to producer before requesting the subpartition.");
 
 		if (!taskEventDispatcher.publish(partitionId, event)) {
 			throw new IOException("Error while publishing event " + event + " to producer. The producer could not be found.");

@@ -20,6 +20,7 @@ package org.apache.flink.runtime.io.network.partition.consumer;
 
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.core.memory.MemorySegment;
+import org.apache.flink.runtime.event.InFlightLogEvent;
 import org.apache.flink.runtime.event.TaskEvent;
 import org.apache.flink.runtime.io.network.ConnectionID;
 import org.apache.flink.runtime.io.network.ConnectionManager;
@@ -85,6 +86,10 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 
 	/** Client to establish a (possibly shared) TCP connection and request the partition. */
 	private volatile PartitionRequestClient partitionRequestClient;
+
+	/** Flag indicating whether subpartition has been requested.
+	 */
+	private AtomicBoolean subpartitionRequested = new AtomicBoolean();
 
 	/**
 	 * The next expected sequence number for the next buffer. This is modified by the network
@@ -167,13 +172,17 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 	@VisibleForTesting
 	@Override
 	public void requestSubpartition(int subpartitionIndex) throws IOException, InterruptedException {
-		if (partitionRequestClient == null) {
+		if (subpartitionRequested.compareAndSet(false, true)) {
 			LOG.debug("{}: Requesting REMOTE subpartition {} of partition {}.",
 				this, subpartitionIndex, partitionId);
-			// Create a client and request the partition
-			partitionRequestClient = connectionManager
-				.createPartitionRequestClient(connectionId);
 
+			// Create a client
+			if (partitionRequestClient == null) {
+				partitionRequestClient = connectionManager
+				.createPartitionRequestClient(connectionId);
+			}
+
+			// Request the partition
 			partitionRequestClient.requestSubpartition(partitionId, subpartitionIndex, this, 0);
 		}
 	}
@@ -182,7 +191,7 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 	 * Retriggers a remote subpartition request.
 	 */
 	void retriggerSubpartitionRequest(int subpartitionIndex) throws IOException, InterruptedException {
-		checkState(partitionRequestClient != null, "Missing initial subpartition request.");
+		checkState(subpartitionRequested.get(), "Missing initial subpartition request.");
 
 		if (increaseBackoff()) {
 			partitionRequestClient.requestSubpartition(
@@ -200,7 +209,7 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 	Optional<BufferAndAvailability> getNextBuffer() throws IOException {
 		LOG.debug("{} getNextBuffer(). isReleased: {}", this, isReleased());
 		checkState(!isReleased.get(), "Queried for a buffer after channel has been closed.");
-		checkState(partitionRequestClient != null, "Queried for a buffer before requesting a queue.");
+		checkState(subpartitionRequested.get(), "Queried for a buffer before requesting a queue.");
 
 		checkError();
 
@@ -213,7 +222,7 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 		}
 
 		numBytesIn.inc(next.getSizeUnsafe());
-		LOG.debug("{} getNextBuffer() returns next buffer of size {}; remaining buffers: {}.", this, next.getSizeUnsafe(), remaining);
+		LOG.debug("{} getNextBuffer() returns next buffer of size {}, memory segment hash {}; remaining buffers: {}.", this, next.getSizeUnsafe(), System.identityHashCode(next.getMemorySegment()), remaining);
 		return Optional.of(new BufferAndAvailability(next, remaining > 0, getSenderBacklog()));
 	}
 
@@ -222,15 +231,23 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 	// ------------------------------------------------------------------------
 
 	@Override
-	void sendTaskEvent(TaskEvent event) throws IOException {
+	void sendTaskEvent(TaskEvent event) throws IOException, InterruptedException {
 		LOG.debug("Send task event {} from channel {}.", event, this);
 		checkState(!isReleased.get(), "Tried to send task event to producer after channel has been released.");
-		checkState(partitionRequestClient != null, "Tried to send task event to producer before requesting a queue.");
+		checkState(subpartitionRequested.get() || event instanceof InFlightLogEvent, "Tried to send task event to producer before requesting a queue.");
 
 		checkError();
 
+		// If subpartition not yet requested, i.e. partitionRequestClient == null, allow only InFLightLogEvent to go through
+		if (partitionRequestClient == null && event instanceof InFlightLogEvent) {
+			// Create a client
+			partitionRequestClient = connectionManager
+				.createPartitionRequestClient(connectionId);
+		}
+
 		partitionRequestClient.sendTaskEvent(partitionId, event, this);
 	}
+
 
 	// ------------------------------------------------------------------------
 	// Life cycle
@@ -303,7 +320,7 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 	 * Enqueue this input channel in the pipeline for notifying the producer of unannounced credit.
 	 */
 	private void notifyCreditAvailable() {
-		checkState(partitionRequestClient != null, "Tried to send task event to producer before requesting a queue.");
+		checkState(subpartitionRequested.get(), "Tried to send task event to producer before requesting a queue.");
 
 		// We should skip the notification if this channel is already released.
 		if (!isReleased.get()) {

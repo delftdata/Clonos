@@ -173,6 +173,9 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	/** Future for standby tasks that completes when they are required to run */
 	private volatile CompletableFuture<Void> standbyFuture;
 
+	/** Future for standby tasks that completes when they are required to run */
+	private volatile CompletableFuture<Void> inputChannelConnectionsFuture;
+
 	/** Thread pool for async snapshot workers. */
 	private ExecutorService asyncOperationsThreadPool;
 
@@ -218,9 +221,11 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 		if (isStandby()) {
 			this.standbyFuture = new CompletableFuture<>();
+			this.inputChannelConnectionsFuture = new CompletableFuture<>();
 		}
 		else {
 			this.standbyFuture = null;
+			this.inputChannelConnectionsFuture = null;
 		}
 
 	}
@@ -305,8 +310,12 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			// Block until the standby task is requested to run.
 			// In the meantime checkpointed state snapshots of the running task mirrored by the
 			// standby task are dispatched to the standby task. See Task.dispatchStateToStandbyTask().
+			// Also block until input channel connections are ready.
 			if (isStandby()) {
+				LOG.debug("Task {} reached standbyFuture {}, inputChannelConnectionsFuture {}.", getName(), standbyFuture, inputChannelConnectionsFuture);
 				standbyFuture.get();
+				LOG.debug("Task {} reached inputChannelConnectionsFuture {}.", getName(), inputChannelConnectionsFuture);
+				inputChannelConnectionsFuture.get();
 			}
 
 			// we need to make sure that any triggers scheduled in open() cannot be
@@ -805,6 +814,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 	/**
 	 * Unblock execution of a standby task.
+	 * Run state checks and complete state future.
 	 *
 	 */
 	@Override
@@ -823,6 +833,20 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			standbyFuture.completeExceptionally(new Exception("Tried to run standby task that was not in STANDBY state, but in canceled state."));
 		}
 	}
+
+	/**
+	 * Unblock execution of a standby task.
+	 * Once input channels are ready to receive in-flight log tuples
+	 *
+	 */
+	@Override
+	public void tellInputChannelConnectionsComplete() {
+		if (inputChannelConnectionsFuture != null) {
+			LOG.debug("Input channel connections for standby task {} ready.", getName());
+			inputChannelConnectionsFuture.complete(null);
+		}
+	}
+
 	// ------------------------------------------------------------------------
 	//  State backend
 	// ------------------------------------------------------------------------

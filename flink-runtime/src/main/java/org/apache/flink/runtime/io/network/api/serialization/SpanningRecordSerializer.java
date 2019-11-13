@@ -89,6 +89,8 @@ public class SpanningRecordSerializer<T extends IOReadableWritable> implements R
 		serializationBuffer.clear();
 		lengthBuffer.clear();
 
+		LOG.debug("addRecord(): State of serializer {}.", this);
+
 		// write data and length
 		record.write(serializationBuffer);
 
@@ -110,6 +112,8 @@ public class SpanningRecordSerializer<T extends IOReadableWritable> implements R
 	@Override
 	public SerializationResult continueWritingWithNextBufferBuilder(BufferBuilder buffer) throws IOException {
 		targetBuffer = buffer;
+
+		LOG.debug("continueWritingWithNextBufferBuilder(): New targetBuffer. State of serializer {}.", this);
 
 		boolean mustCommit = false;
 		LOG.debug("continueWritingWithNextBufferBuilder(): lengthBuffer state: {}, hasRemaining? {}", lengthBuffer.toString(), lengthBuffer.hasRemaining());
@@ -160,7 +164,21 @@ public class SpanningRecordSerializer<T extends IOReadableWritable> implements R
 	}
 
 	@Override
+	public void prune() {
+		// Move position to limit so that nothing remains to write
+		lengthBuffer.position(lengthBuffer.limit());
+		serializationBuffer.clear();
+		serializationBuffer.pruneBuffer();
+		dataBuffer = serializationBuffer.wrapAsByteBuffer();
+	}
+
+	@Override
 	public boolean hasSerializedData() {
 		return lengthBuffer.hasRemaining() || dataBuffer.hasRemaining();
+	}
+
+	@Override
+	public String toString() {
+		return String.format("RecordSerializer [lengthbuffer: %s, dataBuffer: %s, targetBuffer: %s]", lengthBuffer.toString(), dataBuffer.toString(), targetBuffer);
 	}
 }

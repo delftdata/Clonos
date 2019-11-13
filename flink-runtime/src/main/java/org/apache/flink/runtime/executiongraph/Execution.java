@@ -39,6 +39,7 @@ import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.instance.SlotSharingGroupId;
 import org.apache.flink.runtime.io.network.ConnectionID;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
+import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.jobmanager.scheduler.CoLocationConstraint;
 import org.apache.flink.runtime.jobmanager.scheduler.LocationPreferenceConstraint;
 import org.apache.flink.runtime.jobmanager.scheduler.ScheduledUnit;
@@ -1334,6 +1335,32 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 				(ack, failure) -> {
 					if (failure != null) {
 						fail(new Exception("Standby task could not be switched to runninng.", failure));
+					}
+				},
+				executor);
+		}
+	}
+
+	/**
+	 * This method delivers an ackInFlightLogPrepareRequest message to the corresponding task.
+	 *
+	 * <p>The dispatch is tried up to NUM_CANCEL_CALL_TRIES times.
+	 */
+	public void ackInFlightLogPrepareRequest(IntermediateDataSetID intermediateDataSetId, ResultPartitionID resultPartitionId) {
+		final LogicalSlot slot = assignedResource;
+
+		if (slot != null) {
+			final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
+
+			CompletableFuture<Acknowledge> inFlightLogPrepareRequest = FutureUtils.retry(
+				() -> taskManagerGateway.ackInFlightLogPrepareRequest(attemptId, intermediateDataSetId, resultPartitionId, rpcTimeout),
+				NUM_CANCEL_CALL_TRIES,
+				executor);
+
+			inFlightLogPrepareRequest.whenCompleteAsync(
+				(ack, failure) -> {
+					if (failure != null) {
+						fail(new Exception("Can not ack InFlightLogPrepareRequest to standby task.", failure));
 					}
 				},
 				executor);

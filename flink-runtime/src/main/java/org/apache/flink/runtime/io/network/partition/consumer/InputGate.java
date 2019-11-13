@@ -87,7 +87,7 @@ public interface InputGate {
 	 */
 	Optional<BufferOrEvent> pollNextBufferOrEvent() throws IOException, InterruptedException;
 
-	void sendTaskEvent(TaskEvent event) throws IOException;
+	void sendTaskEvent(TaskEvent event) throws IOException, InterruptedException;
 
 	void registerListener(InputGateListener listener);
 

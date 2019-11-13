@@ -29,6 +29,8 @@ import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.PartitionInfo;
 import org.apache.flink.runtime.instance.InstanceID;
+import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
+import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.messages.StackTrace;
 import org.apache.flink.runtime.messages.StackTraceSampleResponse;
@@ -160,6 +162,17 @@ public interface TaskManagerGateway {
 	CompletableFuture<Acknowledge> switchStandbyTaskToRunning(
 			ExecutionAttemptID executionAttemptID,
 			Time timeout);
+
+	/**
+	 * Ack InFlightLogPrepareRequest..
+	 *
+	 * @param executionAttemptID identifying the task
+	 * @param intermediateDataSetId identifying the SingleInputGate
+	 * @param resultPartitionId identifying the InputChannel
+	 * @param timeout for the cancel operation
+	 * @return Future acknowledge if the task is successfully canceled
+	 */
+	CompletableFuture<Acknowledge> ackInFlightLogPrepareRequest(ExecutionAttemptID executionAttemptID, IntermediateDataSetID intermediateDataSetId, ResultPartitionID resultPartitionId, @RpcTimeout Time timeout);
 
 	/**
 	 * Update the task where the given partitions can be found.

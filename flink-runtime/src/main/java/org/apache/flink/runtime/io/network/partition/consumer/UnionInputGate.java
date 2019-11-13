@@ -249,7 +249,7 @@ public class UnionInputGate implements InputGate, InputGateListener {
 	}
 
 	@Override
-	public void sendTaskEvent(TaskEvent event) throws IOException {
+	public void sendTaskEvent(TaskEvent event) throws IOException, InterruptedException {
 		for (InputGate inputGate : inputGates) {
 			inputGate.sendTaskEvent(event);
 		}

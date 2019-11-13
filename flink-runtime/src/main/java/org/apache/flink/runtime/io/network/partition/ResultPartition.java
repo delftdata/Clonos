@@ -20,7 +20,9 @@ package org.apache.flink.runtime.io.network.partition;
 
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
+import org.apache.flink.runtime.event.InFlightLogPrepareEvent;
 import org.apache.flink.runtime.event.InFlightLogRequestEventListener;
+import org.apache.flink.runtime.event.InFlightLogPrepareEventListener;
 import org.apache.flink.runtime.executiongraph.IntermediateResultPartition;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
@@ -101,6 +103,8 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 	private final ResultPartitionConsumableNotifier partitionConsumableNotifier;
 
 	private InFlightLogRequestEventListener inFlightLogRequestEventListener;
+
+	private InFlightLogPrepareEventListener inFlightLogPrepareEventListener;
 
 	public final int numTargetKeyGroups;
 
@@ -248,26 +252,38 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 		this.inFlightLogRequestEventListener = iflrel;
 	}
 
+	public void setInFlightLogPrepareEventListener(InFlightLogPrepareEventListener iflpel) {
+		this.inFlightLogPrepareEventListener = iflpel;
+	}
+
 	public boolean inFlightLogRequestSignalled() {
-		boolean inFlightLogRequestSignalled = false;
+		boolean signalled = false;
 		try {
-			inFlightLogRequestSignalled = inFlightLogRequestEventListener.inFlightLogRequestSignalled();
+			signalled = inFlightLogRequestEventListener.inFlightLogSignalled();
 		} catch (NullPointerException e) {
 			LOG.error("Requested inFlightLogRequestEventListener, but none has been set for resultPartition {}. Caught exception: {}", this, e);
 		}
-		return inFlightLogRequestSignalled;
+		return signalled;
 	}
 
-	public int getInFlightLogRequestSignalledChannel() {
-		return inFlightLogRequestEventListener.getInFlightLogRequestSignalledChannel();
+	public boolean inFlightLogPrepareSignalled() {
+		boolean signalled = false;
+		try {
+			signalled = inFlightLogPrepareEventListener.inFlightLogSignalled();
+		} catch (NullPointerException e) {
+			LOG.error("Requested inFlightLogRequestEventListener, but none has been set for resultPartition {}. Caught exception: {}", this, e);
+		}
+		return signalled;
 	}
 
-	public long getInFlightLogRequestSignalledCheckpointId() {
-		return inFlightLogRequestEventListener.getInFlightLogRequestSignalledCheckpointId();
+	public InFlightLogRequestEvent getInFlightLogRequestEvent() {
+		InFlightLogRequestEvent iflre = (InFlightLogRequestEvent) inFlightLogRequestEventListener.getInFlightLogEvent();
+		return iflre;
 	}
 
-	public void resetInFlightLogRequestSignalled() {
-		inFlightLogRequestEventListener.resetInFlightLogRequestSignalled();
+	public InFlightLogPrepareEvent getInFlightLogPrepareEvent() {
+		InFlightLogPrepareEvent iflpe = (InFlightLogPrepareEvent) inFlightLogPrepareEventListener.getInFlightLogEvent();
+		return iflpe;
 	}
 
 
@@ -363,6 +379,10 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 		}
 	}
 
+	public void releaseBuffers(int index) {
+		subpartitions[index].releaseBuffers();
+	}
+
 	public void sendFailConsumerTrigger(int subpartitionIndex, Throwable cause) {
 		LOG.debug("Task {} sends fail consumer trigger for result partition {} subpartition {}.", owningTaskName, partitionId, subpartitionIndex);
 		partitionConsumableNotifier.requestFailConsumer(partitionId, subpartitionIndex, cause, taskActions);
@@ -423,7 +443,8 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 
 	@Override
 	public String toString() {
-		return "ResultPartition " + partitionId.toString() + " ["
+		return "ResultPartition " + partitionId.toString() +
+				" of task " + owningTaskName + " ["
 				+ partitionType + ", "
 				+ subpartitions.length + " subpartitions, "
 				+ pendingReferences + " pending references]";
@@ -493,5 +514,10 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 
 			hasNotifiedPipelinedConsumers = true;
 		}
+	}
+
+	public void ackInFlightLogPrepareRequest(int subpartitionIndex) {
+		LOG.debug("Ack inFlightLogPrepareRequest for subpartition {} of {}", subpartitionIndex, this);
+		partitionConsumableNotifier.ackInFlightLogPrepareRequest(partitionId, subpartitionIndex, taskActions);
 	}
 }

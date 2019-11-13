@@ -51,6 +51,7 @@ import org.apache.flink.runtime.instance.InstanceID;
 import org.apache.flink.runtime.io.network.NetworkEnvironment;
 import org.apache.flink.runtime.io.network.netty.PartitionProducerStateChecker;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionConsumableNotifier;
+import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.jobgraph.tasks.InputSplitProvider;
@@ -655,6 +656,28 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 			}
 		} else {
 			final String message = "Cannot find standby task to switch to running " + executionAttemptID + '.';
+
+			log.debug(message);
+			return FutureUtils.completedExceptionally(new TaskException(message));
+		}
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> ackInFlightLogPrepareRequest(ExecutionAttemptID executionAttemptID, IntermediateDataSetID intermediateDataSetId, ResultPartitionID resultPartitionId, Time timeout) {
+		final Task task = taskSlotTable.getTask(executionAttemptID);
+
+		if (task != null) {
+			try {
+				final SingleInputGate singleInputGate = task.getInputGateById(intermediateDataSetId);
+				log.debug("Deliver ack InFlightLogPrepareRequest to task {} SingleInputGate {}.", task, singleInputGate);
+				CompletableFuture<Acknowledge> ackFuture = singleInputGate.ackInFlightLogPrepareRequest(resultPartitionId);
+				task.checkInputChannelConnectionsComplete();
+				return ackFuture;
+			} catch (Throwable t) {
+				return FutureUtils.completedExceptionally(new TaskException("Cannot ackInFlightLogPrepareRequest to task " + executionAttemptID + '.', t));
+			}
+		} else {
+			final String message = "Cannot find standby task " + executionAttemptID + " to ack InFlightLogPrepareRequest.";
 
 			log.debug(message);
 			return FutureUtils.completedExceptionally(new TaskException(message));

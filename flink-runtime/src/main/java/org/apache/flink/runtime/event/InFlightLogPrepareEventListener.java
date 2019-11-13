@@ -18,31 +18,33 @@
 
 package org.apache.flink.runtime.event;
 
-import org.apache.flink.core.memory.DataInputView;
-import org.apache.flink.core.memory.DataOutputView;
-import org.apache.flink.runtime.event.TaskEvent;
+//import org.apache.flink.runtime.event.TaskEvent;
+import org.apache.flink.runtime.util.event.EventListener;
 
-import java.io.IOException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 
 /**
- * Event sent from downstream for replaying in-flight tuples for specific output channel, that is subpartition index, starting from the next appointed checkpoint.
+ * A listener to in-flight log prepare requests.
  */
-public class InFlightLogRequestEvent extends InFlightLogEvent {
+public class InFlightLogPrepareEventListener extends InFlightLogEventListener {
 
-	/**
-	 * Default constructor (should only be used for deserialization).
-	 */
-	public InFlightLogRequestEvent() {
-		// default constructor implementation.
-		// should only be used for deserialization
+	private static final Logger LOG = LoggerFactory.getLogger(InFlightLogPrepareEventListener.class);
+
+	public InFlightLogPrepareEventListener(ClassLoader userCodeClassLoader) {
+		super(userCodeClassLoader);
 	}
 
-	public InFlightLogRequestEvent(int subpartitionIndex, long checkpointId) {
-		super(subpartitionIndex, checkpointId);
-	}
-
+	/** Barrier will turn the in-flight log request signal to true */
 	@Override
-	public String toString() {
-		return String.format("InFlightLogRequestEvent ") + super.toString();
+	public void onEvent(TaskEvent event) {
+		LOG.debug("{} received event {}.", this, event);
+		if (event instanceof InFlightLogPrepareEvent) {
+			inFlightLogEvents.add((InFlightLogPrepareEvent) event);
+		}
+		else {
+			throw new IllegalArgumentException(String.format("Unknown event type: %s.", event));
+		}
 	}
 }

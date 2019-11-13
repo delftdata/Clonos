@@ -140,6 +140,19 @@ class PipelinedSubpartition extends ResultSubpartition {
 		}
 	}
 
+	// Release all available buffers. Needed in RunStandbyTaskStrategy for producer whose consumer failed.
+	public void releaseBuffers() {
+		// Release all available buffers
+		synchronized (buffers) {
+			LOG.debug("Release buffers of {}.", this);
+			for (BufferConsumer buffer : buffers) {
+				buffer.close();
+			}
+			buffers.clear();
+			LOG.debug("Released buffers of {}.", this);
+		}
+	}
+
 	public void sendFailConsumerTrigger(Throwable cause) {
 		consumerFailed = true;
 		parent.sendFailConsumerTrigger(index, cause);
@@ -191,7 +204,7 @@ class PipelinedSubpartition extends ResultSubpartition {
 			// Do not report last remaining buffer on buffers as available to read (assuming it's unfinished).
 			// It will be reported for reading either on flush or when the number of buffers in the queue
 			// will be 2 or more.
-			LOG.debug("{}:{}:{}: Polled buffer {} (hash: {})", parent, index, this, buffer, System.identityHashCode(buffer));
+			LOG.debug("{}:{}: Polled buffer {} (hash: {}, memorySegment hash: {})", parent, this, buffer, System.identityHashCode(buffer), System.identityHashCode(buffer.getMemorySegment()));
 			return new BufferAndBacklog(
 				buffer,
 				isAvailableUnsafe(),
@@ -279,8 +292,8 @@ class PipelinedSubpartition extends ResultSubpartition {
 		}
 
 		return String.format(
-			"PipelinedSubpartition [number of buffers: %d (%d bytes), number of buffers in backlog: %d, finished? %s, read view? %s]",
-			numBuffers, numBytes, getBuffersInBacklog(), finished, hasReadView);
+			"PipelinedSubpartition %d [number of buffers: %d (%d bytes), number of buffers in backlog: %d, finished? %s, read view? %s]",
+			index, numBuffers, numBytes, getBuffersInBacklog(), finished, hasReadView);
 	}
 
 	@Override

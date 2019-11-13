@@ -42,6 +42,8 @@ import org.apache.flink.runtime.deployment.InputGateDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.ResultPartitionDeploymentDescriptor;
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
 import org.apache.flink.runtime.event.InFlightLogRequestEventListener;
+import org.apache.flink.runtime.event.InFlightLogPrepareEvent;
+import org.apache.flink.runtime.event.InFlightLogPrepareEventListener;
 import org.apache.flink.runtime.execution.CancelTaskException;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.execution.ExecutionState;
@@ -780,6 +782,13 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 						iflrel, InFlightLogRequestEvent.class);
 				LOG.debug("Set inFlightLogRequestEventListener {} for resultPartition {}.", iflrel, partition);
 				partition.setInFlightLogRequestEventListener(iflrel);
+
+				InFlightLogPrepareEventListener iflpel =
+						new InFlightLogPrepareEventListener(userCodeClassLoader);
+				network.getTaskEventDispatcher().subscribeToEvent(partition.getPartitionId(),
+						iflpel, InFlightLogPrepareEvent.class);
+				LOG.debug("Set inFlightLogPrepareEventListener {} for resultPartition {}.", iflpel, partition);
+				partition.setInFlightLogPrepareEventListener(iflpel);
 			}
 
 			// make sure the user code classloader is accessible thread-locally
@@ -1199,9 +1208,12 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 				taskRestore.getRestoreCheckpointId() + ".");
 
 		try {
+			long checkpointId = taskRestore.getRestoreCheckpointId();
+			for (SingleInputGate inputGate : inputGates) {
+				inputGate.informInFlightLoggerRestoringState(checkpointId);
+			}
 			// Invokable should be an instance of an operator class in the hierarchy of StreamTask.
 			invokable.initializeState();
-			long checkpointId = taskRestore.getRestoreCheckpointId();
 			invokable.updateInFlightLoggerCheckpointId(checkpointId);
 			for (SingleInputGate inputGate : inputGates) {
 				inputGate.updateInFlightLoggerCheckpointId(checkpointId);
@@ -1214,10 +1226,11 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 	}
 
 	/**
-	 * Unblock execution of a standby task.
+	 * Unblock execution of a standby task (partly; see ackConnection()).
 	 *
 	 */
 	public void switchStandbyToRunning() throws Exception {
+		LOG.debug("Switch task {} to RUNNING.", this);
 		if (!isStandby) {
 			throw new Exception("Task " + taskNameWithSubtask + " is not a STANDBY task. It cannot be switched to RUNNING state.");
 		}
@@ -1225,6 +1238,10 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		ExecutionState current = executionState;
 		if (current == ExecutionState.STANDBY) {
 			invokable.switchStandbyToRunning();
+			LOG.debug("Task {} has {} inputGates.", this, inputGates.length);
+			if (inputGates.length == 0) {
+				invokable.tellInputChannelConnectionsComplete();
+			}
 
 			// switch to the RUNNING state, if that fails, we have been canceled/failed in the meantime
 			if (!transitionState(ExecutionState.STANDBY, ExecutionState.RUNNING)) {
@@ -1240,6 +1257,20 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		else {
 			throw new Exception("Tried to run standby task that was not in STANDBY state, but in " + current + " state.");
 		}
+	}
+
+	/**
+	 * Check in-flight log prepare request acks by an upstream task to this standby task.
+	 * Once one connection per SingleInputGate is acked and switchStandbyToRunning() has happened then the standby task can run.
+	 *
+	 */
+	public void checkInputChannelConnectionsComplete() {
+		for (SingleInputGate inputGate : inputGates) {
+			if (!inputGate.checkInputChannelConnectionsComplete()) {
+				return;
+			}
+		}
+		invokable.tellInputChannelConnectionsComplete();
 	}
 
 	// ------------------------------------------------------------------------

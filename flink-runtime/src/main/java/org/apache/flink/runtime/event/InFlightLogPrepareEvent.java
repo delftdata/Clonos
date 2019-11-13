@@ -25,24 +25,24 @@ import org.apache.flink.runtime.event.TaskEvent;
 import java.io.IOException;
 
 /**
- * Event sent from downstream for replaying in-flight tuples for specific output channel, that is subpartition index, starting from the next appointed checkpoint.
+ * Event sent from downstream for preparing in-flight tuples for specific output channel, that is subpartition index, starting from the next appointed checkpoint.
  */
-public class InFlightLogRequestEvent extends InFlightLogEvent {
+public class InFlightLogPrepareEvent extends InFlightLogEvent {
 
 	/**
 	 * Default constructor (should only be used for deserialization).
 	 */
-	public InFlightLogRequestEvent() {
+	public InFlightLogPrepareEvent() {
 		// default constructor implementation.
 		// should only be used for deserialization
 	}
 
-	public InFlightLogRequestEvent(int subpartitionIndex, long checkpointId) {
+	public InFlightLogPrepareEvent(int subpartitionIndex, long checkpointId) {
 		super(subpartitionIndex, checkpointId);
 	}
 
 	@Override
 	public String toString() {
-		return String.format("InFlightLogRequestEvent ") + super.toString();
+		return String.format("InFlightLogPrepareEvent ") + super.toString();
 	}
 }

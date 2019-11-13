@@ -165,6 +165,18 @@ public interface JobMasterGateway extends
 			@RpcTimeout final Time timeout);
 
 	/**
+	 * Acknowledges an in-flight log prepare request to a subpartition.
+	 *
+	 * @param partitionId The partition ID of the partition
+	 * @param subpartitionIndex The subpartition of the partition that maps to the corresponding channelIndex of the SingleInputGate
+	 * @param timeout before the rpc call fails
+	 * @return Future acknowledge of the ack request operation
+	 */
+	CompletableFuture<Acknowledge> ackInFlightLogPrepareRequest(
+			final ResultPartitionID partitionId,
+			final int subpartitionIndex,
+			@RpcTimeout final Time timeout);
+	/**
 	 * Notifies the JobManager about available data for a produced partition.
 	 *
 	 * <p>There is a call to this method for each {@link ExecutionVertex} instance once per produced

@@ -110,6 +110,8 @@ public abstract class ResultSubpartition {
 
 	abstract public void release() throws IOException;
 
+	abstract public void releaseBuffers();
+
 	abstract public ResultSubpartitionView createReadView(BufferAvailabilityListener availabilityListener) throws IOException;
 
 	abstract int releaseMemory() throws IOException;

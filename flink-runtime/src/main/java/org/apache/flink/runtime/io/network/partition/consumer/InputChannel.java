@@ -151,7 +151,7 @@ public abstract class InputChannel {
 	 * the producer will wait for all backwards events. Otherwise, this will lead to an Exception
 	 * at runtime.
 	 */
-	abstract void sendTaskEvent(TaskEvent event) throws IOException;
+	abstract void sendTaskEvent(TaskEvent event) throws IOException, InterruptedException;
 
 	// ------------------------------------------------------------------------
 	// Life cycle

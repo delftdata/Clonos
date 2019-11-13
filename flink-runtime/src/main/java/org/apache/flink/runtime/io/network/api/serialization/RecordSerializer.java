@@ -91,6 +91,11 @@ public interface RecordSerializer<T extends IOReadableWritable> {
 	void clear();
 
 	/**
+	 * Prune state of internal data structures.
+	 */
+	void prune();
+
+	/**
 	 * @return <tt>true</tt> if has some serialized data pending copying to the result {@link BufferBuilder}.
 	 */
 	boolean hasSerializedData();
