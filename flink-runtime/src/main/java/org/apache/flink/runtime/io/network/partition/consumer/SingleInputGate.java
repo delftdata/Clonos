@@ -48,6 +48,7 @@ import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
 import org.apache.flink.runtime.taskmanager.TaskActions;
+import org.apache.flink.runtime.taskmanager.Task;
 
 import org.apache.flink.runtime.concurrent.FutureUtils;
 
@@ -199,6 +200,9 @@ public class SingleInputGate implements InputGate {
 	/** History of released remote channels to check before updating the current channel. */
 	private final Map<IntermediateResultPartitionID, List<ConnectionID>> releasedRemoteChannels = new HashMap<>();
 
+	/* Whether the input gate belongs to a standby task. */
+	private boolean isStandby;
+
 	/** Required to signal a request to upstream(s) for replaying data. */
 	private long latestCompletedCheckpointId;
 
@@ -240,6 +244,7 @@ public class SingleInputGate implements InputGate {
 		this.taskActions = checkNotNull(taskActions);
 		this.isCreditBased = isCreditBased;
 
+		this.isStandby = ((Task) taskActions).getIsStandby();
 		this.latestCompletedCheckpointId = 0;
 		this.restoreStateFutures = new ArrayList<CompletableFuture<Void>>();
 		this.ackChannelFutures = new ConcurrentHashMap<ResultPartitionID, CompletableFuture<Acknowledge>>(numberOfInputChannels);
@@ -551,26 +556,29 @@ public class SingleInputGate implements InputGate {
 				inputChannels.put(partitionId, newChannel);
 
 				try {
-					LOG.debug("{}: send in-flight log request event for subpartition index {} (prepare only).", owningTaskName, consumedSubpartitionIndex);
-					ackChannelFutures.put(newChannel.getPartitionId(), new CompletableFuture<Acknowledge>());
-					CompletableFuture<Acknowledge> ackNewChannelFuture = ackChannelFutures.get(newChannel.getPartitionId());
-					// Ensure the main thread does not issue a subpartition request
-					requestedPartitionsFlag = true;
+					if (isStandby) {
+						LOG.debug("{}: send in-flight log request event for subpartition index {} (prepare only).", owningTaskName, consumedSubpartitionIndex);
+						ackChannelFutures.put(newChannel.getPartitionId(), new CompletableFuture<Acknowledge>());
+						CompletableFuture<Acknowledge> ackNewChannelFuture = ackChannelFutures.get(newChannel.getPartitionId());
+						// Ensure the main thread does not issue a subpartition request
+						requestedPartitionsFlag = true;
 
-					// Just prepare the replay
-					newChannel.sendTaskEvent(new InFlightLogPrepareEvent(consumedSubpartitionIndex, latestCompletedCheckpointId));
-					final CompletableFuture<Void> allRestoreStateFutures = FutureUtils.waitForAll(restoreStateFutures);
-					if (allRestoreStateFutures.isCompletedExceptionally()) {
-						LOG.warn("Unexpected exception while waiting for restore state procedures to complete.");
-					}
-					LOG.debug("{}: any pending state restoration is now complete. Send in-flight log request event for subpartitionIndex {} from channel {} (replay).", owningTaskName, consumedSubpartitionIndex, newChannel);
-					newChannel.sendTaskEvent(new InFlightLogRequestEvent(consumedSubpartitionIndex, latestCompletedCheckpointId));
+						// Just prepare the replay
+						newChannel.sendTaskEvent(new InFlightLogPrepareEvent(consumedSubpartitionIndex, latestCompletedCheckpointId));
+						final CompletableFuture<Void> allRestoreStateFutures = FutureUtils.waitForAll(restoreStateFutures);
+						if (allRestoreStateFutures.isCompletedExceptionally()) {
+							LOG.warn("Unexpected exception while waiting for restore state procedures to complete.");
+						}
+						LOG.debug("{}: any pending state restoration is now complete. Send in-flight log request event for subpartitionIndex {} from channel {} (replay).", owningTaskName, consumedSubpartitionIndex, newChannel);
+						newChannel.sendTaskEvent(new InFlightLogRequestEvent(consumedSubpartitionIndex, latestCompletedCheckpointId));
 
-					ackNewChannelFuture.get();
-					if (ackNewChannelFuture.isCompletedExceptionally()) {
-						LOG.warn("Unexpected exception while waiting for InFlightLogPrepareRequest future to complete.");
+						ackNewChannelFuture.get();
+						if (ackNewChannelFuture.isCompletedExceptionally()) {
+							LOG.warn("Unexpected exception while waiting for InFlightLogPrepareRequest future to complete.");
+						}
+						LOG.debug("{}: InFlightLogPrepareRequest for subpartitionIndex {} from channel {} acknowledged by upstream.", owningTaskName, consumedSubpartitionIndex, newChannel);
+						isStandby = false;
 					}
-					LOG.debug("{}: InFlightLogPrepareRequest for subpartitionIndex {} from channel {} acknowledged by upstream.", owningTaskName, consumedSubpartitionIndex, newChannel);
 
 					newChannel.requestSubpartition(consumedSubpartitionIndex);
 				} catch (IOException e) {

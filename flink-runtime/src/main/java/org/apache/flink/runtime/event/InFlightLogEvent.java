@@ -78,7 +78,7 @@ public class InFlightLogEvent extends TaskEvent {
 		}
 
 		final InFlightLogEvent inFlightLogEvent = (InFlightLogEvent) obj;
-		return (this.subpartitionIndex == inFlightLogEvent.getChannelIndex() && this.checkpointId == inFlightLogEvent.getCheckpointId());
+		return (this.subpartitionIndex == inFlightLogEvent.getSubpartitionIndex() && this.checkpointId == inFlightLogEvent.getCheckpointId());
 	}
 
 	@Override
