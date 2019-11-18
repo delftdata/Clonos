@@ -179,7 +179,7 @@ public class SingleInputGate implements InputGate {
 	private boolean hasReceivedAllEndOfPartitionEvents;
 
 	/** Flag indicating whether partitions have been requested. */
-	private boolean requestedPartitionsFlag;
+	private AtomicBoolean requestedPartitionsFlag = new AtomicBoolean();
 
 	/** Flag indicating whether all resources have been released. */
 	private volatile boolean isReleased;
@@ -471,7 +471,7 @@ public class SingleInputGate implements InputGate {
 
 				inputChannels.put(partitionId, newChannel);
 
-				if (requestedPartitionsFlag) {
+				if (requestedPartitionsFlag.get()) {
 					newChannel.requestSubpartition(consumedSubpartitionIndex);
 				}
 
@@ -560,8 +560,6 @@ public class SingleInputGate implements InputGate {
 						LOG.debug("{}: send in-flight log request event for subpartition index {} (prepare only).", owningTaskName, consumedSubpartitionIndex);
 						ackChannelFutures.put(newChannel.getPartitionId(), new CompletableFuture<Acknowledge>());
 						CompletableFuture<Acknowledge> ackNewChannelFuture = ackChannelFutures.get(newChannel.getPartitionId());
-						// Ensure the main thread does not issue a subpartition request
-						requestedPartitionsFlag = true;
 
 						// Just prepare the replay
 						newChannel.sendTaskEvent(new InFlightLogPrepareEvent(consumedSubpartitionIndex, latestCompletedCheckpointId));
@@ -581,6 +579,7 @@ public class SingleInputGate implements InputGate {
 					}
 
 					newChannel.requestSubpartition(consumedSubpartitionIndex);
+					requestedPartitionsFlag.set(true);
 				} catch (IOException e) {
 					LOG.error("{}: Request subpartition or send task event for input channel {} failed. Ignoring failure and sending fail trigger for producer (chances are it is dead).",
 						owningTaskName, newChannel, e);
@@ -706,33 +705,35 @@ public class SingleInputGate implements InputGate {
 
 	@Override
 	public void requestPartitions() throws IOException, InterruptedException {
+		if (requestedPartitionsFlag.get()) {
+			return;
+		}
+
 		synchronized (requestLock) {
-			if (!requestedPartitionsFlag) {
-				if (isReleased) {
-					throw new IllegalStateException("Already released.");
-				}
+			if (isReleased) {
+				throw new IllegalStateException("Already released.");
+			}
 
-				// Sanity checks
-				if (numberOfInputChannels != inputChannels.size()) {
-					throw new IllegalStateException("Bug in input gate setup logic: mismatch between" +
-							"number of total input channels and the currently set number of input " +
-							"channels.");
-				}
+			// Sanity checks
+			if (numberOfInputChannels != inputChannels.size()) {
+				throw new IllegalStateException("Bug in input gate setup logic: mismatch between" +
+						"number of total input channels and the currently set number of input " +
+						"channels.");
+			}
 
-				for (InputChannel inputChannel : inputChannels.values()) {
-					LOG.debug("Request subpartition for input channel with index {} partition id {}.",
-							inputChannel.getChannelIndex(), inputChannel.getPartitionId());
-					try {
-						inputChannel.requestSubpartition(consumedSubpartitionIndex);
-					} catch (IOException e) {
-						LOG.error("{}: Connecting inputChannel {} failed. Ignoring failure and sending fail trigger to producer (chances are it is dead).",
-								owningTaskName, inputChannel, e);
-						triggerFailProducer(inputChannel.getPartitionId(), e);
-					}
+			for (InputChannel inputChannel : inputChannels.values()) {
+				LOG.debug("Request subpartition for input channel with index {} partition id {}.",
+						inputChannel.getChannelIndex(), inputChannel.getPartitionId());
+				try {
+					inputChannel.requestSubpartition(consumedSubpartitionIndex);
+				} catch (IOException e) {
+					LOG.error("{}: Connecting inputChannel {} failed. Ignoring failure and sending fail trigger to producer (chances are it is dead).",
+							owningTaskName, inputChannel, e);
+					triggerFailProducer(inputChannel.getPartitionId(), e);
 				}
 			}
 
-			requestedPartitionsFlag = true;
+			requestedPartitionsFlag.set(true);
 		}
 	}
 
