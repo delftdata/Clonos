@@ -186,6 +186,11 @@ class SpillableSubpartition extends ResultSubpartition {
 	}
 
 	@Override
+	public void releaseBuffers() {
+
+	}
+
+	@Override
 	public ResultSubpartitionView createReadView(BufferAvailabilityListener availabilityListener) throws IOException {
 		synchronized (buffers) {
 			if (!isFinished) {

@@ -385,6 +385,10 @@ public class PartitionRequestQueueTest {
 		}
 
 		@Override
+		public void releaseBuffers() {
+		}
+
+		@Override
 		public void notifySubpartitionConsumed() {
 		}
 

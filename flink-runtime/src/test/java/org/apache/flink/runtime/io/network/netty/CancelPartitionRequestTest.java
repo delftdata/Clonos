@@ -206,6 +206,10 @@ public class CancelPartitionRequestTest {
 		}
 
 		@Override
+		public void releaseBuffers() {
+		}
+
+		@Override
 		public void sendFailConsumerTrigger(Throwable cause) {
 		}
 

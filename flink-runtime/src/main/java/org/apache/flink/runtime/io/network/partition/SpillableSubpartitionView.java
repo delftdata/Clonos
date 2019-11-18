@@ -141,6 +141,11 @@ class SpillableSubpartitionView implements ResultSubpartitionView {
 		}
 	}
 
+	@Override
+	public void releaseBuffers() {
+
+	}
+
 	@Nullable
 	@Override
 	public BufferAndBacklog getNextBuffer() throws IOException, InterruptedException {
