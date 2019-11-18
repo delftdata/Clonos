@@ -20,6 +20,7 @@ package org.apache.flink.runtime.util;
 
 import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.JobID;
+import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.core.io.InputSplit;
@@ -291,6 +292,9 @@ public class JvmExitOnFatalErrorTest {
 
 			@Override
 			public void requestFailConsumer(ResultPartitionID partitionId, int subpartitionIndex, Throwable cause, TaskActions taskActions) {}
+
+			@Override
+			public void ackInFlightLogPrepareRequest(ResultPartitionID resultPartitionId, int subpartitionIndex, TaskActions taskActions) {}
 		}
 
 		private static final class NoOpPartitionProducerStateChecker implements PartitionProducerStateChecker {

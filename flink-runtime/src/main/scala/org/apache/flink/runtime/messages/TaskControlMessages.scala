@@ -80,6 +80,17 @@ object TaskMessages {
    *
    * @param attemptID The task's execution attempt ID.
    */
+  case class ackInFlightLogPrepareRequest(attemptID: ExecutionAttemptID)
+    extends TaskMessage with RequiresLeaderSessionID
+
+  /**
+   * Acknowledges an in-flight log prepare request to the task associated with [[attemptID]].
+   * The result is sent back to the sender as a
+   * [[TaskOperationResult]] message.
+   *
+   * @param attemptID The task's execution attempt ID.
+   */
+
   case class switchStandbyTaskToRunning(attemptID: ExecutionAttemptID)
     extends TaskMessage with RequiresLeaderSessionID
 

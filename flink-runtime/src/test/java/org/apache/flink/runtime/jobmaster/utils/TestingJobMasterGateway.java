@@ -144,6 +144,11 @@ public class TestingJobMasterGateway implements JobMasterGateway {
 	}
 
 	@Override
+	public CompletableFuture<Acknowledge> ackInFlightLogPrepareRequest(ResultPartitionID resultPartitionId, int subpartitionIndex, @RpcTimeout Time timeout) {
+		throw new UnsupportedOperationException();
+	}
+
+	@Override
 	public CompletableFuture<RegistrationResponse> registerTaskManager(String taskManagerRpcAddress, TaskManagerLocation taskManagerLocation, Time timeout) {
 		throw new UnsupportedOperationException();
 	}
