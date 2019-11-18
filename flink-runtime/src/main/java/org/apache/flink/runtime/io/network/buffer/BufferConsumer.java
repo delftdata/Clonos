@@ -48,8 +48,6 @@ public class BufferConsumer implements Closeable {
 
 	private int currentReaderPosition = 0;
 
-	private final CachedPositionMarker firstFullRecordPosition;
-
 	/**
 	 * Constructs {@link BufferConsumer} instance with content that can be changed by {@link BufferBuilder}.
 	 */
@@ -60,18 +58,6 @@ public class BufferConsumer implements Closeable {
 		this(
 			new NetworkBuffer(checkNotNull(memorySegment), checkNotNull(recycler), true),
 			currentWriterPosition,
-			0);
-	}
-
-	public BufferConsumer(
-			MemorySegment memorySegment,
-			BufferRecycler recycler,
-			PositionMarker currentWriterPosition,
-			PositionMarker firstFullRecordPosition) {
-		this(
-			new NetworkBuffer(checkNotNull(memorySegment), checkNotNull(recycler), true),
-			currentWriterPosition,
-			firstFullRecordPosition,
 			0);
 	}
 
@@ -90,14 +76,6 @@ public class BufferConsumer implements Closeable {
 		this.buffer = checkNotNull(buffer);
 		this.writerPosition = new CachedPositionMarker(checkNotNull(currentWriterPosition));
 		this.currentReaderPosition = currentReaderPosition;
-		this.firstFullRecordPosition = null;
-	}
-
-	private BufferConsumer(Buffer buffer, BufferBuilder.PositionMarker currentWriterPosition, BufferBuilder.PositionMarker firstFullRecordPosition, int currentReaderPosition) {
-		this.buffer = checkNotNull(buffer);
-		this.writerPosition = new CachedPositionMarker(checkNotNull(currentWriterPosition));
-		this.currentReaderPosition = currentReaderPosition;
-		this.firstFullRecordPosition = new CachedPositionMarker(checkNotNull(firstFullRecordPosition));
 	}
 
 	public boolean isFinished() {
@@ -108,19 +86,9 @@ public class BufferConsumer implements Closeable {
 	 * @return sliced {@link Buffer} containing the not yet consumed data. Returned {@link Buffer} shares the reference
 	 * counter with the parent {@link BufferConsumer} - in order to recycle memory both of them must be recycled/closed.
 	 */
-	public Buffer build(boolean consumerFailed) {
+	public Buffer build() {
 		writerPosition.update();
-		LOG.debug("Build buffer with writerPosition: {}, readerPosition: {}, consumerFailed? {}", writerPosition.getCached(), currentReaderPosition, consumerFailed);
-
-		if (consumerFailed && writerPosition.getCached() > currentReaderPosition && currentReaderPosition == 0) {
-			if (firstFullRecordPosition != null) {
-				firstFullRecordPosition.update();
-				LOG.debug("firstFullRecordPosition: {}, currentReaderPosition: {}, writerPosition: {}", firstFullRecordPosition.getCached(), currentReaderPosition, writerPosition.getCached());
-				currentReaderPosition += firstFullRecordPosition.getCached();
-			} else {
-				LOG.debug("firstFullRecordPosition: null, currentReaderPosition: {}, writerPosition: {}", currentReaderPosition, writerPosition.getCached());
-			}
-		}
+		LOG.debug("Build buffer with writerPosition: {}, readerPosition: {}", writerPosition.getCached(), currentReaderPosition);
 
 		Buffer slice = buffer.readOnlySlice(currentReaderPosition, writerPosition.getCached() - currentReaderPosition);
 

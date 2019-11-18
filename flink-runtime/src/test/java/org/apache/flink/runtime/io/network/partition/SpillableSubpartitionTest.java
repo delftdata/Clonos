@@ -394,7 +394,7 @@ public class SpillableSubpartitionTest extends SubpartitionTestBase {
 		// after consuming and releasing the next buffer, the bufferConsumer may be freed,
 		// depending on the timing of the last write operation
 		// -> retain once so that we can check below
-		Buffer buffer = bufferConsumer.build(false);
+		Buffer buffer = bufferConsumer.build();
 		buffer.retainBuffer();
 
 		assertFalse(reader.nextBufferIsEvent()); // second buffer (retained in SpillableSubpartition#nextBuffer)

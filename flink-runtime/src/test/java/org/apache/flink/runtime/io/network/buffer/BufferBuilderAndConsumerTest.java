@@ -46,7 +46,7 @@ public class BufferBuilderAndConsumerTest {
 
 		assertEquals(3 * Integer.BYTES, bufferBuilder.appendAndCommit(toByteBuffer(1, 2, 3)));
 
-		Buffer buffer = bufferConsumer.build(false);
+		Buffer buffer = bufferConsumer.build();
 		assertFalse(buffer.isRecycled());
 		buffer.recycleBuffer();
 		assertFalse(buffer.isRecycled());
@@ -208,7 +208,7 @@ public class BufferBuilderAndConsumerTest {
 		assertFalse(bufferConsumer.isFinished());
 		assertEquals(0, bufferConsumer.getWrittenBytes());
 
-		bufferConsumer.build(false);
+		bufferConsumer.build();
 		assertFalse(bufferBuilder.isFinished());
 		assertFalse(bufferConsumer.isFinished());
 		assertEquals(expectedWrittenBytes, bufferConsumer.getWrittenBytes());
@@ -225,7 +225,7 @@ public class BufferBuilderAndConsumerTest {
 		assertFalse(bufferConsumer.isFinished());
 		assertEquals(expectedWrittenBytes, bufferConsumer.getWrittenBytes());
 
-		assertEquals(0, bufferConsumer.build(false).getSize());
+		assertEquals(0, bufferConsumer.build().getSize());
 		assertTrue(bufferConsumer.isFinished());
 	}
 
@@ -237,7 +237,7 @@ public class BufferBuilderAndConsumerTest {
 
 	private static void assertContent(BufferConsumer actualConsumer, int... expected) {
 		assertFalse(actualConsumer.isFinished());
-		Buffer buffer = actualConsumer.build(false);
+		Buffer buffer = actualConsumer.build();
 		assertFalse(buffer.isRecycled());
 		assertContent(buffer, expected);
 		assertEquals(expected.length * Integer.BYTES, buffer.getSize());

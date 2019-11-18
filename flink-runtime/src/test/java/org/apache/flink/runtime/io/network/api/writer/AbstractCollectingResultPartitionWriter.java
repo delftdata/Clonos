@@ -73,7 +73,7 @@ public abstract class AbstractCollectingResultPartitionWriter implements ResultP
 	private void processBufferConsumers() throws IOException {
 		while (!bufferConsumers.isEmpty()) {
 			BufferConsumer bufferConsumer = bufferConsumers.peek();
-			Buffer buffer = bufferConsumer.build(false);
+			Buffer buffer = bufferConsumer.build();
 			try {
 				deserializeBuffer(buffer);
 				if (!bufferConsumer.isFinished()) {

@@ -197,7 +197,7 @@ public class SpanningRecordSerializationTest extends TestLogger {
 		int startingOffset = segmentSize > 2 ? RANDOM.nextInt(segmentSize / 2) : 0;
 		BufferBuilder bufferBuilder = createFilledBufferBuilder(segmentSize + startingOffset, startingOffset);
 		BufferConsumer bufferConsumer = bufferBuilder.createBufferConsumer();
-		bufferConsumer.build(false).recycleBuffer();
+		bufferConsumer.build().recycleBuffer();
 
 		serializer.clear();
 		return new BufferConsumerAndSerializerResult(

@@ -54,8 +54,6 @@ class PipelinedSubpartition extends ResultSubpartition {
 
 	/** Flag indicating whether the subpartition has been released. */
 	private volatile boolean isReleased;
-
-	private boolean consumerFailed;
 	// ------------------------------------------------------------------------
 
 	PipelinedSubpartition(int index, ResultPartition parent) {
@@ -154,7 +152,6 @@ class PipelinedSubpartition extends ResultSubpartition {
 	}
 
 	public void sendFailConsumerTrigger(Throwable cause) {
-		consumerFailed = true;
 		parent.sendFailConsumerTrigger(index, cause);
 	}
 
@@ -170,8 +167,7 @@ class PipelinedSubpartition extends ResultSubpartition {
 			while (!buffers.isEmpty()) {
 				BufferConsumer bufferConsumer = buffers.peek();
 
-				buffer = bufferConsumer.build(consumerFailed);
-				consumerFailed = false;
+				buffer = bufferConsumer.build();
 
 				checkState(bufferConsumer.isFinished() || buffers.size() == 1,
 					"When there are multiple buffers, an unfinished bufferConsumer can not be at the head of the buffers queue.");

@@ -47,10 +47,6 @@ public class BufferBuilder {
 
 	private boolean bufferConsumerCreated = false;
 
-	private boolean enableFirstFullRecordPositionMarker = false;
-
-	private final SettablePositionMarker firstFullRecordPositionMarker = new SettablePositionMarker();
-
 	public BufferBuilder(MemorySegment memorySegment, BufferRecycler recycler) {
 		this.memorySegment = checkNotNull(memorySegment);
 		this.recycler = checkNotNull(recycler);
@@ -63,12 +59,11 @@ public class BufferBuilder {
 	public BufferConsumer createBufferConsumer() {
 		checkState(!bufferConsumerCreated, "There can not exists two BufferConsumer for one BufferBuilder");
 		bufferConsumerCreated = true;
-		LOG.debug("New BufferConsumer wrapping memory segment {} (hash: {}) with positionMarker {} and firstFullRecordPositionMarker {}", memorySegment, System.identityHashCode(memorySegment), positionMarker.getCached(), firstFullRecordPositionMarker.getCached());
+		LOG.debug("New BufferConsumer wrapping memory segment {} (hash: {}) with positionMarker {}", memorySegment, System.identityHashCode(memorySegment), positionMarker.getCached());
 		return new BufferConsumer(
 			memorySegment,
 			recycler,
-			positionMarker,
-			firstFullRecordPositionMarker);
+			positionMarker);
 	}
 
 	/**
@@ -92,13 +87,6 @@ public class BufferBuilder {
 		int needed = source.remaining();
 		int available = getMaxCapacity() - positionMarker.getCached();
 		int toCopy = Math.min(needed, available);
-
-		if (enableFirstFullRecordPositionMarker) {
-			firstFullRecordPositionMarker.set(positionMarker.getCached());
-			firstFullRecordPositionMarker.commit();
-			enableFirstFullRecordPositionMarker = false;
-			LOG.debug("Set firstFullRecordPositionMarker {} (== positionMarker {}) of memorySegment (hash: {}) where first whole record begins", firstFullRecordPositionMarker.getCached(), positionMarker.getCached(), System.identityHashCode(memorySegment));
-		}
 
 		LOG.debug("append to memorySegment (hash: {}): positionMarker: {}, needed: {}, available: {}, toCopy: {}", System.identityHashCode(memorySegment), positionMarker.getCached(), needed, available, toCopy);
 
@@ -151,10 +139,6 @@ public class BufferBuilder {
 
 	public int getMemorySegmentHash() {
 		return System.identityHashCode(memorySegment);
-	}
-
-	public void enableFirstFullRecordPositionMarker() {
-		enableFirstFullRecordPositionMarker = true;
 	}
 
 	private int getWrittenBytes() {

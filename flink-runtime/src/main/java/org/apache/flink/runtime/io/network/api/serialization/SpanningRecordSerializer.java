@@ -120,7 +120,6 @@ public class SpanningRecordSerializer<T extends IOReadableWritable> implements R
 		if (lengthBuffer.hasRemaining()) {
 			int toCopy = targetBuffer.append(lengthBuffer);
 			LOG.debug("Copied {} remaining length bytes to MemorySegment {}", toCopy, targetBuffer.getMemorySegmentHash());
-			targetBuffer.enableFirstFullRecordPositionMarker();
 			mustCommit = true;
 		}
 
@@ -128,7 +127,6 @@ public class SpanningRecordSerializer<T extends IOReadableWritable> implements R
 		if (dataBuffer.hasRemaining()) {
 			int toCopy = targetBuffer.append(dataBuffer);
 			LOG.debug("Copied {} remaining data bytes to MemorySegment {}", toCopy, targetBuffer.getMemorySegmentHash());
-			targetBuffer.enableFirstFullRecordPositionMarker();
 			mustCommit = true;
 		}
 
