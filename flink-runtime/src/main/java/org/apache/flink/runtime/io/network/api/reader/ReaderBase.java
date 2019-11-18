@@ -37,7 +37,7 @@ public interface ReaderBase {
 	// Task events
 	// ------------------------------------------------------------------------
 
-	void sendTaskEvent(TaskEvent event) throws IOException;
+	void sendTaskEvent(TaskEvent event) throws IOException, InterruptedException;
 
 	void registerTaskEventListener(EventListener<TaskEvent> listener, Class<? extends TaskEvent> eventType);
 

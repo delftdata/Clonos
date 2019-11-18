@@ -69,7 +69,7 @@ public abstract class AbstractReader implements ReaderBase {
 	}
 
 	@Override
-	public void sendTaskEvent(TaskEvent event) throws IOException {
+	public void sendTaskEvent(TaskEvent event) throws IOException, InterruptedException {
 		inputGate.sendTaskEvent(event);
 	}
 
