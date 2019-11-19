@@ -84,6 +84,8 @@ public class RecordWriter<T extends IOReadableWritable> {
 
 	private final InFlightLogger<T, ?> inFlightLogger;
 
+	private boolean buffersCleared = false;
+
 	public RecordWriter(ResultPartitionWriter writer) {
 		this(writer, new RoundRobinChannelSelector<T>());
 	}
@@ -269,19 +271,22 @@ public class RecordWriter<T extends IOReadableWritable> {
 			}
 
 			// Clear the state
-			LOG.debug("Close buffer builder.");
-			closeBufferBuilder(subpartitionIndex);
 			RecordSerializer<T> serializer = serializers[subpartitionIndex];
-			LOG.debug("Clear serializer {}.", serializer);
-			serializer.clear();
-			LOG.debug("Prune internal state (dataBuffer) of serializer {}.", serializer);
-			serializer.prune();
-			if (targetPartition instanceof ResultPartition) {
-				ResultPartition tp = (ResultPartition) targetPartition;
-				LOG.debug("Release buffers of partition {} index {}.", tp, subpartitionIndex);
-				tp.releaseBuffers(subpartitionIndex);
+			if (!buffersCleared) {
+				LOG.debug("Close buffer builder.");
+				closeBufferBuilder(subpartitionIndex);
+				LOG.debug("Clear serializer {}.", serializer);
+				serializer.clear();
+				LOG.debug("Prune internal state (dataBuffer) of serializer {}.", serializer);
+				serializer.prune();
+				if (targetPartition instanceof ResultPartition) {
+					ResultPartition tp = (ResultPartition) targetPartition;
+					LOG.debug("Release buffers of partition {} index {}.", tp, subpartitionIndex);
+					tp.releaseBuffers(subpartitionIndex);
+				}
+				LOG.debug("State of serializer {}.", serializer);
+				buffersCleared = true;
 			}
-			LOG.debug("State of serializer {}.", serializer);
 
 			// Wait for replay signal (state restoring downstream)
 			if (checkForReplaySignal(inFlightLogPrepareEvent) == false) {
@@ -304,10 +309,17 @@ public class RecordWriter<T extends IOReadableWritable> {
 				replayCounter++;
 			}
 
-			LOG.debug("Replaying {} records completed. Check whether there is another in-flight log request.", replayCounter);
+			LOG.debug("Replaying {} records completed. Flush records and check whether there is another in-flight log request.", replayCounter);
+
+			// If flushing each record is disabled,
+			// flush the accumulated in-flight log records.
+			if (!flushAlways) {
+				targetPartition.flush(subpartitionIndex);
+			}
 
 			checkReplayInFlightLog();
 		}
+		buffersCleared = false;
 	}
 
 	private boolean inFlightLogRequestSignalled() throws IOException {
