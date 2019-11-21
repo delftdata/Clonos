@@ -201,7 +201,11 @@ class SpilledSubpartitionView implements ResultSubpartitionView, NotificationLis
 
 	@Override
 	public void releaseBuffers() {
+<<<<<<< HEAD
 
+=======
+		//todo
+>>>>>>> Implemented Determinant Log and added empty implementations of InFlightLogger methods such as clearBuffers and eventHandlers
 	}
 
 	@Override

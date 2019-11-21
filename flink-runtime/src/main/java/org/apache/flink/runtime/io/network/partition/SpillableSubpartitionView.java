@@ -141,10 +141,6 @@ class SpillableSubpartitionView implements ResultSubpartitionView {
 		}
 	}
 
-	@Override
-	public void releaseBuffers() {
-
-	}
 
 	@Nullable
 	@Override
@@ -213,6 +209,11 @@ class SpillableSubpartitionView implements ResultSubpartitionView {
 				}
 			}
 		}
+	}
+
+	@Override
+	public void releaseBuffers() {
+		//todo
 	}
 
 	@Override
