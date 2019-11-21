@@ -32,6 +32,8 @@ import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.PartitionInfo;
 import org.apache.flink.runtime.instance.ActorGateway;
 import org.apache.flink.runtime.instance.InstanceID;
+import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
+import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.messages.Messages;
 import org.apache.flink.runtime.messages.StackTrace;
@@ -194,6 +196,11 @@ public class ActorTaskManagerGateway implements TaskManagerGateway {
 			.mapTo(ClassTag$.MODULE$.<Acknowledge>apply(Acknowledge.class));
 
 		return FutureUtils.toJava(switchStandbyTaskToRunningResult);
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> ackInFlightLogPrepareRequest(ExecutionAttemptID executionAttemptID, IntermediateDataSetID intermediateDataSetId, ResultPartitionID resultPartitionId, Time timeout) {
+		return null; //todo
 	}
 
 	@Override

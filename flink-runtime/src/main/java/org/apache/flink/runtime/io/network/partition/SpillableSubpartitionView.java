@@ -211,6 +211,11 @@ class SpillableSubpartitionView implements ResultSubpartitionView {
 	}
 
 	@Override
+	public void releaseBuffers() {
+		//todo
+	}
+
+	@Override
 	public void notifySubpartitionConsumed() throws IOException {
 		SpilledSubpartitionView spilled = spilledView;
 		if (spilled != null) {
