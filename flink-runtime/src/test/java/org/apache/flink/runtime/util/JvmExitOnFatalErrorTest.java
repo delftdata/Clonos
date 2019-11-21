@@ -291,6 +291,11 @@ public class JvmExitOnFatalErrorTest {
 
 			@Override
 			public void requestFailConsumer(ResultPartitionID partitionId, int subpartitionIndex, Throwable cause, TaskActions taskActions) {}
+
+			@Override
+			public void ackInFlightLogPrepareRequest(ResultPartitionID partitionId, int subpartitionIndex, TaskActions taskActions) {
+				//todo
+			}
 		}
 
 		private static final class NoOpPartitionProducerStateChecker implements PartitionProducerStateChecker {

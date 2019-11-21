@@ -30,6 +30,8 @@ import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.PartitionInfo;
 import org.apache.flink.runtime.instance.InstanceID;
+import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
+import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.jobmanager.slots.TaskManagerGateway;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.messages.StackTrace;
@@ -126,6 +128,11 @@ public class SimpleAckingTaskManagerGateway implements TaskManagerGateway {
 	@Override
 	public CompletableFuture<Acknowledge> switchStandbyTaskToRunning(ExecutionAttemptID executionAttemptID, Time timeout) {
 		return CompletableFuture.completedFuture(Acknowledge.get());
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> ackInFlightLogPrepareRequest(ExecutionAttemptID executionAttemptID, IntermediateDataSetID intermediateDataSetId, ResultPartitionID resultPartitionId, Time timeout) {
+		return null; //todo
 	}
 
 	@Override
