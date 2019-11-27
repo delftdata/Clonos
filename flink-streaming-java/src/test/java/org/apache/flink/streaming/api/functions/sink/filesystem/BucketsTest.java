@@ -25,12 +25,14 @@ import org.apache.flink.streaming.api.functions.sink.SinkFunction;
 import org.apache.flink.streaming.api.functions.sink.filesystem.bucketers.Bucketer;
 import org.apache.flink.streaming.api.functions.sink.filesystem.bucketers.SimpleVersionedStringSerializer;
 
+import org.apache.flink.streaming.runtime.streamrecord.OperatorOutputTimestamp;
 import org.junit.Assert;
 import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
 import java.io.File;
+import java.util.List;
 
 /**
  * Tests for {@link Buckets}.
@@ -76,6 +78,11 @@ public class BucketsTest {
 			@Override
 			public Long timestamp() {
 				return expectedTimestamp;
+			}
+
+			@Override
+			public List<OperatorOutputTimestamp> operatorOutputTimestamps() {
+				return null;
 			}
 		});
 	}

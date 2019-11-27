@@ -21,8 +21,11 @@ import org.apache.flink.annotation.Internal;
 import org.apache.flink.streaming.api.functions.sink.SinkFunction;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamrecord.LatencyMarker;
+import org.apache.flink.streaming.runtime.streamrecord.OperatorOutputTimestamp;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeService;
+
+import java.util.List;
 
 /**
  * A {@link StreamOperator} for executing {@link SinkFunction SinkFunctions}.
@@ -96,6 +99,11 @@ public class StreamSink<IN> extends AbstractUdfStreamOperator<Object, SinkFuncti
 				return element.getTimestamp();
 			}
 			return null;
+		}
+
+		@Override
+		public List<OperatorOutputTimestamp> operatorOutputTimestamps() {
+			return element.getOperatorOutputTimestamps();
 		}
 	}
 }

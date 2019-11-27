@@ -19,8 +19,10 @@ package org.apache.flink.streaming.api.functions.sink;
 
 import org.apache.flink.annotation.Public;
 import org.apache.flink.api.common.functions.Function;
+import org.apache.flink.streaming.runtime.streamrecord.OperatorOutputTimestamp;
 
 import java.io.Serializable;
+import java.util.List;
 
 /**
  * Interface for implementing user defined sink functionality.
@@ -76,5 +78,7 @@ public interface SinkFunction<IN> extends Function, Serializable {
 		 * have an assigned timestamp.
 		 */
 		Long timestamp();
+
+		List<OperatorOutputTimestamp> operatorOutputTimestamps();
 	}
 }
