@@ -617,7 +617,7 @@ public class FlinkKafkaProducer011<IN>
 			byte[] bytes = o.getId().getBytes();
 			target.put(bytes);
 			target.putChar('=');
-			target.putLong(o.getTimestamp());
+			target.put((""+o.getTimestamp()).getBytes());
 		}
 	}
 
@@ -638,7 +638,7 @@ public class FlinkKafkaProducer011<IN>
 		}
 
 		List<OperatorOutputTimestamp> operatorOutputTimestamps = context.operatorOutputTimestamps();
-		int encondedLengthOfOperatorTimestamps = operatorOutputTimestamps.stream().map(o -> o.getId().getBytes().length + Long.BYTES).reduce(0, Integer::sum);
+		int encondedLengthOfOperatorTimestamps = operatorOutputTimestamps.stream().map(o -> o.getId().getBytes().length + (""+o.getTimestamp()).getBytes().length).reduce(0, Integer::sum);
 		encondedLengthOfOperatorTimestamps += Math.max(2*(operatorOutputTimestamps.size()-1), 0) + 2*operatorOutputTimestamps.size(); //commas and equals
 		ByteBuffer buffer = ByteBuffer.allocate(serializedValue.length + encondedLengthOfOperatorTimestamps + 2);
 		buffer.put(serializedValue);

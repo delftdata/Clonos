@@ -137,6 +137,12 @@ public final class StreamRecord<T> extends StreamElement {
 		return (StreamRecord<X>) this;
 	}
 
+	public <X> StreamRecord<X> replaceAndClearEmissionTimestamps(X element) {
+		this.value = (T) element;
+		this.operatorOutputTimestamps = new LinkedList<>();
+		return (StreamRecord<X>) this;
+	}
+
 	/**
 	 * Replace the currently stored value by the given new value and the currently stored
 	 * timestamp with the new timestamp. This returns a StreamElement with the generic type
@@ -151,6 +157,15 @@ public final class StreamRecord<T> extends StreamElement {
 		this.timestamp = timestamp;
 		this.value = (T) value;
 		this.hasTimestamp = true;
+
+		return (StreamRecord<X>) this;
+	}
+
+	public <X> StreamRecord<X> replaceAndClearEmissionTimestamps(X value, long timestamp) {
+		this.timestamp = timestamp;
+		this.value = (T) value;
+		this.hasTimestamp = true;
+		this.operatorOutputTimestamps = new LinkedList<>();
 
 		return (StreamRecord<X>) this;
 	}

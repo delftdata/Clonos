@@ -38,6 +38,8 @@ public class StreamSink<IN> extends AbstractUdfStreamOperator<Object, SinkFuncti
 
 	private transient SimpleContext sinkContext;
 
+	private String operatorId;
+
 	/** We listen to this ourselves because we don't have an {@link InternalTimerService}. */
 	private long currentWatermark = Long.MIN_VALUE;
 
@@ -55,6 +57,9 @@ public class StreamSink<IN> extends AbstractUdfStreamOperator<Object, SinkFuncti
 
 	@Override
 	public void processElement(StreamRecord<IN> element) throws Exception {
+		if(operatorId == null)
+			this.operatorId = getOperatorID().toString();
+		element.getOperatorOutputTimestamps().add(new OperatorOutputTimestamp(this.operatorId, System.currentTimeMillis()));
 		sinkContext.element = element;
 		userFunction.invoke(element.getValue(), sinkContext);
 	}
