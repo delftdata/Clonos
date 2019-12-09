@@ -19,11 +19,16 @@ package org.apache.flink.streaming.connectors.kafka.internals;
 
 import org.apache.flink.annotation.Internal;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
  * Utility for assigning Kafka partitions to consumer subtasks.
  */
 @Internal
 public class KafkaTopicPartitionAssigner {
+
+	protected static final Logger LOG = LoggerFactory.getLogger(KafkaTopicPartitionAssigner.class);
 
 	/**
 	 * Returns the index of the target subtask that a specific Kafka partition should be
@@ -50,6 +55,7 @@ public class KafkaTopicPartitionAssigner {
 	 */
 	public static int assign(KafkaTopicPartition partition, int numParallelSubtasks) {
 		int startIndex = ((partition.getTopic().hashCode() * 31) & 0x7FFFFFFF) % numParallelSubtasks;
+		LOG.info("KafkaTopicPartitionAssigner assign (startIndex {} + partition {}) % numParallelSubtasks {}.", startIndex, partition.getPartition(), numParallelSubtasks);
 
 		// here, the assumption is that the id of Kafka partitions are always ascending
 		// starting from 0, and therefore can be used directly as the offset clockwise from the start index

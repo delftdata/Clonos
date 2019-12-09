@@ -156,6 +156,7 @@ public abstract class FlinkKafkaConsumerBase<T> extends RichParallelSourceFuncti
 	/** Timestamp to determine startup offsets; only relevant when startup mode is {@link StartupMode#TIMESTAMP}. */
 	private Long startupOffsetsTimestamp;
 
+	private boolean isStandby = false;
 	// ------------------------------------------------------------------------
 	//  runtime state (used individually by each parallel subtask)
 	// ------------------------------------------------------------------------
@@ -472,10 +473,12 @@ public abstract class FlinkKafkaConsumerBase<T> extends RichParallelSourceFuncti
 
 		List<KafkaTopicPartition> allPartitions = partitionDiscoverer.discoverPartitions();
 
+		LOG.info("Consumer subtask {} opens with restoredState {} (restoredFromOldState = {}).", getRuntimeContext().getIndexOfThisSubtask(), restoredState, restoredFromOldState);
 		if (restoredState != null) {
 			for (KafkaTopicPartition partition : allPartitions) {
 				if (!restoredState.containsKey(partition)) {
 					restoredState.put(partition, KafkaTopicPartitionStateSentinel.EARLIEST_OFFSET);
+					LOG.info("Put partition {} in restoredState {}.", partition, restoredState);
 				}
 			}
 
@@ -485,7 +488,7 @@ public abstract class FlinkKafkaConsumerBase<T> extends RichParallelSourceFuncti
 					// restored partitions that should not be subscribed by this subtask
 					if (KafkaTopicPartitionAssigner.assign(
 						restoredStateEntry.getKey(), getRuntimeContext().getNumberOfParallelSubtasks())
-							== getRuntimeContext().getIndexOfThisSubtask()){
+							== getRuntimeContext().getIndexOfThisSubtask() || isStandby) {
 						subscribedPartitionsToStartOffsets.put(restoredStateEntry.getKey(), restoredStateEntry.getValue());
 					}
 				} else {
@@ -810,6 +813,7 @@ public abstract class FlinkKafkaConsumerBase<T> extends RichParallelSourceFuncti
 				restoredState.put(kafkaOffset.f0, kafkaOffset.f1);
 			}
 
+			isStandby = true;
 			LOG.info("Setting restore state in the FlinkKafkaConsumer: {}", restoredState);
 		} else {
 			LOG.info("No restore state for FlinkKafkaConsumer.");
