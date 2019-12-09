@@ -105,6 +105,7 @@ public class BufferConsumer implements Closeable {
 	 * other words, data already consumed before copying will not be visible to the returned copies.
 	 */
 	public BufferConsumer copy() {
+		LOG.debug("Copy buffer {} (memorySegment hash: {}): writerPosition after: {}, readerPosition after: {}", buffer, System.identityHashCode(buffer.getMemorySegment()), writerPosition.getCached(), currentReaderPosition);
 		return new BufferConsumer(buffer.retainBuffer(), writerPosition.positionMarker, currentReaderPosition);
 	}
 

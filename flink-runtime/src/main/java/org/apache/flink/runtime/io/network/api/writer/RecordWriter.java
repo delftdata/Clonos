@@ -26,6 +26,7 @@ import org.apache.flink.runtime.event.InFlightLogEvent;
 import org.apache.flink.runtime.event.InFlightLogPrepareEvent;
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
 import org.apache.flink.runtime.inflightlogging.InFlightLogger;
+import org.apache.flink.runtime.io.network.api.CheckpointBarrier;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
 import org.apache.flink.runtime.io.network.api.serialization.RecordSerializer;
 import org.apache.flink.runtime.io.network.api.serialization.SpanningRecordSerializer;
@@ -42,6 +43,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.util.Optional;
 import java.util.Random;
+import java.util.TreeSet;
 
 import static org.apache.flink.runtime.io.network.api.serialization.RecordSerializer.SerializationResult;
 import static org.apache.flink.util.Preconditions.checkState;
@@ -170,7 +172,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 					break;
 				}
 			}
-			LOG.debug("{}: sendToTarget() calls requestNewBufferBuilder() for resultPartition {}, targetChannel {}.", targetPartition.getTaskName(), targetPartition, targetChannel);
+			LOG.debug("{}: sendToTarget() calls requestNewBufferBuilder() for resultPartition {}, subpartitionIndex {}.", targetPartition.getTaskName(), targetPartition, targetChannel);
 			BufferBuilder bufferBuilder = requestNewBufferBuilder(targetChannel);
 			LOG.debug("New BufferBuilder's memory segment hash: {}", bufferBuilder.getMemorySegmentHash());
 
@@ -184,6 +186,12 @@ public class RecordWriter<T extends IOReadableWritable> {
 	}
 
 	public void broadcastEvent(AbstractEvent event) throws IOException {
+		LOG.debug("{}: RecordWriter broadcast event {}.", targetPartition.getTaskName(), event);
+
+		if (event instanceof CheckpointBarrier) {
+			inFlightLogger.logCheckpointBarrier((CheckpointBarrier) event);
+		}
+
 		try (BufferConsumer eventBufferConsumer = EventSerializer.toBufferConsumer(event)) {
 			for (int targetChannel = 0; targetChannel < numChannels; targetChannel++) {
 				RecordSerializer<T> serializer = serializers[targetChannel];
@@ -196,6 +204,23 @@ public class RecordWriter<T extends IOReadableWritable> {
 
 			if (flushAlways) {
 				flushAll();
+			}
+		}
+	}
+
+	public void emitEvent(AbstractEvent event, int targetChannel) throws IOException {
+		LOG.debug("{}: RecordWriter replay {}.", targetPartition.getTaskName(), event);
+
+		try (BufferConsumer eventBufferConsumer = EventSerializer.toBufferConsumer(event)) {
+			RecordSerializer<T> serializer = serializers[targetChannel];
+
+			tryFinishCurrentBufferBuilder(targetChannel, serializer);
+
+			// retain the buffer so that it can be recycled by each channel of targetPartition
+			targetPartition.addBufferConsumer(eventBufferConsumer.copy(), targetChannel);
+
+			if (flushAlways) {
+				targetPartition.flush(targetChannel);
 			}
 		}
 	}
@@ -265,7 +290,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 			InFlightLogPrepareEvent inFlightLogPrepareEvent = getInFlightLogPrepareEvent();
 			LOG.debug("{} has been signalled. Ack it.", inFlightLogPrepareEvent);
 			int subpartitionIndex = inFlightLogPrepareEvent.getSubpartitionIndex();
-			long checkpointId = inFlightLogPrepareEvent.getCheckpointId();
+			String downstreamCheckpointId = String.valueOf(inFlightLogPrepareEvent.getCheckpointId());
 			if (targetPartition instanceof ResultPartition) {
 				((ResultPartition) targetPartition).ackInFlightLogPrepareRequest(subpartitionIndex);
 			}
@@ -289,27 +314,42 @@ public class RecordWriter<T extends IOReadableWritable> {
 			}
 
 			// Wait for replay signal (state restoring downstream)
-			if (checkForReplaySignal(inFlightLogPrepareEvent) == false) {
+			if (replaySignalFailed(inFlightLogPrepareEvent)) {
 				return;
 			}
 
 			int replayCounter = 0;
-			Iterable<T> records = inFlightLogger.getReplayLog(subpartitionIndex, checkpointId);
+			int totalReplayCounter = 0;
+			TreeSet<String> checkpointIdsToReplay = inFlightLogger.getCheckpointIdsToReplay(downstreamCheckpointId);
+			LOG.debug("Received {} checkpoint ids to replay records for.", checkpointIdsToReplay.size());
 
-			LOG.debug("Start to replay records.");
+			for (String checkpointId : checkpointIdsToReplay) {
+				Iterable<T> records = inFlightLogger.getReplayLog(subpartitionIndex, checkpointId);
 
-			for (T record : records) {
-				if (targetPartition instanceof ResultPartition && record instanceof SerializationDelegate) {
-					LOG.debug("{}: Replay record at pos {}: {} of task {}.", inFlightLogger, replayCounter, ((SerializationDelegate) record).getInstance(), ((ResultPartition) targetPartition).getTaskName());
-				} else {
-					LOG.debug("{}: Replay record at pos {}: {} of partition {}.", inFlightLogger, replayCounter, record, targetPartition);
+				LOG.debug("Start to replay records for checkpoint {}.", checkpointId);
+
+				for (T record : records) {
+					if (targetPartition instanceof ResultPartition && record instanceof SerializationDelegate) {
+						LOG.debug("{}: Replay record at pos {}: {} of task {} for checkpoint {}.", inFlightLogger, replayCounter, ((SerializationDelegate) record).getInstance(), ((ResultPartition) targetPartition).getTaskName(), checkpointId);
+					} else {
+						LOG.debug("{}: Replay record at pos {}: {} of partition {} for checkpoint {}.", inFlightLogger, replayCounter, record, targetPartition, checkpointId);
+					}
+					LOG.debug("State of serializer {}.", serializer);
+					sendToTarget(record, subpartitionIndex);
+					replayCounter++;
+					totalReplayCounter++;
 				}
-				LOG.debug("State of serializer {}.", serializer);
-				sendToTarget(record, subpartitionIndex);
-				replayCounter++;
+				LOG.debug("Replaying {} records for checkpoint {} completed.", replayCounter, checkpointId);
+				replayCounter = 0;
+
+				CheckpointBarrier checkpointBarrier = inFlightLogger.getCheckpointBarrier(subpartitionIndex, checkpointId);
+				if (checkpointBarrier != null) {
+					LOG.debug("Replay {}.", checkpointBarrier);
+					emitEvent(checkpointBarrier, subpartitionIndex);
+				}
 			}
 
-			LOG.debug("Replaying {} records completed. Flush records and check whether there is another in-flight log request.", replayCounter);
+			LOG.debug("Replaying {} records completed. Flush records and check whether there is another in-flight log request.", totalReplayCounter);
 
 			// If flushing each record is disabled,
 			// flush the accumulated in-flight log records.
@@ -358,7 +398,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 		}
 	}
 
-	private boolean checkForReplaySignal(InFlightLogPrepareEvent inFlightLogPrepareEvent) throws IOException, InterruptedException {
+	private boolean replaySignalFailed(InFlightLogPrepareEvent inFlightLogPrepareEvent) throws IOException, InterruptedException {
 		int i = 0;
 		while (!inFlightLogRequestSignalled() && i < 100) {
 			Thread.sleep(10);
@@ -367,7 +407,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 
 		if (i == 100) {
 			LOG.warn("In-flight log request {} delayed more than 1 second. Aborting.", inFlightLogPrepareEvent);
-			return false;
+			return true;
 		}
 
 		InFlightLogRequestEvent inFlightLogRequestEvent = getInFlightLogRequestEvent();
@@ -375,9 +415,9 @@ public class RecordWriter<T extends IOReadableWritable> {
 
 		if (!inFlightLogRequestEvent.equals(inFlightLogPrepareEvent)) {
 			LOG.warn("In-flight log prepare event {} not validated. Replay request {} received afterwards does not match.", inFlightLogPrepareEvent, inFlightLogRequestEvent);
-			return false;
+			return true;
 		}
 
-		return true;
+		return false;
 	}
 }

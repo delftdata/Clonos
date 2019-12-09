@@ -19,6 +19,7 @@
 package org.apache.flink.runtime.inflightlogging;
 
 import org.apache.flink.runtime.plugable.SerializationDelegate;
+import org.apache.flink.runtime.io.network.api.CheckpointBarrier;
 
 import java.io.IOException;
 import java.util.*;
@@ -44,7 +45,6 @@ public class InFlightLogger<T, REC> {
 	// It will be off for stateless standby tasks until they start running and receive the first checkpoint barrier.
 	private String currentCheckpointId;
 
-
 	public InFlightLogger(int numChannels) {
 		slicedLog = new TreeMap<>();
 		this.numOutgoingChannels = numChannels;
@@ -63,7 +63,9 @@ public class InFlightLogger<T, REC> {
 		// At the start of new epoch checkpoint id is unknown until triggerCheckpoint().
 		// Only for the first checkpoint ever, create the slices here.
 		// In case of standby tasks, the current checkpoint will not be the first.
-		createSlices(currentCheckpointId);
+		if (slicedLog.isEmpty()) {
+			createSlices(currentCheckpointId);
+		}
 	}
 
 	public boolean replaying() {
@@ -95,24 +97,28 @@ public class InFlightLogger<T, REC> {
 		LOG.debug("Create {} slices for checkpoint no {}.", numOutgoingChannels, currentCheckpointId);
 	}
 
-	public Iterable<T> getReplayLog(int outgoingChannelIndex, long downstreamCheckpointId) throws IOException {
-
-		List<Iterator<REC>> wrappedIterators = new ArrayList<>(slicedLog.keySet().size());
-
-		int totalRecordsToReplay = 0;
-
-		for(String checkpointId : slicedLog.keySet()) {
-			if (Long.valueOf(checkpointId) <= downstreamCheckpointId) {
+	public TreeSet<String> getCheckpointIdsToReplay(String downstreamCheckpointId) {
+		TreeSet<String> checkpointIdsToReplay = new TreeSet<>();
+		for (String checkpointId : slicedLog.keySet()) {
+			if (Long.valueOf(checkpointId) <= Long.valueOf(downstreamCheckpointId)) {
 				LOG.debug("Skip replaying of records for checkpoint {}. Downstream has snapshot of checkpoint {}.", checkpointId, downstreamCheckpointId);
 				continue;
 			}
-
-			StreamSlice<REC> sliceOfChannel = slicedLog.get(checkpointId)[outgoingChannelIndex];
-			wrappedIterators.add(sliceOfChannel.getSliceRecords().iterator());
-			int recordsToReplay = sliceOfChannel.getSliceRecords().size();
-			LOG.debug("For checkpoint id {} and channel index {}, {} records have been logged.", checkpointId, outgoingChannelIndex, recordsToReplay);
-			totalRecordsToReplay += recordsToReplay;
+			checkpointIdsToReplay.add(checkpointId);
 		}
+		return checkpointIdsToReplay;
+	}
+
+	public Iterable<T> getReplayLog(int outgoingChannelIndex, String checkpointId) throws IOException {
+
+		// List is not required for single checkpoint.
+		// Code can be simplified.
+		List<Iterator<REC>> wrappedIterators = new ArrayList<>(slicedLog.keySet().size());
+
+		StreamSlice<REC> sliceOfChannel = slicedLog.get(checkpointId)[outgoingChannelIndex];
+		wrappedIterators.add(sliceOfChannel.getSliceRecords().iterator());
+		int recordsToReplay = sliceOfChannel.getSliceRecords().size();
+		LOG.debug("For checkpoint id {} and channel index {}, {} records have been logged.", checkpointId, outgoingChannelIndex, recordsToReplay);
 
 		if (wrappedIterators.size() == 0) {
 			return new Iterable<T>() {
@@ -123,10 +129,10 @@ public class InFlightLogger<T, REC> {
 			};
 		}
 
-		LOG.debug("Get in-flight log of channel {} to replay {} records.", outgoingChannelIndex, totalRecordsToReplay);
+		LOG.debug("Get in-flight log of channel {} to replay {} records.", outgoingChannelIndex, recordsToReplay);
 
 		replaying = true;
-		LOG.debug("Start replay log. Set replaying to true.");
+		LOG.debug("Start replay log for checkpoint {}. Set replaying to true.", checkpointId);
 
 		return new Iterable<T>() {
 			@Override
@@ -158,7 +164,7 @@ public class InFlightLogger<T, REC> {
 							currentIterator = wrappedIterators.get(indx);
 						}
 						if (!currentIterator.hasNext() && indx == wrappedIterators.size()) {
-							LOG.debug("End of replay log. Set replaying to false.");
+							LOG.debug("End of replay log for checkpoint {}. Set replaying to false.", checkpointId);
 							replaying = false;
 						}
 					}
@@ -171,8 +177,10 @@ public class InFlightLogger<T, REC> {
 				};
 			}
 		};
+	}
 
-
+	public String getCheckpointId() {
+		return currentCheckpointId;
 	}
 
 	// Standby tasks receive a state snapshot and the checkpoint id upon each checkpoint.
@@ -187,8 +195,8 @@ public class InFlightLogger<T, REC> {
 	}
 
 	public void discardSlice() {
-		LOG.debug("Discard slices for checkpoint {}.", slicedLog.firstKey());
-		slicedLog.remove(slicedLog.firstKey());
+		String checkpointId = slicedLog.firstKey();
+		discardSlice(checkpointId);
 	}
 
 	public void discardSlice(String checkpointId) {
@@ -206,4 +214,25 @@ public class InFlightLogger<T, REC> {
 		return String.format("InFlightLogger [replaying: %s, channels: %s, current checkpoint id: %s]", replaying, numOutgoingChannels, currentCheckpointId);
 	}
 
+	public void logCheckpointBarrier(CheckpointBarrier checkpointBarrier) {
+		try {
+			LOG.debug("Log {}.", checkpointBarrier);
+			for (int channelIndex = 0; channelIndex < this.numOutgoingChannels; channelIndex++) {
+				slicedLog.get(String.valueOf(checkpointBarrier.getId()))[channelIndex].setCheckpointBarrier(checkpointBarrier);
+			}
+		} catch (NullPointerException e) {
+			LOG.warn("No in-flight log to store {}. This means that no records appeared in that epoch. Create the missing slices and store it.", checkpointBarrier);
+			createSlices(String.valueOf(checkpointBarrier.getId() - 1));
+			logCheckpointBarrier(checkpointBarrier);
+		}
+	}
+
+	public CheckpointBarrier getCheckpointBarrier(int channelIndex, String checkpointId) {
+		try {
+			return slicedLog.get(checkpointId)[channelIndex].getCheckpointBarrier();
+		} catch (NullPointerException e) {
+			LOG.warn("No in-flight log to get CheckpointBarrier for channel {} and checkpoint {}.", channelIndex, checkpointId);
+			return null;
+		}
+	}
 }

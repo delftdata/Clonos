@@ -18,6 +18,8 @@
 
 package org.apache.flink.runtime.inflightlogging;
 
+import org.apache.flink.runtime.io.network.api.CheckpointBarrier;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -30,6 +32,7 @@ public class StreamSlice<T> {
 
 	private String sliceId;
 	private List<T> sliceRecords;
+	private CheckpointBarrier checkpointBarrier;
 
 	public StreamSlice(String sliceId) {
 		this.sliceId = sliceId;
@@ -61,4 +64,13 @@ public class StreamSlice<T> {
 		this.sliceRecords.add(newRecord);
 		LOG.debug("Logged record {} to position {} of StreamSlice for checkpoint id {}.", newRecord, this.sliceRecords.size() - 1, sliceId);
 	}
+
+	public void setCheckpointBarrier(CheckpointBarrier checkpointBarrier) {
+		this.checkpointBarrier = checkpointBarrier;
+	}
+
+	public CheckpointBarrier getCheckpointBarrier() {
+		return checkpointBarrier;
+	}
+
 }
