@@ -18,6 +18,10 @@
 package org.apache.flink.streaming.runtime.streamrecord;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.runtime.causal.DeterminantCache;
+import org.apache.flink.runtime.causal.determinant.Determinant;
+
+import java.util.List;
 
 /**
  * One value in a data stream. This stores the value and an optional associated timestamp.
@@ -35,6 +39,8 @@ public final class StreamRecord<T> extends StreamElement {
 
 	/** Flag whether the timestamp is actually set. */
 	private boolean hasTimestamp;
+
+	private List<DeterminantCache.DeterminantLogDelta> logDeltas;
 
 	/**
 	 * Creates a new StreamRecord. The record does not have a timestamp.
