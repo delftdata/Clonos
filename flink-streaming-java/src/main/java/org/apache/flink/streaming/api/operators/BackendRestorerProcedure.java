@@ -114,8 +114,8 @@ public class BackendRestorerProcedure<
 					LOG.trace("Creating {} and restoring with state {} from alternative ({}/{}).",
 						logDescription, restoreState, alternativeIdx, restoreOptions.size());
 				} else {
-					LOG.debug("Creating {} and restoring with state from alternative ({}/{}).",
-						logDescription, alternativeIdx, restoreOptions.size());
+					LOG.debug("Creating {} and restoring with state {} from alternative ({}/{}).",
+						logDescription, restoreState, alternativeIdx, restoreOptions.size());
 				}
 			}
 

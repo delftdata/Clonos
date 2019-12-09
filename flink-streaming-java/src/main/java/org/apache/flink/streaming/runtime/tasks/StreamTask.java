@@ -316,6 +316,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 				standbyFuture.get();
 				LOG.debug("Task {} reached inputChannelConnectionsFuture {}.", getName(), inputChannelConnectionsFuture);
 				inputChannelConnectionsFuture.get();
+				LOG.debug("Task {} starts execution after inputChannelConnectionsFuture {}.", getName(), inputChannelConnectionsFuture);
 			}
 
 			// we need to make sure that any triggers scheduled in open() cannot be

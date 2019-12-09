@@ -385,7 +385,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 
 		if (isStandby && state == STANDBY) {
 			dispatchStateToStandbyTaskRpcCall(taskRestore);
-			LOG.debug("Dispatch state snapshot to standby task " + vertex.getTaskNameWithSubtaskIndex() + '.');
+			LOG.debug("Dispatch state snapshot {} to standby task {}.", taskRestore, vertex.getTaskNameWithSubtaskIndex());
 		}
 	}
 

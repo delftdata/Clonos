@@ -320,7 +320,7 @@ public abstract class TwoPhaseCommitSinkFunction<IN, TXN, CONTEXT>
 		state = context.getOperatorStateStore().getListState(stateDescriptor);
 
 		if (context.isRestored()) {
-			LOG.info("{} - restoring state", name());
+			LOG.info("{} - restoring state {}", name(), state);
 
 			for (State<TXN, CONTEXT> operatorState : state.get()) {
 				userContext = operatorState.getContext();

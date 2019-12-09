@@ -549,6 +549,8 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 	public void onBuffer(Buffer buffer, int sequenceNumber, int backlog) throws IOException {
 		boolean success = false;
 
+		LOG.debug("{}: onBuffer {}, expectedSequenceNumber: {}, sequenceNumber: {}, backlog {}.", this, buffer, expectedSequenceNumber, sequenceNumber, backlog);
+
 		try {
 			synchronized (receivedBuffers) {
 				if (!isReleased.get()) {
@@ -557,6 +559,7 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 
 						receivedBuffers.add(buffer);
 						expectedSequenceNumber++;
+						LOG.debug("{}: onBuffer {} added. Available buffers: {}", this, buffer, receivedBuffers.size());
 
 						if (available == 0) {
 							notifyChannelNonEmpty();

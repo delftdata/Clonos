@@ -66,7 +66,6 @@ import java.util.Optional;
 import java.util.Timer;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 
 import static org.apache.flink.util.Preconditions.checkArgument;
@@ -212,7 +211,7 @@ public class SingleInputGate implements InputGate {
 	/**
 	 * Futures for acking in-flight log prepare request per channel by upstream.
 	 */
-	private final ConcurrentHashMap<ResultPartitionID, CompletableFuture<Acknowledge>> ackChannelFutures;
+	private final Map<ResultPartitionID, CompletableFuture<Acknowledge>> ackChannelFutures;
 
 	public SingleInputGate(
 		String owningTaskName,
@@ -247,7 +246,7 @@ public class SingleInputGate implements InputGate {
 		this.isStandby = ((Task) taskActions).getIsStandby();
 		this.latestCompletedCheckpointId = 0;
 		this.restoreStateFutures = new ArrayList<CompletableFuture<Void>>();
-		this.ackChannelFutures = new ConcurrentHashMap<ResultPartitionID, CompletableFuture<Acknowledge>>(numberOfInputChannels);
+		this.ackChannelFutures = new HashMap<ResultPartitionID, CompletableFuture<Acknowledge>>(numberOfInputChannels);
 	}
 
 	// ------------------------------------------------------------------------
@@ -342,17 +341,21 @@ public class SingleInputGate implements InputGate {
 	}
 
 	public boolean checkInputChannelConnectionsComplete() {
-		AtomicBoolean complete = new AtomicBoolean();
-		ackChannelFutures.forEachValue((long) numberOfInputChannels,
-				ackChannelFuture -> {
-			if (ackChannelFuture.isDone() && !ackChannelFuture.isCompletedExceptionally()) {
-				LOG.debug("Channel connections for {} of {} complete.", this, owningTaskName);
-				complete.set(true);
+		if (ackChannelFutures.size() < numberOfInputChannels) {
+			LOG.debug("Channel connections of {} pending.", owningTaskName);
+			return false;
+		}
+
+		for (CompletableFuture<Acknowledge> ackChannelFuture : ackChannelFutures.values()) {
+			LOG.debug("Channel connection for {} of {}: {}.", this, owningTaskName, ackChannelFuture);
+			if (!ackChannelFuture.isDone() || ackChannelFuture.isCompletedExceptionally()) {
+				return false;
 			}
-		});
-		LOG.debug("Channel connections for {} {}.", this,
-				(complete.get() ? "complete" : "pending"));
-		return complete.get();
+		}
+
+		isStandby = false;
+		LOG.debug("Channel connections of {} complete.", owningTaskName);
+		return true;
 	}
 
 	// ------------------------------------------------------------------------
@@ -549,6 +552,7 @@ public class SingleInputGate implements InputGate {
 				// Remove the old channel from the list of enqueued channels with available data.
 				synchronized(inputChannelsWithData) {
 					inputChannelsWithData.remove(current);
+					enqueuedInputChannelsWithData.clear(current.getChannelIndex());
 				}
 
 				LOG.debug("{}: Input channel {} has been updated to {}.", owningTaskName, current, newChannel);
@@ -558,11 +562,12 @@ public class SingleInputGate implements InputGate {
 				try {
 					if (isStandby) {
 						LOG.debug("{}: send in-flight log request event for subpartition index {} (prepare only).", owningTaskName, consumedSubpartitionIndex);
+						// Just prepare the replay
+						newChannel.sendTaskEvent(new InFlightLogPrepareEvent(consumedSubpartitionIndex, latestCompletedCheckpointId));
+
 						ackChannelFutures.put(newChannel.getPartitionId(), new CompletableFuture<Acknowledge>());
 						CompletableFuture<Acknowledge> ackNewChannelFuture = ackChannelFutures.get(newChannel.getPartitionId());
 
-						// Just prepare the replay
-						newChannel.sendTaskEvent(new InFlightLogPrepareEvent(consumedSubpartitionIndex, latestCompletedCheckpointId));
 						final CompletableFuture<Void> allRestoreStateFutures = FutureUtils.waitForAll(restoreStateFutures);
 						if (allRestoreStateFutures.isCompletedExceptionally()) {
 							LOG.warn("Unexpected exception while waiting for restore state procedures to complete.");
@@ -575,7 +580,6 @@ public class SingleInputGate implements InputGate {
 							LOG.warn("Unexpected exception while waiting for InFlightLogPrepareRequest future to complete.");
 						}
 						LOG.debug("{}: InFlightLogPrepareRequest for subpartitionIndex {} from channel {} acknowledged by upstream.", owningTaskName, consumedSubpartitionIndex, newChannel);
-						isStandby = false;
 					}
 
 					newChannel.requestSubpartition(consumedSubpartitionIndex);
@@ -585,7 +589,7 @@ public class SingleInputGate implements InputGate {
 						owningTaskName, newChannel, e);
 					triggerFailProducer(newPartitionId, e);
 				} catch (IllegalStateException e) {
-					LOG.error("{}: Send task event for input channel {} failed. Ignoring failure and sending fail trigger for producer (chances are it is dead).",
+					LOG.error("{}: Send task event for input channel {} failed.",
 						owningTaskName, newChannel, e);
 				} catch (ExecutionException e) {
 					LOG.error("Execution exception while waiting for ackNewChannelFuture: {}.", e);
@@ -769,6 +773,7 @@ public class SingleInputGate implements InputGate {
 
 		do {
 			synchronized (inputChannelsWithData) {
+				LOG.debug("{}: getNextBufferOrEvent() select from {} inputChannelsWithData.", owningTaskName, inputChannelsWithData.size());
 				while (inputChannelsWithData.size() == 0) {
 					if (isReleased) {
 						throw new IllegalStateException("Released");
@@ -785,7 +790,7 @@ public class SingleInputGate implements InputGate {
 				currentChannel = inputChannelsWithData.remove();
 				enqueuedInputChannelsWithData.clear(currentChannel.getChannelIndex());
 				moreAvailable = inputChannelsWithData.size() > 0;
-				LOG.debug("{}: current channel {} has data. Call its getNextBuffer().", owningTaskName, currentChannel);
+				LOG.debug("{}: current channel {} has data. Call its getNextBuffer(). {} channels with data still.", owningTaskName, currentChannel, moreAvailable);
 			}
 
 			result = currentChannel.getNextBuffer();
@@ -870,10 +875,12 @@ public class SingleInputGate implements InputGate {
 		int availableChannels;
 
 		synchronized (inputChannelsWithData) {
+			LOG.debug("{}: Queue channel {} since it has available data.", owningTaskName, channel);
 			if (enqueuedInputChannelsWithData.get(channel.getChannelIndex())) {
 				return;
 			}
 			availableChannels = inputChannelsWithData.size();
+			LOG.debug("{}: Number of channels with available data {}.", owningTaskName, availableChannels);
 
 			inputChannelsWithData.add(channel);
 			enqueuedInputChannelsWithData.set(channel.getChannelIndex());
