@@ -693,7 +693,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 				//           impact progress of the streaming topology
 				checkpointState(checkpointMetaData, checkpointOptions, checkpointMetrics);
 
-				String checkpointId = String.valueOf(checkpointMetaData.getCheckpointId());
+				long checkpointId = checkpointMetaData.getCheckpointId();
 				for (InFlightLogger inFlightLogger : getInFlightLoggers()) {
 					LOG.debug("Create slices of InFlightLogger {} for new checkpoint (previous checkpoint id is {}).", inFlightLogger, checkpointId);
 					inFlightLogger.createSlices(checkpointId);
@@ -744,7 +744,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 						operator.notifyCheckpointComplete(checkpointId);
 						for (InFlightLogger inFlightLogger : getInFlightLoggers()) {
 							LOG.debug("Discard slices of InFlightLogger {} for checkpoint {}.", inFlightLogger, checkpointId);
-							inFlightLogger.discardSlice(String.valueOf(checkpointId));
+							inFlightLogger.discardSlice(checkpointId);
 						}
 					}
 				}
@@ -806,8 +806,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	}
 
 	@Override
-	public void updateInFlightLoggerCheckpointId(Long checkpointIdNumber) {
-		String checkpointId = String.valueOf(checkpointIdNumber);
+	public void updateInFlightLoggerCheckpointId(long checkpointId) {
 		for (InFlightLogger inFlightLogger : getInFlightLoggers()) {
 			inFlightLogger.updateCheckpointId(checkpointId);
 		}

@@ -290,7 +290,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 			InFlightLogPrepareEvent inFlightLogPrepareEvent = getInFlightLogPrepareEvent();
 			LOG.debug("{} has been signalled. Ack it.", inFlightLogPrepareEvent);
 			int subpartitionIndex = inFlightLogPrepareEvent.getSubpartitionIndex();
-			String downstreamCheckpointId = String.valueOf(inFlightLogPrepareEvent.getCheckpointId());
+			long downstreamCheckpointId = inFlightLogPrepareEvent.getCheckpointId();
 			if (targetPartition instanceof ResultPartition) {
 				((ResultPartition) targetPartition).ackInFlightLogPrepareRequest(subpartitionIndex);
 			}
@@ -320,10 +320,10 @@ public class RecordWriter<T extends IOReadableWritable> {
 
 			int replayCounter = 0;
 			int totalReplayCounter = 0;
-			TreeSet<String> checkpointIdsToReplay = inFlightLogger.getCheckpointIdsToReplay(downstreamCheckpointId);
+			TreeSet<Long> checkpointIdsToReplay = inFlightLogger.getCheckpointIdsToReplay(downstreamCheckpointId);
 			LOG.debug("Received {} checkpoint ids to replay records for.", checkpointIdsToReplay.size());
 
-			for (String checkpointId : checkpointIdsToReplay) {
+			for (long checkpointId : checkpointIdsToReplay) {
 				Iterable<T> records = inFlightLogger.getReplayLog(subpartitionIndex, checkpointId);
 
 				LOG.debug("Start to replay records for checkpoint {}.", checkpointId);

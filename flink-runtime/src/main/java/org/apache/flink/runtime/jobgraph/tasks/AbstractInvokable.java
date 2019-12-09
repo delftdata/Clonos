@@ -101,7 +101,7 @@ public abstract class AbstractInvokable {
 
 	}
 
-	public void updateInFlightLoggerCheckpointId(Long checkpointId) {
+	public void updateInFlightLoggerCheckpointId(long checkpointId) {
 
 	}
 

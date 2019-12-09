@@ -30,25 +30,25 @@ public class StreamSlice<T> {
 
 	private static final Logger LOG = LoggerFactory.getLogger(StreamSlice.class);
 
-	private String sliceId;
+	private long sliceId;
 	private List<T> sliceRecords;
 	private CheckpointBarrier checkpointBarrier;
 
-	public StreamSlice(String sliceId) {
+	public StreamSlice(long sliceId) {
 		this.sliceId = sliceId;
 		this.sliceRecords = new ArrayList<>(); // TODO check what is a sane initial size
 	}
 
-	public StreamSlice(String sliceId, List<T> sliceRecords) {
+	public StreamSlice(long sliceId, List<T> sliceRecords) {
 		this.sliceId = sliceId;
 		this.sliceRecords = sliceRecords;
 	}
 
-	public String getSliceId() {
+	public long getSliceId() {
 		return sliceId;
 	}
 
-	public void setSliceId(String sliceId) {
+	public void setSliceId(long sliceId) {
 		this.sliceId = sliceId;
 	}
 
