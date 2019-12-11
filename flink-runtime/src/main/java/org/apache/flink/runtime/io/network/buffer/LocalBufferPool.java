@@ -212,6 +212,7 @@ class LocalBufferPool implements BufferPool {
 	}
 
 	private BufferBuilder toBufferBuilder(MemorySegment memorySegment) {
+		LOG.debug("Got memory segment {}.", memorySegment);
 		if (memorySegment == null) {
 			return null;
 		}
@@ -219,7 +220,9 @@ class LocalBufferPool implements BufferPool {
 	}
 
 	private MemorySegment requestMemorySegment(boolean isBlocking) throws InterruptedException, IOException {
+		LOG.debug("Request memory segment blocking? {}. Available memory segments: {}.", isBlocking, availableMemorySegments.size());
 		synchronized (availableMemorySegments) {
+			LOG.debug("Acquired memory segment request lock.");
 			returnExcessMemorySegments();
 
 			boolean askToRecycle = owner != null;
