@@ -222,7 +222,7 @@ class LocalBufferPool implements BufferPool {
 	private MemorySegment requestMemorySegment(boolean isBlocking) throws InterruptedException, IOException {
 		LOG.debug("Request memory segment blocking? {}. Available memory segments: {}.", isBlocking, availableMemorySegments.size());
 		synchronized (availableMemorySegments) {
-			LOG.debug("Acquired memory segment request lock.");
+			LOG.debug("{}: Acquired memory segment request lock.", this);
 			returnExcessMemorySegments();
 
 			boolean askToRecycle = owner != null;
@@ -247,6 +247,7 @@ class LocalBufferPool implements BufferPool {
 				}
 
 				if (isBlocking) {
+					LOG.debug("{}: availableMemorySegments empty.", this);
 					availableMemorySegments.wait(2000);
 				}
 				else {
@@ -261,14 +262,17 @@ class LocalBufferPool implements BufferPool {
 	@Override
 	public void recycle(MemorySegment segment) {
 		BufferListener listener;
+		LOG.debug("Recycle memory segment {}.", segment);
 		synchronized (availableMemorySegments) {
 			if (isDestroyed || numberOfRequestedMemorySegments > currentPoolSize) {
 				returnMemorySegment(segment);
 				return;
 			} else {
 				listener = registeredListeners.poll();
+				LOG.debug("Polled buffer availability listener {}.", listener);
 
 				if (listener == null) {
+					LOG.debug("Add memory segment {} to availableMemorySegments.", segment);
 					availableMemorySegments.add(segment);
 					availableMemorySegments.notify();
 					return;
@@ -283,6 +287,7 @@ class LocalBufferPool implements BufferPool {
 		// (either directly or later during error handling) and therefore eventually end up in this
 		// method again.
 		boolean needMoreBuffers = listener.notifyBufferAvailable(new NetworkBuffer(segment, this));
+		LOG.debug("Need more buffers? {}.", needMoreBuffers);
 
 		if (needMoreBuffers) {
 			synchronized (availableMemorySegments) {
@@ -290,6 +295,7 @@ class LocalBufferPool implements BufferPool {
 					// cleanup tasks how they would have been done if we only had one synchronized block
 					listener.notifyBufferDestroyed();
 				} else {
+					LOG.debug("Add buffer availability listener {}.", listener);
 					registeredListeners.add(listener);
 				}
 			}
@@ -302,6 +308,7 @@ class LocalBufferPool implements BufferPool {
 	@Override
 	public void lazyDestroy() {
 		// NOTE: if you change this logic, be sure to update recycle() as well!
+		LOG.debug("LazyDestroy segments.");
 		synchronized (availableMemorySegments) {
 			if (!isDestroyed) {
 				MemorySegment segment;
@@ -332,6 +339,7 @@ class LocalBufferPool implements BufferPool {
 				return false;
 			}
 
+			LOG.debug("addBufferListener: Add buffer availability listener {}.", listener);
 			registeredListeners.add(listener);
 			return true;
 		}
