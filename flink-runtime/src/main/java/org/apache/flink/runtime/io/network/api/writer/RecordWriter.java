@@ -288,7 +288,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 		LOG.debug("Check for in-flight log request.");
 		if (inFlightLogPrepareSignalled()) {
 			InFlightLogPrepareEvent inFlightLogPrepareEvent = getInFlightLogPrepareEvent();
-			LOG.debug("{} has been signalled. Ack it.", inFlightLogPrepareEvent);
+			LOG.info("{} has been signalled. Ack it.", inFlightLogPrepareEvent);
 			int subpartitionIndex = inFlightLogPrepareEvent.getSubpartitionIndex();
 			long downstreamCheckpointId = inFlightLogPrepareEvent.getCheckpointId();
 			if (targetPartition instanceof ResultPartition) {
@@ -321,7 +321,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 			int replayCounter = 0;
 			int totalReplayCounter = 0;
 			TreeSet<Long> checkpointIdsToReplay = inFlightLogger.getCheckpointIdsToReplay(downstreamCheckpointId);
-			LOG.debug("Received {} checkpoint ids to replay records for.", checkpointIdsToReplay.size());
+			LOG.info("Received {} checkpoint ids to replay records for.", checkpointIdsToReplay.size());
 
 			for (long checkpointId : checkpointIdsToReplay) {
 				Iterable<T> records = inFlightLogger.getReplayLog(subpartitionIndex, checkpointId);
@@ -339,17 +339,17 @@ public class RecordWriter<T extends IOReadableWritable> {
 					replayCounter++;
 					totalReplayCounter++;
 				}
-				LOG.debug("Replaying {} records for checkpoint {} completed.", replayCounter, checkpointId);
+				LOG.info("Replaying {} records for checkpoint {} completed.", replayCounter, checkpointId);
 				replayCounter = 0;
 
 				CheckpointBarrier checkpointBarrier = inFlightLogger.getCheckpointBarrier(subpartitionIndex, checkpointId);
 				if (checkpointBarrier != null) {
-					LOG.debug("Replay {}.", checkpointBarrier);
+					LOG.info("Replay {}.", checkpointBarrier);
 					emitEvent(checkpointBarrier, subpartitionIndex);
 				}
 			}
 
-			LOG.debug("Replaying {} records completed. Flush records and check whether there is another in-flight log request.", totalReplayCounter);
+			LOG.info("Replaying {} records completed. Flush records and check whether there is another in-flight log request.", totalReplayCounter);
 
 			// If flushing each record is disabled,
 			// flush the accumulated in-flight log records.

@@ -561,7 +561,7 @@ public class SingleInputGate implements InputGate {
 
 				try {
 					if (isStandby) {
-						LOG.debug("{}: send in-flight log request event for subpartition index {} (prepare only).", owningTaskName, consumedSubpartitionIndex);
+						LOG.info("{}: send in-flight log request event for subpartition index {} (prepare only).", owningTaskName, consumedSubpartitionIndex);
 						// Just prepare the replay
 						newChannel.sendTaskEvent(new InFlightLogPrepareEvent(consumedSubpartitionIndex, latestCompletedCheckpointId));
 
@@ -572,14 +572,14 @@ public class SingleInputGate implements InputGate {
 						if (allRestoreStateFutures.isCompletedExceptionally()) {
 							LOG.warn("Unexpected exception while waiting for restore state procedures to complete.");
 						}
-						LOG.debug("{}: any pending state restoration is now complete. Send in-flight log request event for subpartitionIndex {} from channel {} (replay).", owningTaskName, consumedSubpartitionIndex, newChannel);
+						LOG.info("{}: any pending state restoration is now complete. Send in-flight log request event for subpartitionIndex {} from channel {} (replay).", owningTaskName, consumedSubpartitionIndex, newChannel);
 						newChannel.sendTaskEvent(new InFlightLogRequestEvent(consumedSubpartitionIndex, latestCompletedCheckpointId));
 
 						ackNewChannelFuture.get();
 						if (ackNewChannelFuture.isCompletedExceptionally()) {
 							LOG.warn("Unexpected exception while waiting for InFlightLogPrepareRequest future to complete.");
 						}
-						LOG.debug("{}: InFlightLogPrepareRequest for subpartitionIndex {} from channel {} acknowledged by upstream.", owningTaskName, consumedSubpartitionIndex, newChannel);
+						LOG.info("{}: InFlightLogPrepareRequest for subpartitionIndex {} from channel {} acknowledged by upstream.", owningTaskName, consumedSubpartitionIndex, newChannel);
 					}
 
 					newChannel.requestSubpartition(consumedSubpartitionIndex);

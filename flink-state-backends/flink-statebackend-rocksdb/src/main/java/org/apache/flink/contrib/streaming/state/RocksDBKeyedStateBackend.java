@@ -511,7 +511,7 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 					restoreOperation.doRestore(restoreState);
 				}
 			}
-			LOG.debug("State restored: {}.", restoreState);
+			LOG.info("State restored: {}.", restoreState);
 		} catch (Exception ex) {
 			dispose();
 			throw ex;

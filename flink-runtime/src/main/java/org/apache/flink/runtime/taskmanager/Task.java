@@ -1204,7 +1204,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		}
 
 		taskStateManager.setTaskRestore(taskRestore);
-		LOG.debug("Standby task " + taskNameWithSubtask + " received state snapshot of checkpoint " +
+		LOG.info("Standby task " + taskNameWithSubtask + " received state snapshot of checkpoint " +
 				taskRestore.getRestoreCheckpointId() + ".");
 
 		try {
