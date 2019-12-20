@@ -204,9 +204,7 @@ public abstract class AbstractUdfStreamOperator<OUT, F extends Function>
 			if(this.operatorId == null )
 				this.operatorId = this.config.getOperatorID().toString();
 
-			LOG.info("Add ts to record: (" + operatorId+ ", "+ System.currentTimeMillis() + ") with " + record.getOperatorOutputTimestamps().size() + "elements");
 			record.appendTime(operatorId,System.currentTimeMillis());
-			LOG.info("Now with " + record.getOperatorOutputTimestamps().size());
 			output.collect(record);
 		}
 
@@ -214,9 +212,7 @@ public abstract class AbstractUdfStreamOperator<OUT, F extends Function>
 		public <X> void collect(OutputTag<X> outputTag, StreamRecord<X> record) {
 			if(this.operatorId == null )
 				this.operatorId = this.config.getOperatorID().toString();
-			LOG.info("Add ts to record: (" + operatorId+ ", "+ System.currentTimeMillis() + "), with " + record.getOperatorOutputTimestamps().size() + "elements");
 			record.appendTime(operatorId,System.currentTimeMillis());
-			LOG.info("Now with " + record.getOperatorOutputTimestamps().size());
 			output.collect(outputTag, record);
 		}
 

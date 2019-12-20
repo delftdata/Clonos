@@ -32,6 +32,7 @@ import org.apache.flink.streaming.connectors.kafka.internals.metrics.KafkaMetric
 import org.apache.flink.streaming.connectors.kafka.partitioner.FlinkKafkaDelegatePartitioner;
 import org.apache.flink.streaming.connectors.kafka.partitioner.FlinkKafkaPartitioner;
 import org.apache.flink.streaming.util.serialization.KeyedSerializationSchema;
+import org.apache.flink.streaming.runtime.streamrecord.OperatorOutputTimestamp;
 import org.apache.flink.util.NetUtils;
 import org.apache.flink.util.SerializableObject;
 
@@ -271,6 +272,20 @@ public abstract class FlinkKafkaProducerBase<IN> extends RichSinkFunction<IN> im
 		}
 	}
 
+	private void serializeOperatorTimestampsIntoByteBuffer(List<OperatorOutputTimestamp> operatorOutputTimestamps, ByteBuffer target) {
+		boolean first = true;
+		for(OperatorOutputTimestamp o : operatorOutputTimestamps){
+			if (first)
+				first = false;
+			else
+				target.putChar(',');
+			byte[] bytes = o.getId().getBytes();
+			target.put(bytes);
+			target.putChar('=');
+			target.put((""+o.getTimestamp()).getBytes());
+		}
+	}
+
 	/**
 	 * Called when new data arrives to the sink, and forwards it to Kafka.
 	 *
@@ -294,6 +309,15 @@ public abstract class FlinkKafkaProducerBase<IN> extends RichSinkFunction<IN> im
 			partitions = getPartitionsByTopic(targetTopic, producer);
 			this.topicPartitionsMap.put(targetTopic, partitions);
 		}
+
+		List<OperatorOutputTimestamp> operatorOutputTimestamps = context.operatorOutputTimestamps();
+		int encondedLengthOfOperatorTimestamps = operatorOutputTimestamps.stream().map(o -> o.getId().getBytes().length + (""+o.getTimestamp()).getBytes().length).reduce(0, Integer::sum);
+		encondedLengthOfOperatorTimestamps += Math.max(2*(operatorOutputTimestamps.size()-1), 0) + 2*operatorOutputTimestamps.size(); //commas and equals
+		ByteBuffer buffer = ByteBuffer.allocate(serializedValue.length + encondedLengthOfOperatorTimestamps + 2);
+		buffer.put(serializedValue);
+		buffer.putChar('$');
+		serializeOperatorTimestampsIntoByteBuffer(operatorOutputTimestamps, buffer);
+		serializedValue = buffer.array();
 
 		ProducerRecord<byte[], byte[]> record;
 		if (flinkKafkaPartitioner == null) {
