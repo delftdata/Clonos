@@ -101,7 +101,7 @@ public class StreamSourceContexts {
 		@Override
 		public void collect(T element) {
 			synchronized (lock) {
-				output.collect(reuse.replace(element));
+				output.collect(reuse.replaceAndClearEmissionTimestamps(element));
 			}
 		}
 
@@ -173,7 +173,7 @@ public class StreamSourceContexts {
 		@Override
 		protected void processAndCollect(T element) {
 			lastRecordTime = this.timeService.getCurrentProcessingTime();
-			output.collect(reuse.replace(element, lastRecordTime));
+			output.collect(reuse.replaceAndClearEmissionTimestamps(element, lastRecordTime));
 
 			// this is to avoid lock contention in the lockingObject by
 			// sending the watermark before the firing of the watermark

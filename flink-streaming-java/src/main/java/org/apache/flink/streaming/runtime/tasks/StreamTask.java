@@ -191,7 +191,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 	/**
 	 * Constructor for initialization, possibly with initial state (recovery / savepoint / etc).
-	 *
+
 	 * @param env The task environment for this task.
 	 */
 	protected StreamTask(Environment env) {

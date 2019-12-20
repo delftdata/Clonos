@@ -21,8 +21,11 @@ import org.apache.flink.annotation.Internal;
 import org.apache.flink.streaming.api.functions.sink.SinkFunction;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamrecord.LatencyMarker;
+import org.apache.flink.streaming.runtime.streamrecord.OperatorOutputTimestamp;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeService;
+
+import java.util.List;
 
 /**
  * A {@link StreamOperator} for executing {@link SinkFunction SinkFunctions}.
@@ -34,6 +37,8 @@ public class StreamSink<IN> extends AbstractUdfStreamOperator<Object, SinkFuncti
 	private static final long serialVersionUID = 1L;
 
 	private transient SimpleContext sinkContext;
+
+	private String operatorId;
 
 	/** We listen to this ourselves because we don't have an {@link InternalTimerService}. */
 	private long currentWatermark = Long.MIN_VALUE;
@@ -52,6 +57,9 @@ public class StreamSink<IN> extends AbstractUdfStreamOperator<Object, SinkFuncti
 
 	@Override
 	public void processElement(StreamRecord<IN> element) throws Exception {
+		if(operatorId == null)
+			this.operatorId = getOperatorID().toString();
+		element.getOperatorOutputTimestamps().add(new OperatorOutputTimestamp(this.operatorId, System.currentTimeMillis()));
 		sinkContext.element = element;
 		userFunction.invoke(element.getValue(), sinkContext);
 	}
@@ -96,6 +104,11 @@ public class StreamSink<IN> extends AbstractUdfStreamOperator<Object, SinkFuncti
 				return element.getTimestamp();
 			}
 			return null;
+		}
+
+		@Override
+		public List<OperatorOutputTimestamp> operatorOutputTimestamps() {
+			return element.getOperatorOutputTimestamps();
 		}
 	}
 }

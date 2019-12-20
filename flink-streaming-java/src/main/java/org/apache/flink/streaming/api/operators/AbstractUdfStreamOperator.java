@@ -24,15 +24,19 @@ import org.apache.flink.api.common.functions.Function;
 import org.apache.flink.api.common.functions.util.FunctionUtils;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.metrics.Counter;
 import org.apache.flink.runtime.state.CheckpointListener;
 import org.apache.flink.runtime.state.StateInitializationContext;
 import org.apache.flink.runtime.state.StateSnapshotContext;
 import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction;
 import org.apache.flink.streaming.api.checkpoint.ListCheckpointed;
 import org.apache.flink.streaming.api.graph.StreamConfig;
+import org.apache.flink.streaming.api.watermark.Watermark;
+import org.apache.flink.streaming.runtime.streamrecord.LatencyMarker;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.tasks.StreamTask;
 import org.apache.flink.streaming.util.functions.StreamingFunctionUtils;
+import org.apache.flink.util.OutputTag;
 
 import static java.util.Objects.requireNonNull;
 
@@ -79,7 +83,7 @@ public abstract class AbstractUdfStreamOperator<OUT, F extends Function>
 
 	@Override
 	public void setup(StreamTask<?, ?> containingTask, StreamConfig config, Output<StreamRecord<OUT>> output) {
-		super.setup(containingTask, config, output);
+		super.setup(containingTask, config, new EmissionTimestamperOutput<>(output, config));
 		FunctionUtils.setFunctionRuntimeContext(userFunction, getRuntimeContext());
 
 	}
@@ -162,6 +166,63 @@ public abstract class AbstractUdfStreamOperator<OUT, F extends Function>
 
 			throw new IllegalStateException("User functions are not allowed to implement " +
 				"CheckpointedFunction AND ListCheckpointed.");
+		}
+	}
+	/**
+	 * Wrapping {@link Output} that adds an emission timestamp to records.
+	 */
+	public static class EmissionTimestamperOutput<OUT> implements Output<StreamRecord<OUT>> {
+		private final Output<StreamRecord<OUT>> output;
+		private String operatorId;
+		private final StreamConfig config;
+
+		public EmissionTimestamperOutput(Output<StreamRecord<OUT>> output, String operatorId) {
+			LOG.info("CREATED INSTANCE OF EMISSION TIMESTAMPER");
+			this.output = output;
+			this.operatorId = operatorId;
+			this.config = null;
+		}
+		public EmissionTimestamperOutput(Output<StreamRecord<OUT>> output, StreamConfig config) {
+			LOG.info("CREATED INSTANCE OF EMISSION TIMESTAMPER");
+			this.output = output;
+			this.config = config;
+			this.operatorId = null;
+		}
+
+		@Override
+		public void emitWatermark(Watermark mark) {
+			output.emitWatermark(mark);
+		}
+
+		@Override
+		public void emitLatencyMarker(LatencyMarker latencyMarker) {
+			output.emitLatencyMarker(latencyMarker);
+		}
+
+		@Override
+		public void collect(StreamRecord<OUT> record) {
+			if(this.operatorId == null )
+				this.operatorId = this.config.getOperatorID().toString();
+
+			LOG.info("Add ts to record: (" + operatorId+ ", "+ System.currentTimeMillis() + ") with " + record.getOperatorOutputTimestamps().size() + "elements");
+			record.appendTime(operatorId,System.currentTimeMillis());
+			LOG.info("Now with " + record.getOperatorOutputTimestamps().size());
+			output.collect(record);
+		}
+
+		@Override
+		public <X> void collect(OutputTag<X> outputTag, StreamRecord<X> record) {
+			if(this.operatorId == null )
+				this.operatorId = this.config.getOperatorID().toString();
+			LOG.info("Add ts to record: (" + operatorId+ ", "+ System.currentTimeMillis() + "), with " + record.getOperatorOutputTimestamps().size() + "elements");
+			record.appendTime(operatorId,System.currentTimeMillis());
+			LOG.info("Now with " + record.getOperatorOutputTimestamps().size());
+			output.collect(outputTag, record);
+		}
+
+		@Override
+		public void close() {
+			output.close();
 		}
 	}
 }

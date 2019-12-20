@@ -42,6 +42,7 @@ import org.apache.flink.streaming.connectors.kafka.internal.metrics.KafkaMetricM
 import org.apache.flink.streaming.connectors.kafka.partitioner.FlinkFixedPartitioner;
 import org.apache.flink.streaming.connectors.kafka.partitioner.FlinkKafkaDelegatePartitioner;
 import org.apache.flink.streaming.connectors.kafka.partitioner.FlinkKafkaPartitioner;
+import org.apache.flink.streaming.runtime.streamrecord.OperatorOutputTimestamp;
 import org.apache.flink.streaming.util.serialization.KeyedSerializationSchema;
 import org.apache.flink.streaming.util.serialization.KeyedSerializationSchemaWrapper;
 import org.apache.flink.util.ExceptionUtils;
@@ -67,6 +68,7 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.Nullable;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -608,6 +610,19 @@ public class FlinkKafkaProducer011<IN>
 
 		super.open(configuration);
 	}
+	private void serializeOperatorTimestampsIntoByteBuffer(List<OperatorOutputTimestamp> operatorOutputTimestamps, ByteBuffer target) {
+		boolean first = true;
+		for(OperatorOutputTimestamp o : operatorOutputTimestamps){
+			if (first)
+				first = false;
+			else
+				target.putChar(',');
+			byte[] bytes = o.getId().getBytes();
+			target.put(bytes);
+			target.putChar('=');
+			target.put((""+o.getTimestamp()).getBytes());
+		}
+	}
 
 	@Override
 	public void invoke(KafkaTransactionState transaction, IN next, Context context) throws FlinkKafka011Exception {
@@ -624,6 +639,15 @@ public class FlinkKafkaProducer011<IN>
 		if (this.writeTimestampToKafka) {
 			timestamp = context.timestamp();
 		}
+
+		List<OperatorOutputTimestamp> operatorOutputTimestamps = context.operatorOutputTimestamps();
+		int encondedLengthOfOperatorTimestamps = operatorOutputTimestamps.stream().map(o -> o.getId().getBytes().length + (""+o.getTimestamp()).getBytes().length).reduce(0, Integer::sum);
+		encondedLengthOfOperatorTimestamps += Math.max(2*(operatorOutputTimestamps.size()-1), 0) + 2*operatorOutputTimestamps.size(); //commas and equals
+		ByteBuffer buffer = ByteBuffer.allocate(serializedValue.length + encondedLengthOfOperatorTimestamps + 2);
+		buffer.put(serializedValue);
+		buffer.putChar('$');
+		serializeOperatorTimestampsIntoByteBuffer(operatorOutputTimestamps, buffer);
+		serializedValue = buffer.array();
 
 		ProducerRecord<byte[], byte[]> record;
 		int[] partitions = topicPartitionsMap.get(targetTopic);

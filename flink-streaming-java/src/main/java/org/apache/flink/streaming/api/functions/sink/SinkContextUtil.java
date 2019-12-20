@@ -19,6 +19,9 @@
 package org.apache.flink.streaming.api.functions.sink;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.streaming.runtime.streamrecord.OperatorOutputTimestamp;
+
+import java.util.List;
 
 /**
  * Utility for creating Sink {@link SinkFunction.Context Contexts}.
@@ -45,6 +48,11 @@ public class SinkContextUtil {
 			@Override
 			public Long timestamp() {
 				return timestamp;
+			}
+
+			@Override
+			public List<OperatorOutputTimestamp> operatorOutputTimestamps() {
+				throw  new RuntimeException("Not implemented");
 			}
 		};
 	}

@@ -39,6 +39,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.LinkedList;
+import java.util.List;
 
 import static java.util.Objects.requireNonNull;
 
@@ -142,17 +145,29 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 		}
 	}
 
+	private void copyOperatorTimestamps(DataInputView source, DataOutputView target) throws IOException {
+		int numElements = source.readByte();
+		target.writeByte(numElements);
+		for(int i = 0; i < numElements; i++){
+			int idSize = source.readByte();
+			target.writeByte(idSize);
+			target.write(source, idSize);
+			target.writeLong(source.readLong());
+		}
+	}
 	@Override
 	public void copy(DataInputView source, DataOutputView target) throws IOException {
 		int tag = source.readByte();
 		target.write(tag);
 
 		if (tag == TAG_REC_WITH_TIMESTAMP) {
+			copyOperatorTimestamps(source, target);
 			// move timestamp
 			target.writeLong(source.readLong());
 			typeSerializer.copy(source, target);
 		}
 		else if (tag == TAG_REC_WITHOUT_TIMESTAMP) {
+			copyOperatorTimestamps(source, target);
 			typeSerializer.copy(source, target);
 		}
 		else if (tag == TAG_WATERMARK) {
@@ -170,16 +185,30 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 		}
 	}
 
+	private void serializeOperatorTimestamps(List<OperatorOutputTimestamp> operatorOutputTimestamps, DataOutputView target) throws IOException {
+		LOG.info("CALL TO SERIALIZE : " + operatorOutputTimestamps.size() + "Elems");
+
+		target.writeByte(operatorOutputTimestamps.size());
+		for(OperatorOutputTimestamp o : operatorOutputTimestamps){
+			LOG.info("Wrote elem");
+			byte[] bytes = o.getId().getBytes();
+			target.writeByte(bytes.length);
+			target.write(bytes);
+			target.writeLong(o.getTimestamp());
+		}
+	}
+
 	@Override
 	public void serialize(StreamElement value, DataOutputView target) throws IOException {
 		if (value.isRecord()) {
 			StreamRecord<T> record = value.asRecord();
-
 			if (record.hasTimestamp()) {
 				target.write(TAG_REC_WITH_TIMESTAMP);
+				serializeOperatorTimestamps(record.getOperatorOutputTimestamps(), target);
 				target.writeLong(record.getTimestamp());
 			} else {
 				target.write(TAG_REC_WITHOUT_TIMESTAMP);
+				serializeOperatorTimestamps(record.getOperatorOutputTimestamps(), target);
 			}
 			typeSerializer.serialize(record.getValue(), target);
 		}
@@ -212,12 +241,14 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 		} else {
 			LOG.debug("Deserialize source DataInputView {}.", source);
 		}
-		if (tag == TAG_REC_WITH_TIMESTAMP) {
-			long timestamp = source.readLong();
-			return new StreamRecord<T>(typeSerializer.deserialize(source), timestamp);
-		}
-		else if (tag == TAG_REC_WITHOUT_TIMESTAMP) {
-			return new StreamRecord<T>(typeSerializer.deserialize(source));
+		if (tag == TAG_REC_WITH_TIMESTAMP || tag == TAG_REC_WITHOUT_TIMESTAMP) {
+			List<OperatorOutputTimestamp> operatorOutputTimestampList = deserializeOperatorTimestamps(source);
+			if (tag == TAG_REC_WITH_TIMESTAMP) {
+				long timestamp = source.readLong();
+				return new StreamRecord<T>(typeSerializer.deserialize(source), timestamp, operatorOutputTimestampList);
+			} else {
+				return new StreamRecord<T>(typeSerializer.deserialize(source), operatorOutputTimestampList);
+			}
 		}
 		else if (tag == TAG_WATERMARK) {
 			return new Watermark(source.readLong());
@@ -234,20 +265,37 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 		}
 	}
 
+	private List<OperatorOutputTimestamp> deserializeOperatorTimestamps(DataInputView source) throws IOException {
+		List<OperatorOutputTimestamp> operatorOutputTimestampList = new LinkedList<>();
+		int num_elems = source.readByte();
+		LOG.info("CALL TO DESERIALIZE : " +num_elems+ "Elems");
+		for (int i = 0; i < num_elems; i++) {
+			LOG.info("Deserialized elem");
+			int idSize = source.readByte();
+			byte[] id = new byte[idSize];
+			source.read(id);
+			long ts = source.readLong();
+			operatorOutputTimestampList.add(new OperatorOutputTimestamp(new String(id), ts));
+		}
+		return operatorOutputTimestampList;
+	}
+
 	@Override
 	public StreamElement deserialize(StreamElement reuse, DataInputView source) throws IOException {
 		int tag = source.readByte();
 		if (tag == TAG_REC_WITH_TIMESTAMP) {
+			List<OperatorOutputTimestamp> operatorOutputTimestampList = deserializeOperatorTimestamps(source);
 			long timestamp = source.readLong();
 			T value = typeSerializer.deserialize(source);
 			StreamRecord<T> reuseRecord = reuse.asRecord();
-			reuseRecord.replace(value, timestamp);
+			reuseRecord.replace(value, timestamp, operatorOutputTimestampList);
 			return reuseRecord;
 		}
 		else if (tag == TAG_REC_WITHOUT_TIMESTAMP) {
+			List<OperatorOutputTimestamp> operatorOutputTimestampList = deserializeOperatorTimestamps(source);
 			T value = typeSerializer.deserialize(source);
 			StreamRecord<T> reuseRecord = reuse.asRecord();
-			reuseRecord.replace(value);
+			reuseRecord.replace(value, operatorOutputTimestampList);
 			return reuseRecord;
 		}
 		else if (tag == TAG_WATERMARK) {

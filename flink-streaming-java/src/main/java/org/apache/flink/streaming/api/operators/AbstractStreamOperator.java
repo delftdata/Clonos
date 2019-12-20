@@ -172,7 +172,7 @@ public abstract class AbstractStreamOperator<OUT>
 		this.config = config;
 		try {
 			OperatorMetricGroup operatorMetricGroup = environment.getMetricGroup().addOperator(config.getOperatorID(), config.getOperatorName());
-			this.output = new CountingOutput(output, operatorMetricGroup.getIOMetricGroup().getNumRecordsOutCounter());
+			this.output = new CountingOutput<>(output, operatorMetricGroup.getIOMetricGroup().getNumRecordsOutCounter());
 			if (config.isChainStart()) {
 				operatorMetricGroup.getIOMetricGroup().reuseInputMetricsForTask();
 			}
@@ -660,6 +660,7 @@ public abstract class AbstractStreamOperator<OUT>
 	}
 
 	// ----------------------- Helper classes -----------------------
+
 
 	/**
 	 * Wrapping {@link Output} that updates metrics on the number of emitted elements.

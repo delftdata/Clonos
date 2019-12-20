@@ -129,7 +129,7 @@ public class KeyedProcessOperator<K, IN, OUT>
 				throw new IllegalArgumentException("OutputTag must not be null.");
 			}
 
-			output.collect(outputTag, new StreamRecord<>(value, element.getTimestamp()));
+			output.collect(outputTag, new StreamRecord<>(value, element.getTimestamp(), element.getOperatorOutputTimestamps()));
 		}
 
 		@Override

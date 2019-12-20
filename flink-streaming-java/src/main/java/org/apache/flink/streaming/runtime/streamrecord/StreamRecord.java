@@ -19,6 +19,9 @@ package org.apache.flink.streaming.runtime.streamrecord;
 
 import org.apache.flink.annotation.Internal;
 
+import java.util.LinkedList;
+import java.util.List;
+
 /**
  * One value in a data stream. This stores the value and an optional associated timestamp.
  *
@@ -29,6 +32,8 @@ public final class StreamRecord<T> extends StreamElement {
 
 	/** The actual value held by this record. */
 	private T value;
+
+	private List<OperatorOutputTimestamp> operatorOutputTimestamps;
 
 	/** The timestamp of the record. */
 	private long timestamp;
@@ -41,6 +46,7 @@ public final class StreamRecord<T> extends StreamElement {
 	 */
 	public StreamRecord(T value) {
 		this.value = value;
+		this.operatorOutputTimestamps = new LinkedList<>();
 	}
 
 	/**
@@ -54,6 +60,26 @@ public final class StreamRecord<T> extends StreamElement {
 		this.value = value;
 		this.timestamp = timestamp;
 		this.hasTimestamp = true;
+		this.operatorOutputTimestamps = new LinkedList<>();
+	}
+
+	/**
+	 * Creates a new StreamRecord wrapping the given value. The timestamp is set to the
+	 * given timestamp.
+	 *
+	 * @param value The value to wrap in this {@link StreamRecord}
+	 * @param timestamp The timestamp in milliseconds
+	 */
+	public StreamRecord(T value, long timestamp, List<OperatorOutputTimestamp> operatorOutputTimestamps) {
+		this.value = value;
+		this.timestamp = timestamp;
+		this.hasTimestamp = true;
+		this.operatorOutputTimestamps = operatorOutputTimestamps;
+	}
+
+	public StreamRecord(T value, List<OperatorOutputTimestamp> operatorOutputTimestampList) {
+		this.value = value;
+		this.operatorOutputTimestamps = operatorOutputTimestampList;
 	}
 
 	// ------------------------------------------------------------------------
@@ -89,6 +115,10 @@ public final class StreamRecord<T> extends StreamElement {
 		return hasTimestamp;
 	}
 
+	public List<OperatorOutputTimestamp> getOperatorOutputTimestamps(){
+		return operatorOutputTimestamps;
+	}
+
 	// ------------------------------------------------------------------------
 	//  Updating
 	// ------------------------------------------------------------------------
@@ -104,6 +134,12 @@ public final class StreamRecord<T> extends StreamElement {
 	@SuppressWarnings("unchecked")
 	public <X> StreamRecord<X> replace(X element) {
 		this.value = (T) element;
+		return (StreamRecord<X>) this;
+	}
+
+	public <X> StreamRecord<X> replaceAndClearEmissionTimestamps(X element) {
+		this.value = (T) element;
+		this.operatorOutputTimestamps = new LinkedList<>();
 		return (StreamRecord<X>) this;
 	}
 
@@ -125,6 +161,32 @@ public final class StreamRecord<T> extends StreamElement {
 		return (StreamRecord<X>) this;
 	}
 
+	public <X> StreamRecord<X> replaceAndClearEmissionTimestamps(X value, long timestamp) {
+		this.timestamp = timestamp;
+		this.value = (T) value;
+		this.hasTimestamp = true;
+		this.operatorOutputTimestamps = new LinkedList<>();
+
+		return (StreamRecord<X>) this;
+	}
+
+	@SuppressWarnings("unchecked")
+	public <X> StreamRecord<X> replace(X element, List<OperatorOutputTimestamp> operatorOutputTimestamps) {
+		this.operatorOutputTimestamps = operatorOutputTimestamps;
+		this.value = (T) element;
+		return (StreamRecord<X>) this;
+	}
+
+	@SuppressWarnings("unchecked")
+	public <X> StreamRecord<X> replace(X value, long timestamp, List<OperatorOutputTimestamp> operatorOutputTimestamps) {
+		this.operatorOutputTimestamps = operatorOutputTimestamps;
+		this.timestamp = timestamp;
+		this.value = (T) value;
+		this.hasTimestamp = true;
+
+		return (StreamRecord<X>) this;
+	}
+
 	public void setTimestamp(long timestamp) {
 		this.timestamp = timestamp;
 		this.hasTimestamp = true;
@@ -132,6 +194,10 @@ public final class StreamRecord<T> extends StreamElement {
 
 	public void eraseTimestamp() {
 		this.hasTimestamp = false;
+	}
+
+	public void appendTime(String operatorId, long ts){
+		this.operatorOutputTimestamps.add(new OperatorOutputTimestamp(operatorId, ts));
 	}
 
 	// ------------------------------------------------------------------------
@@ -146,6 +212,8 @@ public final class StreamRecord<T> extends StreamElement {
 		StreamRecord<T> copy = new StreamRecord<>(valueCopy);
 		copy.timestamp = this.timestamp;
 		copy.hasTimestamp = this.hasTimestamp;
+		copy.operatorOutputTimestamps = new LinkedList<>();
+		copy.operatorOutputTimestamps.addAll(this.operatorOutputTimestamps);
 		return copy;
 	}
 
@@ -157,6 +225,9 @@ public final class StreamRecord<T> extends StreamElement {
 		target.value = valueCopy;
 		target.timestamp = this.timestamp;
 		target.hasTimestamp = this.hasTimestamp;
+		//Deep copy
+		target.operatorOutputTimestamps = new LinkedList<>();
+		target.operatorOutputTimestamps.addAll(this.operatorOutputTimestamps);
 	}
 
 	// ------------------------------------------------------------------------
@@ -189,4 +260,5 @@ public final class StreamRecord<T> extends StreamElement {
 	public String toString() {
 		return "Record @ " + (hasTimestamp ? timestamp : "(undef)") + " : " + value;
 	}
+
 }
