@@ -613,7 +613,10 @@ public class FlinkKafkaProducer011<IN>
 	private void serializeOperatorTimestampsIntoByteBuffer(List<OperatorOutputTimestamp> operatorOutputTimestamps, ByteBuffer target) {
 		boolean first = true;
 		for(OperatorOutputTimestamp o : operatorOutputTimestamps){
-			if(first) first = false ; else target.putChar(',');
+			if (first)
+				first = false;
+			else
+				target.putChar(',');
 			byte[] bytes = o.getId().getBytes();
 			target.put(bytes);
 			target.putChar('=');
