@@ -27,6 +27,7 @@ import org.apache.flink.runtime.state.FunctionInitializationContext;
 import org.apache.flink.runtime.state.FunctionSnapshotContext;
 import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction;
 import org.apache.flink.streaming.api.functions.sink.RichSinkFunction;
+import org.apache.flink.streaming.api.functions.sink.SinkFunction;
 import org.apache.flink.streaming.api.operators.StreamingRuntimeContext;
 import org.apache.flink.streaming.connectors.kafka.internals.metrics.KafkaMetricWrapper;
 import org.apache.flink.streaming.connectors.kafka.partitioner.FlinkKafkaDelegatePartitioner;
@@ -55,6 +56,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+
+import java.nio.ByteBuffer;
 
 import static java.util.Objects.requireNonNull;
 
@@ -272,7 +275,7 @@ public abstract class FlinkKafkaProducerBase<IN> extends RichSinkFunction<IN> im
 		}
 	}
 
-	private void serializeOperatorTimestampsIntoByteBuffer(List<OperatorOutputTimestamp> operatorOutputTimestamps, ByteBuffer target) {
+	protected void serializeOperatorTimestampsIntoByteBuffer(List<OperatorOutputTimestamp> operatorOutputTimestamps, ByteBuffer target) {
 		boolean first = true;
 		for(OperatorOutputTimestamp o : operatorOutputTimestamps){
 			if (first)
@@ -310,14 +313,7 @@ public abstract class FlinkKafkaProducerBase<IN> extends RichSinkFunction<IN> im
 			this.topicPartitionsMap.put(targetTopic, partitions);
 		}
 
-		List<OperatorOutputTimestamp> operatorOutputTimestamps = context.operatorOutputTimestamps();
-		int encondedLengthOfOperatorTimestamps = operatorOutputTimestamps.stream().map(o -> o.getId().getBytes().length + (""+o.getTimestamp()).getBytes().length).reduce(0, Integer::sum);
-		encondedLengthOfOperatorTimestamps += Math.max(2*(operatorOutputTimestamps.size()-1), 0) + 2*operatorOutputTimestamps.size(); //commas and equals
-		ByteBuffer buffer = ByteBuffer.allocate(serializedValue.length + encondedLengthOfOperatorTimestamps + 2);
-		buffer.put(serializedValue);
-		buffer.putChar('$');
-		serializeOperatorTimestampsIntoByteBuffer(operatorOutputTimestamps, buffer);
-		serializedValue = buffer.array();
+		serializedValue = extendSerializedValueWithTimestamps(context, serializedValue);
 
 		ProducerRecord<byte[], byte[]> record;
 		if (flinkKafkaPartitioner == null) {
@@ -335,6 +331,18 @@ public abstract class FlinkKafkaProducerBase<IN> extends RichSinkFunction<IN> im
 			}
 		}
 		producer.send(record, callback);
+	}
+
+	byte[] extendSerializedValueWithTimestamps(Context context, byte[] serializedValue) {
+		List<OperatorOutputTimestamp> operatorOutputTimestamps = context.operatorOutputTimestamps();
+		int encondedLengthOfOperatorTimestamps = operatorOutputTimestamps.stream().map(o -> o.getId().getBytes().length + (""+o.getTimestamp()).getBytes().length).reduce(0, Integer::sum);
+		encondedLengthOfOperatorTimestamps += Math.max(2*(operatorOutputTimestamps.size()-1), 0) + 2*operatorOutputTimestamps.size(); //commas and equals
+		ByteBuffer buffer = ByteBuffer.allocate(serializedValue.length + encondedLengthOfOperatorTimestamps + 2);
+		buffer.put(serializedValue);
+		buffer.putChar('$');
+		serializeOperatorTimestampsIntoByteBuffer(operatorOutputTimestamps, buffer);
+		serializedValue = buffer.array();
+		return serializedValue;
 	}
 
 	@Override

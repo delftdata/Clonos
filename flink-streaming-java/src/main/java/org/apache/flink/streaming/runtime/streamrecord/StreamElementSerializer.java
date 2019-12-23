@@ -186,11 +186,9 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 	}
 
 	private void serializeOperatorTimestamps(List<OperatorOutputTimestamp> operatorOutputTimestamps, DataOutputView target) throws IOException {
-		LOG.info("CALL TO SERIALIZE : " + operatorOutputTimestamps.size() + "Elems");
 
 		target.writeByte(operatorOutputTimestamps.size());
 		for(OperatorOutputTimestamp o : operatorOutputTimestamps){
-			LOG.info("Wrote elem");
 			byte[] bytes = o.getId().getBytes();
 			target.writeByte(bytes.length);
 			target.write(bytes);
@@ -268,9 +266,7 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 	private List<OperatorOutputTimestamp> deserializeOperatorTimestamps(DataInputView source) throws IOException {
 		List<OperatorOutputTimestamp> operatorOutputTimestampList = new LinkedList<>();
 		int num_elems = source.readByte();
-		LOG.info("CALL TO DESERIALIZE : " +num_elems+ "Elems");
 		for (int i = 0; i < num_elems; i++) {
-			LOG.info("Deserialized elem");
 			int idSize = source.readByte();
 			byte[] id = new byte[idSize];
 			source.read(id);

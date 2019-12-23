@@ -363,6 +363,7 @@ public class FlinkKafkaProducer010<T> extends FlinkKafkaProducer09<T> {
 			timestamp = context.timestamp();
 		}
 
+		serializedValue = extendSerializedValueWithTimestamps(context, serializedValue);
 		ProducerRecord<byte[], byte[]> record;
 		int[] partitions = topicPartitionsMap.get(targetTopic);
 		if (null == partitions) {
