@@ -179,7 +179,7 @@ class CreditBasedSequenceNumberingViewReader implements BufferAvailabilityListen
 
 	@Override
 	public void notifySubpartitionConsumed() throws IOException {
-		LOG.debug("Reader {} issues release notification for subpartition view {}.", this, subpartitionView);
+		LOG.info("Reader {} issues release notification for subpartition view {}.", this, subpartitionView);
 		subpartitionView.notifySubpartitionConsumed();
 	}
 
@@ -195,13 +195,13 @@ class CreditBasedSequenceNumberingViewReader implements BufferAvailabilityListen
 
 	@Override
 	public void releaseAllResources(Throwable cause) throws IOException {
-		LOG.debug("Reader {} DOES NOT issue release resources call for subpartition view {} (it releases only the available buffers). Instead it sends fail consumer trigger.", this, subpartitionView);
+		LOG.info("Reader {} DOES NOT issue release resources call for subpartition view {} (it releases only the available buffers). Instead it sends fail consumer trigger.", this, subpartitionView);
 		subpartitionView.sendFailConsumerTrigger(cause);
 	}
 
 	@Override
 	public void releaseAllResources() throws IOException {
-		LOG.debug("Reader {} issues release resources call for subpartition view {}.", this, subpartitionView);
+		LOG.info("Reader {} issues release resources call for subpartition view {}.", this, subpartitionView);
 		subpartitionView.releaseAllResources();
 	}
 

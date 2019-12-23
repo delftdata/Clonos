@@ -301,7 +301,7 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 
 	@Override
 	public void channelInactive(ChannelHandlerContext ctx) throws Exception {
-		LOG.debug("Channel {} inactive. Release all resources.", ctx.channel());
+		LOG.info("Channel {} inactive. Release all resources.", ctx.channel());
 
 		final SocketAddress remoteAddr = ctx.channel().remoteAddress();
 		RemoteTransportException cause = new RemoteTransportException(
@@ -330,10 +330,10 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 
 	private void releaseAllResources(Throwable cause) throws IOException {
 		// note: this is only ever executed by one thread: the Netty IO thread!
-		LOG.debug("Release resources of {} readers with cause {}.", allReaders.size(), cause);
+		LOG.info("Release resources of {} readers with cause {}.", allReaders.size(), cause);
 		for (NetworkSequenceViewReader reader : allReaders.values()) {
 			if (cause != null) {
-				LOG.debug("Release reader {} because of {}).", reader, cause);
+				LOG.info("Release reader {} because of {}).", reader, cause);
 				reader.releaseAllResources(cause);
 			} else {
 				LOG.debug("Release reader {} with no error.", reader, cause);
