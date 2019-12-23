@@ -667,11 +667,11 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			CheckpointOptions checkpointOptions,
 			CheckpointMetrics checkpointMetrics) throws Exception {
 
-		LOG.debug("Starting checkpoint ({}) {} on task {}. Request lock {}.",
+		LOG.info("Starting checkpoint ({}) {} on task {}. Request lock {}.",
 			checkpointMetaData.getCheckpointId(), checkpointOptions.getCheckpointType(), getName(), lock);
 
 		synchronized (lock) {
-			LOG.debug("{} (isRunning: {}) acquired lock to perform checkpoint.", isRunning, getName());
+			LOG.info("{} (isRunning: {}) acquired lock to perform checkpoint.", isRunning, getName());
 			if (isRunning) {
 				// we can do a checkpoint
 
@@ -696,7 +696,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 				long checkpointId = checkpointMetaData.getCheckpointId();
 				for (InFlightLogger inFlightLogger : getInFlightLoggers()) {
-					LOG.debug("Create slices of InFlightLogger {} for new checkpoint (previous checkpoint id is {}).", inFlightLogger, checkpointId);
+					LOG.info("Create slices of InFlightLogger {} for new checkpoint (previous checkpoint id is {}).", inFlightLogger, checkpointId);
 					inFlightLogger.createSlices(checkpointId);
 				}
 
