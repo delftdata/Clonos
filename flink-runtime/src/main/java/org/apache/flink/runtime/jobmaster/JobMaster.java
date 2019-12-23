@@ -654,6 +654,7 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 
 				if (producerExecutionToFail.getAttemptNumber() == producerExecutionCurrent.getAttemptNumber() &&
 					producerExecutionCurrent.getState() == ExecutionState.RUNNING) {
+					log.info("Fail externally producer execution {} of result partition {} because of {}.", producerExecutionCurrent, resultPartitionId, cause);
 					producerExecutionCurrent.fail(cause);
 				}
 				return CompletableFuture.completedFuture(Acknowledge.get());
@@ -688,7 +689,7 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 
 		final Execution consumerExecution = consumerVertex.getCurrentExecutionAttempt();
 		if (consumerExecution.getState() == ExecutionState.RUNNING) {
-			log.debug("Fail externally consumer execution {} of result partition {} subpartition {} because of {}.", consumerExecution, resultPartitionId, subpartitionIndex, cause);
+			log.info("Fail externally consumer execution {} of result partition {} subpartition {} because of {}.", consumerExecution, resultPartitionId, subpartitionIndex, cause);
 			consumerExecution.fail(cause);
 		}
 

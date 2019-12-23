@@ -285,7 +285,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 	}
 
 	public void checkReplayInFlightLog() throws IOException, InterruptedException {
-		LOG.debug("Check for in-flight log request.");
+		LOG.info("Check for in-flight log request.");
 		if (inFlightLogPrepareSignalled()) {
 			InFlightLogPrepareEvent inFlightLogPrepareEvent = getInFlightLogPrepareEvent();
 			LOG.info("{} has been signalled. Ack it.", inFlightLogPrepareEvent);
