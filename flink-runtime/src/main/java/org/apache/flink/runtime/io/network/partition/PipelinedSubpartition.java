@@ -142,12 +142,12 @@ class PipelinedSubpartition extends ResultSubpartition {
 	public void releaseBuffers() {
 		// Release all available buffers
 		synchronized (buffers) {
-			LOG.info("Release buffers of {}.", this);
+			LOG.info("Release {} buffers of {}.", buffers.size(), this);
 			for (BufferConsumer buffer : buffers) {
 				buffer.close();
 			}
 			buffers.clear();
-			LOG.info("Released buffers of {}.", this);
+			LOG.debug("Released buffers of {}.", this);
 		}
 	}
 
@@ -200,7 +200,7 @@ class PipelinedSubpartition extends ResultSubpartition {
 			// Do not report last remaining buffer on buffers as available to read (assuming it's unfinished).
 			// It will be reported for reading either on flush or when the number of buffers in the queue
 			// will be 2 or more.
-			LOG.debug("{}:{}: Polled buffer {} (hash: {}, memorySegment hash: {})", parent, this, buffer, System.identityHashCode(buffer), System.identityHashCode(buffer.getMemorySegment()));
+			LOG.debug("{}:{}: Polled buffer {} (hash: {}, memorySegment hash: {}). Buffers available for dispatch: {}.", parent, this, buffer, System.identityHashCode(buffer), System.identityHashCode(buffer.getMemorySegment()), getBuffersInBacklog());
 			return new BufferAndBacklog(
 				buffer,
 				isAvailableUnsafe(),

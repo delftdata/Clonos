@@ -93,6 +93,7 @@ class PartitionRequestServerHandler extends SimpleChannelInboundHandler<NettyMes
 							request.receiverId,
 							request.credit,
 							outboundQueue);
+						LOG.info("New reader {}.", reader);
 					} else {
 						reader = new SequenceNumberingViewReader(
 							request.receiverId,

@@ -247,7 +247,7 @@ class LocalBufferPool implements BufferPool {
 				}
 
 				if (isBlocking) {
-					LOG.debug("{}: availableMemorySegments empty.", this);
+					LOG.info("{}: availableMemorySegments empty.", this);
 					availableMemorySegments.wait(2000);
 				}
 				else {

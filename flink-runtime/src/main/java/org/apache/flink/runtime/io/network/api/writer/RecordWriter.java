@@ -288,7 +288,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 
 	public void checkReplayInFlightLog() throws IOException, InterruptedException {
 		numTimesCalled.inc();
-		if (numTimesCalled.getCount() % 10000 == 0) {
+		if (numTimesCalled.getCount() % 100000 == 0) {
 			LOG.info("Check for in-flight log request.");
 		}
 

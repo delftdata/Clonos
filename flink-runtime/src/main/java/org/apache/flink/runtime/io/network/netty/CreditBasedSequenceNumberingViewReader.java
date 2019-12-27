@@ -101,6 +101,7 @@ class CreditBasedSequenceNumberingViewReader implements BufferAvailabilityListen
 	@Override
 	public void addCredit(int creditDeltas) {
 		numCreditsAvailable += creditDeltas;
+		LOG.debug("{}: added credit {}. Now {} credits available.", this, creditDeltas, numCreditsAvailable);
 	}
 
 	@Override
@@ -169,6 +170,7 @@ class CreditBasedSequenceNumberingViewReader implements BufferAvailabilityListen
 			if (next.buffer().isBuffer() && --numCreditsAvailable < 0) {
 				throw new IllegalStateException("no credit available");
 			}
+			LOG.debug("{}: decrement credit. Now {} credits available.", this, numCreditsAvailable);
 
 			return new BufferAndAvailability(
 				next.buffer(), isAvailable(next), next.buffersInBacklog());
