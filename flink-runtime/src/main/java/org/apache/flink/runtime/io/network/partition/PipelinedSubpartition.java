@@ -147,7 +147,8 @@ class PipelinedSubpartition extends ResultSubpartition {
 				buffer.close();
 			}
 			buffers.clear();
-			LOG.debug("Released buffers of {}.", this);
+			resetBuffersInBacklog();
+			LOG.info("Released buffers of {}. Now {} buffers.", this, buffers.size());
 		}
 	}
 

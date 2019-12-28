@@ -148,6 +148,12 @@ public abstract class ResultSubpartition {
 		}
 	}
 
+	protected int resetBuffersInBacklog() {
+		assert Thread.holdsLock(buffers);
+		buffersInBacklog = 0;
+		return buffersInBacklog;
+	}
+
 	protected int decreaseBuffersInBacklogUnsafe(boolean isBuffer) {
 		assert Thread.holdsLock(buffers);
 		if (isBuffer) {
