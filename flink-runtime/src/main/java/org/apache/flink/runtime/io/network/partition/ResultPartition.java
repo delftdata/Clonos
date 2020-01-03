@@ -106,6 +106,8 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 
 	private InFlightLogPrepareEventListener inFlightLogPrepareEventListener;
 
+	private final AtomicBoolean downstreamFailed = new AtomicBoolean();
+
 	public final int numTargetKeyGroups;
 
 	private final boolean sendScheduleOrUpdateConsumersMessage;
@@ -384,8 +386,8 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 	}
 
 	public void sendFailConsumerTrigger(int subpartitionIndex, Throwable cause) {
-		LOG.info("Task {} sends fail consumer trigger for result partition {} subpartition {} and release its buffers.", owningTaskName, partitionId, subpartitionIndex);
-		releaseBuffers(subpartitionIndex);
+		LOG.info("Task {} sends fail consumer trigger for result partition {} subpartition {}.", owningTaskName, partitionId, subpartitionIndex);
+		downstreamFailed.set(true);
 		partitionConsumableNotifier.requestFailConsumer(partitionId, subpartitionIndex, cause, taskActions);
 	}
 
@@ -407,6 +409,7 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 		checkElementIndex(index, subpartitions.length, "Subpartition not found.");
 
 		ResultSubpartitionView readView = subpartitions[index].createReadView(availabilityListener);
+		downstreamFailed.set(false);
 
 		LOG.debug("{}: Created/Using {} of {}", owningTaskName, readView, this);
 
@@ -420,6 +423,10 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 	@Override
 	public int getNumTargetKeyGroups() {
 		return numTargetKeyGroups;
+	}
+
+	public boolean downstreamFailed() {
+		return downstreamFailed.get();
 	}
 
 	/**
