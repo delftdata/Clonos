@@ -386,8 +386,9 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 	}
 
 	public void sendFailConsumerTrigger(int subpartitionIndex, Throwable cause) {
-		LOG.info("Task {} sends fail consumer trigger for result partition {} subpartition {}.", owningTaskName, partitionId, subpartitionIndex);
+		LOG.info("Task {} sends fail consumer trigger for result partition {} subpartition {} and release its buffers.", owningTaskName, partitionId, subpartitionIndex);
 		downstreamFailed.set(true);
+		releaseBuffers(subpartitionIndex);
 		partitionConsumableNotifier.requestFailConsumer(partitionId, subpartitionIndex, cause, taskActions);
 	}
 
