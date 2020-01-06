@@ -204,7 +204,7 @@ public class InFlightLogger<T, REC> {
 		slicedLog.remove(checkpointId);
 
 		// Also discard the in-flight log of previous checkpoints that never completed.
-		while (slicedLog.firstKey() < checkpointId) {
+		while (!slicedLog.isEmpty() && slicedLog.firstKey() < checkpointId) {
 			LOG.info("Discard slices for checkpoint {}.", slicedLog.firstKey());
 			slicedLog.remove(slicedLog.firstKey());
 		}
