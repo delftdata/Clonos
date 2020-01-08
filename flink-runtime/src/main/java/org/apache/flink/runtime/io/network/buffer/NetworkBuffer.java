@@ -68,6 +68,8 @@ public class NetworkBuffer extends AbstractReferenceCountedByteBuf implements Bu
 	 */
 	private int currentSize;
 
+	private boolean afterUpstreamFailure;
+
 	/**
 	 * Creates a new buffer instance backed by the given <tt>memorySegment</tt> with <tt>0</tt> for
 	 * the <tt>readerIndex</tt> and <tt>writerIndex</tt>.
@@ -116,6 +118,7 @@ public class NetworkBuffer extends AbstractReferenceCountedByteBuf implements Bu
 		this.isBuffer = isBuffer;
 		this.currentSize = memorySegment.size();
 		setSize(size);
+		this.afterUpstreamFailure = false;
 	}
 
 	@Override
@@ -614,5 +617,20 @@ public class NetworkBuffer extends AbstractReferenceCountedByteBuf implements Bu
 	@Override
 	public ByteBuf asByteBuf() {
 		return this;
+	}
+
+	@Override
+	public void isAfterUpstreamFailure() {
+		afterUpstreamFailure = true;
+	}
+
+	@Override
+	public void resetAfterUpstreamFailure() {
+		afterUpstreamFailure = false;
+	}
+
+	@Override
+	public boolean afterUpstreamFailure() {
+		return afterUpstreamFailure;
 	}
 }

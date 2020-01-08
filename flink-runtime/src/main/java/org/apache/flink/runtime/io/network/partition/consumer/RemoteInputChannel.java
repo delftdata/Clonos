@@ -221,6 +221,12 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 			remaining = receivedBuffers.size();
 		}
 
+		if (afterUpstreamFailure) {
+			LOG.debug("{}: Set afterUpstreamFailure=true to {}.", this, next);
+			next.isAfterUpstreamFailure();
+			afterUpstreamFailure = false;
+		}
+
 		numBytesIn.inc(next.getSizeUnsafe());
 		LOG.debug("{} getNextBuffer() returns next buffer of size {}, memory segment hash {}; remaining buffers: {}.", this, next.getSizeUnsafe(), System.identityHashCode(next.getMemorySegment()), remaining);
 		return Optional.of(new BufferAndAvailability(next, remaining > 0, getSenderBacklog()));

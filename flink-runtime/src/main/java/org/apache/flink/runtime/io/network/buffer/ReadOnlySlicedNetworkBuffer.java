@@ -40,6 +40,8 @@ public final class ReadOnlySlicedNetworkBuffer extends ReadOnlyByteBuf implement
 
 	private final int memorySegmentOffset;
 
+	private boolean afterUpstreamFailure;
+
 	/**
 	 * Creates a buffer which shares the memory segment of the given buffer and exposed the given
 	 * sub-region only.
@@ -54,6 +56,7 @@ public final class ReadOnlySlicedNetworkBuffer extends ReadOnlyByteBuf implement
 	ReadOnlySlicedNetworkBuffer(NetworkBuffer buffer, int index, int length) {
 		super(new SlicedByteBuf(buffer, index, length));
 		this.memorySegmentOffset = buffer.getMemorySegmentOffset() + index;
+		this.afterUpstreamFailure = false;
 	}
 
 	/**
@@ -71,6 +74,7 @@ public final class ReadOnlySlicedNetworkBuffer extends ReadOnlyByteBuf implement
 	private ReadOnlySlicedNetworkBuffer(ByteBuf buffer, int index, int length, int memorySegmentOffset) {
 		super(new SlicedByteBuf(buffer, index, length));
 		this.memorySegmentOffset = memorySegmentOffset + index;
+		this.afterUpstreamFailure = false;
 	}
 
 	@Override
@@ -213,5 +217,20 @@ public final class ReadOnlySlicedNetworkBuffer extends ReadOnlyByteBuf implement
 
 	private Buffer getBuffer() {
 		return ((Buffer) unwrap().unwrap());
+	}
+
+	@Override
+	public void isAfterUpstreamFailure() {
+		afterUpstreamFailure = true;
+	}
+
+	@Override
+	public void resetAfterUpstreamFailure() {
+		afterUpstreamFailure = false;
+	}
+
+	@Override
+	public boolean afterUpstreamFailure() {
+		return afterUpstreamFailure;
 	}
 }
