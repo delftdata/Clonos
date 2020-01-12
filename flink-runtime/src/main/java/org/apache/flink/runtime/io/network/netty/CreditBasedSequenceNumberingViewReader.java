@@ -101,6 +101,7 @@ class CreditBasedSequenceNumberingViewReader implements BufferAvailabilityListen
 	@Override
 	public void addCredit(int creditDeltas) {
 		numCreditsAvailable += creditDeltas;
+		LOG.debug("{}: added credit {}. Now {} credits available.", this, creditDeltas, numCreditsAvailable);
 	}
 
 	@Override
@@ -169,6 +170,7 @@ class CreditBasedSequenceNumberingViewReader implements BufferAvailabilityListen
 			if (next.buffer().isBuffer() && --numCreditsAvailable < 0) {
 				throw new IllegalStateException("no credit available");
 			}
+			LOG.debug("{}: decrement credit. Now {} credits available.", this, numCreditsAvailable);
 
 			return new BufferAndAvailability(
 				next.buffer(), isAvailable(next), next.buffersInBacklog());
@@ -179,7 +181,7 @@ class CreditBasedSequenceNumberingViewReader implements BufferAvailabilityListen
 
 	@Override
 	public void notifySubpartitionConsumed() throws IOException {
-		LOG.debug("Reader {} issues release notification for subpartition view {}.", this, subpartitionView);
+		LOG.info("Reader {} issues release notification for subpartition view {}.", this, subpartitionView);
 		subpartitionView.notifySubpartitionConsumed();
 	}
 
@@ -195,13 +197,13 @@ class CreditBasedSequenceNumberingViewReader implements BufferAvailabilityListen
 
 	@Override
 	public void releaseAllResources(Throwable cause) throws IOException {
-		LOG.debug("Reader {} DOES NOT issue release resources call for subpartition view {} (it releases only the available buffers). Instead it sends fail consumer trigger.", this, subpartitionView);
+		LOG.info("Reader {} DOES NOT issue release resources call for subpartition view {} (it releases only the available buffers). Instead it sends fail consumer trigger.", this, subpartitionView);
 		subpartitionView.sendFailConsumerTrigger(cause);
 	}
 
 	@Override
 	public void releaseAllResources() throws IOException {
-		LOG.debug("Reader {} issues release resources call for subpartition view {}.", this, subpartitionView);
+		LOG.info("Reader {} issues release resources call for subpartition view {}.", this, subpartitionView);
 		subpartitionView.releaseAllResources();
 	}
 

@@ -598,6 +598,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		List<InFlightLogger> inFlightLoggers = new ArrayList<>();
 		for (StreamRecordWriter<SerializationDelegate<StreamRecord<OUT>>> streamRecordWriter : streamRecordWriters) {
 			inFlightLoggers.add(streamRecordWriter.getInFlightLogger());
+			LOG.debug("Return InFlightLogger {} of StreamRecordWriter {}.", streamRecordWriter.getInFlightLogger(), streamRecordWriter);
 		}
 		return inFlightLoggers;
 	}
@@ -667,11 +668,11 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			CheckpointOptions checkpointOptions,
 			CheckpointMetrics checkpointMetrics) throws Exception {
 
-		LOG.debug("Starting checkpoint ({}) {} on task {}. Request lock {}.",
+		LOG.info("Starting checkpoint ({}) {} on task {}. Request lock {}.",
 			checkpointMetaData.getCheckpointId(), checkpointOptions.getCheckpointType(), getName(), lock);
 
 		synchronized (lock) {
-			LOG.debug("{} (isRunning: {}) acquired lock to perform checkpoint.", isRunning, getName());
+			LOG.info("{} (isRunning: {}) acquired lock to perform checkpoint.", isRunning, getName());
 			if (isRunning) {
 				// we can do a checkpoint
 
@@ -696,7 +697,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 				long checkpointId = checkpointMetaData.getCheckpointId();
 				for (InFlightLogger inFlightLogger : getInFlightLoggers()) {
-					LOG.debug("Create slices of InFlightLogger {} for new checkpoint (previous checkpoint id is {}).", inFlightLogger, checkpointId);
+					LOG.info("{}: Create slices of InFlightLogger {} for new checkpoint (previous checkpoint id is {}).", getName(), inFlightLogger, checkpointId);
 					inFlightLogger.createSlices(checkpointId);
 				}
 
@@ -738,13 +739,13 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	public void notifyCheckpointComplete(long checkpointId) throws Exception {
 		synchronized (lock) {
 			if (isRunning) {
-				LOG.debug("Notification of complete checkpoint for task {}", getName());
+				LOG.info("Notification of complete checkpoint for task {}", getName());
 
 				for (StreamOperator<?> operator : operatorChain.getAllOperators()) {
 					if (operator != null) {
 						operator.notifyCheckpointComplete(checkpointId);
 						for (InFlightLogger inFlightLogger : getInFlightLoggers()) {
-							LOG.debug("Discard slices of InFlightLogger {} for checkpoint {}.", inFlightLogger, checkpointId);
+							LOG.debug("{}: Discard slices of InFlightLogger {} for checkpoint {}.", getName(), inFlightLogger, checkpointId);
 							inFlightLogger.discardSlice(checkpointId);
 						}
 					}

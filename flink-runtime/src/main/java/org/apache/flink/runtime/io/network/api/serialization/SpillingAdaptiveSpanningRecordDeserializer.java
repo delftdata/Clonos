@@ -74,6 +74,12 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 	public void setNextBuffer(Buffer buffer) throws IOException {
 		currentBuffer = buffer;
 
+		if (buffer.afterUpstreamFailure() && this.spanningWrapper.getNumGatheredBytes() > 0) {
+			LOG.warn("Received first buffer {} after upstream failure. Clear the deserializers since spanning deserializer is not empty.", buffer);
+			buffer.resetAfterUpstreamFailure();
+			clear();
+		}
+
 		int offset = buffer.getMemorySegmentOffset();
 		MemorySegment segment = buffer.getMemorySegment();
 		int numBytes = buffer.getSize();

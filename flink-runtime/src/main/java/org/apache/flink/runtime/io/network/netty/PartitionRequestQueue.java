@@ -70,6 +70,9 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 
 	private boolean fatalError;
 
+	/** For logging after error has occured. */
+	private boolean errorHasOccured;
+
 	private ChannelHandlerContext ctx;
 
 	@Override
@@ -188,7 +191,7 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 			for (int i = 0; i < size; i++) {
 				NetworkSequenceViewReader reader = pollAvailableReader();
 				if (reader.getReceiverId().equals(toCancel)) {
-					LOG.warn("Reader {} received cancel request from channel {}.", reader, toCancel);
+					LOG.warn("Reader {} received cancel request from channel {}. Remove it from readers.", reader, toCancel);
 					reader.releaseAllResources();
 					markAsReleased(reader.getReceiverId());
 				} else {
@@ -209,6 +212,7 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 
 	private void writeAndFlushNextMessageIfPossible(final Channel channel) throws IOException {
 		if (fatalError || !channel.isWritable()) {
+			LOG.warn("Fatal error ({}) or channel not writable.", fatalError);
 			return;
 		}
 
@@ -225,10 +229,16 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 				// No queue with available data. We allow this here, because
 				// of the write callbacks that are executed after each write.
 				if (reader == null) {
+					if (errorHasOccured) {
+						LOG.info("No reader available ({} in total.)", allReaders.size());
+					}
 					return;
 				}
 
 				next = reader.getNextBuffer();
+				if (errorHasOccured) {
+					LOG.info("Reader {} getNextBuffer() {}.", reader, next);
+				}
 				if (next == null) {
 					if (!reader.isReleased()) {
 						continue;
@@ -282,6 +292,9 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 	}
 
 	private void registerAvailableReader(NetworkSequenceViewReader reader) {
+		if (errorHasOccured) {
+			LOG.info("Register available reader: {}.", reader);
+		}
 		availableReaders.add(reader);
 		reader.setRegisteredAsAvailable(true);
 	}
@@ -301,12 +314,11 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 
 	@Override
 	public void channelInactive(ChannelHandlerContext ctx) throws Exception {
-		LOG.debug("Channel {} inactive. Release all resources.", ctx.channel());
-
 		final SocketAddress remoteAddr = ctx.channel().remoteAddress();
 		RemoteTransportException cause = new RemoteTransportException(
 				"In producer side: Connection unexpectedly closed by remote task manager '" + remoteAddr + "'. "
 					+ "This might indicate that the remote task manager was lost.", remoteAddr);
+		LOG.error("Channel {} inactive. Release all resources.", ctx.channel(), cause);
 		releaseAllResources(cause);
 
 		ctx.fireChannelInactive();
@@ -320,7 +332,6 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 	private void handleException(Channel channel, Throwable cause) throws IOException {
 		LOG.error("Encountered error while consuming partitions", cause);
 
-		fatalError = true;
 		releaseAllResources(cause);
 
 		if (channel.isActive()) {
@@ -330,10 +341,11 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 
 	private void releaseAllResources(Throwable cause) throws IOException {
 		// note: this is only ever executed by one thread: the Netty IO thread!
-		LOG.debug("Release resources of {} readers with cause {}.", allReaders.size(), cause);
+		LOG.info("Release resources of {} readers with cause {}.", allReaders.size(), cause);
+		errorHasOccured = true;
 		for (NetworkSequenceViewReader reader : allReaders.values()) {
 			if (cause != null) {
-				LOG.debug("Release reader {} because of {}).", reader, cause);
+				LOG.info("Release reader {} because of {}).", reader, cause);
 				reader.releaseAllResources(cause);
 			} else {
 				LOG.debug("Release reader {} with no error.", reader, cause);
@@ -342,6 +354,8 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 			markAsReleased(reader.getReceiverId());
 		}
 
+		// This doesn't look right for StandbyTask failover strategy
+		// One idea is to store the channel with a reader on creation time (PartitionRequestServerHandler) so that we can kill only the reader related to a channel that errored. I'm not yet sure this makes sense.
 		availableReaders.clear();
 		allReaders.clear();
 	}

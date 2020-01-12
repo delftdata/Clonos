@@ -780,14 +780,14 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 						new InFlightLogRequestEventListener(userCodeClassLoader);
 				network.getTaskEventDispatcher().subscribeToEvent(partition.getPartitionId(),
 						iflrel, InFlightLogRequestEvent.class);
-				LOG.debug("Set inFlightLogRequestEventListener {} for resultPartition {}.", iflrel, partition);
+				LOG.info("Set inFlightLogRequestEventListener {} for resultPartition {}.", iflrel, partition);
 				partition.setInFlightLogRequestEventListener(iflrel);
 
 				InFlightLogPrepareEventListener iflpel =
 						new InFlightLogPrepareEventListener(userCodeClassLoader);
 				network.getTaskEventDispatcher().subscribeToEvent(partition.getPartitionId(),
 						iflpel, InFlightLogPrepareEvent.class);
-				LOG.debug("Set inFlightLogPrepareEventListener {} for resultPartition {}.", iflpel, partition);
+				LOG.info("Set inFlightLogPrepareEventListener {} for resultPartition {}.", iflpel, partition);
 				partition.setInFlightLogPrepareEventListener(iflpel);
 			}
 

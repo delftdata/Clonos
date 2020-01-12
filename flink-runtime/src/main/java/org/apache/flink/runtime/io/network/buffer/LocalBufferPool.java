@@ -26,6 +26,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.ArrayDeque;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -87,6 +88,8 @@ class LocalBufferPool implements BufferPool {
 	private boolean isDestroyed;
 
 	private BufferPoolOwner owner;
+
+	private AtomicBoolean beingBackpressured = new AtomicBoolean();
 
 	/**
 	 * Local buffer pool based on the given <tt>networkBufferPool</tt> with a minimal number of
@@ -247,8 +250,11 @@ class LocalBufferPool implements BufferPool {
 				}
 
 				if (isBlocking) {
-					LOG.debug("{}: availableMemorySegments empty.", this);
+					LOG.info("{}: availableMemorySegments empty.", this);
+					beingBackpressured.set(true);
 					availableMemorySegments.wait(2000);
+					beingBackpressured.set(false);
+					LOG.info("{}: thread awakened or wait expired.", this);
 				}
 				else {
 					return null;
@@ -262,17 +268,29 @@ class LocalBufferPool implements BufferPool {
 	@Override
 	public void recycle(MemorySegment segment) {
 		BufferListener listener;
-		LOG.debug("Recycle memory segment {}.", segment);
+		if (beingBackpressured.get() == true) {
+			LOG.info("Recycle memory segment {} while under backpressure.", segment);
+		} else {
+			LOG.debug("Recycle memory segment {}.", segment);
+		}
 		synchronized (availableMemorySegments) {
 			if (isDestroyed || numberOfRequestedMemorySegments > currentPoolSize) {
 				returnMemorySegment(segment);
 				return;
 			} else {
 				listener = registeredListeners.poll();
-				LOG.debug("Polled buffer availability listener {}.", listener);
+				if (beingBackpressured.get() == true) {
+					LOG.info("Polled buffer availability listener {} while under backpressure.", listener);
+				} else {
+					LOG.debug("Polled buffer availability listener {}.", listener);
+				}
 
 				if (listener == null) {
-					LOG.debug("Add memory segment {} to availableMemorySegments.", segment);
+					if (beingBackpressured.get() == true) {
+						LOG.info("Add memory segment {} to availableMemorySegments while under backpressure.", segment);
+					} else {
+						LOG.debug("Add memory segment {} to availableMemorySegments.", segment);
+					}
 					availableMemorySegments.add(segment);
 					availableMemorySegments.notify();
 					return;

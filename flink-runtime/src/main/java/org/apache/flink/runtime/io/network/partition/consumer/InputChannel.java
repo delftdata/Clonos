@@ -67,6 +67,8 @@ public abstract class InputChannel {
 	/** The current backoff (in ms) */
 	private int currentBackoff;
 
+	protected boolean afterUpstreamFailure;
+
 	protected InputChannel(
 			SingleInputGate inputGate,
 			int channelIndex,
@@ -91,6 +93,8 @@ public abstract class InputChannel {
 		this.currentBackoff = initial == 0 ? -1 : 0;
 
 		this.numBytesIn = numBytesIn;
+
+		this.afterUpstreamFailure = false;
 	}
 
 	// ------------------------------------------------------------------------
@@ -103,6 +107,10 @@ public abstract class InputChannel {
 
 	public ResultPartitionID getPartitionId() {
 		return partitionId;
+	}
+
+	protected void isAfterUpstreamFailure() {
+		afterUpstreamFailure = true;
 	}
 
 	/**

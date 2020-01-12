@@ -84,6 +84,8 @@ public class RecordWriter<T extends IOReadableWritable> {
 
 	private Counter numBytesOut = new SimpleCounter();
 
+	private Counter numTimesCalled = new SimpleCounter();
+
 	private final InFlightLogger<T, ?> inFlightLogger;
 
 	private boolean buffersCleared = false;
@@ -285,8 +287,12 @@ public class RecordWriter<T extends IOReadableWritable> {
 	}
 
 	public void checkReplayInFlightLog() throws IOException, InterruptedException {
-		LOG.debug("Check for in-flight log request.");
-		if (inFlightLogPrepareSignalled()) {
+		numTimesCalled.inc();
+		if (numTimesCalled.getCount() % 100000 == 0) {
+			LOG.info("Check for in-flight log request.");
+		}
+
+		if (downstreamFailed() || inFlightLogPrepareSignalled()) {
 			InFlightLogPrepareEvent inFlightLogPrepareEvent = getInFlightLogPrepareEvent();
 			LOG.info("{} has been signalled. Ack it.", inFlightLogPrepareEvent);
 			int subpartitionIndex = inFlightLogPrepareEvent.getSubpartitionIndex();
@@ -369,6 +375,25 @@ public class RecordWriter<T extends IOReadableWritable> {
 		} else {
 			throw new IOException("Unable to check whether in-flight log request is received for partition of type " + targetPartition + ".");
 		}
+	}
+
+	private boolean downstreamFailed() throws IOException, InterruptedException {
+		if (targetPartition instanceof ResultPartition &&
+				((ResultPartition) targetPartition).downstreamFailed()) {
+			LOG.info("Downstream task of {} failed.", ((ResultPartition) targetPartition).getTaskName());
+			int i = 0;
+			while (!inFlightLogPrepareSignalled() && i < 100) {
+				Thread.sleep(10);
+				i++;
+			}
+
+			if (i == 100) {
+				LOG.warn("In-flight log prepare request delayed more than 1 second. Aborting.");
+				return false;
+			}
+			return true;
+		}
+		return false;
 	}
 
 	private boolean inFlightLogPrepareSignalled() throws IOException {

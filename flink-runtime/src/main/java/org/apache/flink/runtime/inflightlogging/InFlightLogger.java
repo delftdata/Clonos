@@ -194,17 +194,16 @@ public class InFlightLogger<T, REC> {
 		slicedLog = new TreeMap<>();
 	}
 
-	public void discardSlice() {
-		long checkpointId = slicedLog.firstKey();
-		discardSlice(checkpointId);
-	}
-
 	public void discardSlice(long checkpointId) {
 		LOG.info("Discard slices for checkpoint {}.", checkpointId);
-		slicedLog.remove(checkpointId);
+		if (slicedLog.get(checkpointId) != null && slicedLog.get(checkpointId)[0].getCheckpointBarrier() != null) {
+			slicedLog.remove(checkpointId);
+		} else {
+			LOG.warn("Abort discard slices: no slices or checkpoint barrier for checkpoint {}.", checkpointId);
+		}
 
 		// Also discard the in-flight log of previous checkpoints that never completed.
-		while (slicedLog.firstKey() < checkpointId) {
+		while (!slicedLog.isEmpty() && slicedLog.firstKey() < checkpointId) {
 			LOG.info("Discard slices for checkpoint {}.", slicedLog.firstKey());
 			slicedLog.remove(slicedLog.firstKey());
 		}

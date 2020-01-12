@@ -228,4 +228,22 @@ public interface Buffer {
 	 * @return self as ByteBuf implementation.
 	 */
 	ByteBuf asByteBuf();
+
+	/**
+	 * Sets true if buffer is the first after an upstream failure.
+	 * Used in Standby Task Failover strategy.
+	 */
+	void isAfterUpstreamFailure();
+
+	/**
+	 * Sets the afterUpstreamFailure field to false.
+	 * Used in Standby Task Failover strategy.
+	 */
+	void resetAfterUpstreamFailure();
+
+	/**
+	 * Returns true if buffer is the first after an upstream failure.
+	 * Used in Standby Task Failover strategy.
+	 */
+	boolean afterUpstreamFailure();
 }

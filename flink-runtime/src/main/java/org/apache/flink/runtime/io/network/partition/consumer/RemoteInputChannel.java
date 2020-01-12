@@ -173,8 +173,8 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 	@Override
 	public void requestSubpartition(int subpartitionIndex) throws IOException, InterruptedException {
 		if (subpartitionRequested.compareAndSet(false, true)) {
-			LOG.debug("{}: Requesting REMOTE subpartition {} of partition {}.",
-				this, subpartitionIndex, partitionId);
+			LOG.info("{}[initialCredit: {}]: Requesting REMOTE subpartition {} of partition {}.",
+				this, initialCredit, subpartitionIndex, partitionId);
 
 			// Create a client
 			if (partitionRequestClient == null) {
@@ -219,6 +219,12 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 		synchronized (receivedBuffers) {
 			next = receivedBuffers.poll();
 			remaining = receivedBuffers.size();
+		}
+
+		if (afterUpstreamFailure) {
+			LOG.debug("{}: Set afterUpstreamFailure=true to {}.", this, next);
+			next.isAfterUpstreamFailure();
+			afterUpstreamFailure = false;
 		}
 
 		numBytesIn.inc(next.getSizeUnsafe());
@@ -309,7 +315,7 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 
 	@Override
 	public String toString() {
-		return "RemoteInputChannel " + channelIndex + " [" + partitionId + " at " + connectionId + "]";
+		return "RemoteInputChannel " + channelIndex + " [" + partitionId + " at " + connectionId + ", unannouncedCredit:" + getUnannouncedCredit();
 	}
 
 	// ------------------------------------------------------------------------

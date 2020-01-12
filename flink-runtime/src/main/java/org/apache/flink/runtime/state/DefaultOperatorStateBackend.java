@@ -591,6 +591,7 @@ public class DefaultOperatorStateBackend implements OperatorStateBackend {
 						deserializeBroadcastStateValues(broadcastStateForName, in, nameToOffsets.getValue());
 					} else {
 						deserializeOperatorStateValues(listStateForName, in, nameToOffsets.getValue());
+						LOG.info("Restored state: {}.", listStateForName);
 					}
 				}
 
