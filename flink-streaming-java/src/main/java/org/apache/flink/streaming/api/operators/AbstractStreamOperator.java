@@ -172,7 +172,7 @@ public abstract class AbstractStreamOperator<OUT>
 		this.config = config;
 		try {
 			OperatorMetricGroup operatorMetricGroup = environment.getMetricGroup().addOperator(config.getOperatorID(), config.getOperatorName());
-			this.output = new CountingOutput<>(output, operatorMetricGroup.getIOMetricGroup().getNumRecordsOutCounter());
+			this.output = new EmissionTimestamperOutput<OUT>(new CountingOutput<>(output, operatorMetricGroup.getIOMetricGroup().getNumRecordsOutCounter()),config.getOperatorID().toString());
 			if (config.isChainStart()) {
 				operatorMetricGroup.getIOMetricGroup().reuseInputMetricsForTask();
 			}
@@ -183,7 +183,7 @@ public abstract class AbstractStreamOperator<OUT>
 		} catch (Exception e) {
 			LOG.warn("An error occurred while instantiating task metrics.", e);
 			this.metrics = UnregisteredMetricGroups.createUnregisteredOperatorMetricGroup();
-			this.output = output;
+			this.output = new EmissionTimestamperOutput<OUT>(output, config.getOperatorID().toString());
 		}
 
 		try {
@@ -662,6 +662,57 @@ public abstract class AbstractStreamOperator<OUT>
 	// ----------------------- Helper classes -----------------------
 
 
+	/**
+	 * Wrapping {@link Output} that adds an emission timestamp to records.
+	 */
+	public static class EmissionTimestamperOutput<OUT> implements Output<StreamRecord<OUT>> {
+		private final Output<StreamRecord<OUT>> output;
+		private String operatorId;
+		private final StreamConfig config;
+
+		public EmissionTimestamperOutput(Output<StreamRecord<OUT>> output, String operatorId) {
+			this.output = output;
+			this.operatorId = operatorId;
+			this.config = null;
+		}
+		public EmissionTimestamperOutput(Output<StreamRecord<OUT>> output, StreamConfig config) {
+			this.output = output;
+			this.config = config;
+			this.operatorId = null;
+		}
+
+		@Override
+		public void emitWatermark(Watermark mark) {
+			output.emitWatermark(mark);
+		}
+
+		@Override
+		public void emitLatencyMarker(LatencyMarker latencyMarker) {
+			output.emitLatencyMarker(latencyMarker);
+		}
+
+		@Override
+		public void collect(StreamRecord<OUT> record) {
+			if(this.operatorId == null )
+				this.operatorId = this.config.getOperatorID().toString();
+
+			record.appendTime(operatorId,System.currentTimeMillis());
+			output.collect(record);
+		}
+
+		@Override
+		public <X> void collect(OutputTag<X> outputTag, StreamRecord<X> record) {
+			if(this.operatorId == null )
+				this.operatorId = this.config.getOperatorID().toString();
+			record.appendTime(operatorId,System.currentTimeMillis());
+			output.collect(outputTag, record);
+		}
+
+		@Override
+		public void close() {
+			output.close();
+		}
+	}
 	/**
 	 * Wrapping {@link Output} that updates metrics on the number of emitted elements.
 	 */

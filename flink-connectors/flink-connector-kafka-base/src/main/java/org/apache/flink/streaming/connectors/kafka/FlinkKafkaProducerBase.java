@@ -289,6 +289,18 @@ public abstract class FlinkKafkaProducerBase<IN> extends RichSinkFunction<IN> im
 		}
 	}
 
+	byte[] extendSerializedValueWithTimestamps(Context context, byte[] serializedValue) {
+		List<OperatorOutputTimestamp> operatorOutputTimestamps = context.operatorOutputTimestamps();
+		int encondedLengthOfOperatorTimestamps = operatorOutputTimestamps.stream().map(o -> o.getId().getBytes().length + (""+o.getTimestamp()).getBytes().length).reduce(0, Integer::sum);
+		encondedLengthOfOperatorTimestamps += Math.max(2*(operatorOutputTimestamps.size()-1), 0) + 2*operatorOutputTimestamps.size(); //commas and equals
+		ByteBuffer buffer = ByteBuffer.allocate(serializedValue.length + encondedLengthOfOperatorTimestamps + 2);
+		buffer.put(serializedValue);
+		buffer.putChar('$');
+		serializeOperatorTimestampsIntoByteBuffer(operatorOutputTimestamps, buffer);
+		serializedValue = buffer.array();
+		return serializedValue;
+	}
+
 	/**
 	 * Called when new data arrives to the sink, and forwards it to Kafka.
 	 *
@@ -333,17 +345,6 @@ public abstract class FlinkKafkaProducerBase<IN> extends RichSinkFunction<IN> im
 		producer.send(record, callback);
 	}
 
-	byte[] extendSerializedValueWithTimestamps(Context context, byte[] serializedValue) {
-		List<OperatorOutputTimestamp> operatorOutputTimestamps = context.operatorOutputTimestamps();
-		int encondedLengthOfOperatorTimestamps = operatorOutputTimestamps.stream().map(o -> o.getId().getBytes().length + (""+o.getTimestamp()).getBytes().length).reduce(0, Integer::sum);
-		encondedLengthOfOperatorTimestamps += Math.max(2*(operatorOutputTimestamps.size()-1), 0) + 2*operatorOutputTimestamps.size(); //commas and equals
-		ByteBuffer buffer = ByteBuffer.allocate(serializedValue.length + encondedLengthOfOperatorTimestamps + 2);
-		buffer.put(serializedValue);
-		buffer.putChar('$');
-		serializeOperatorTimestampsIntoByteBuffer(operatorOutputTimestamps, buffer);
-		serializedValue = buffer.array();
-		return serializedValue;
-	}
 
 	@Override
 	public void close() throws Exception {

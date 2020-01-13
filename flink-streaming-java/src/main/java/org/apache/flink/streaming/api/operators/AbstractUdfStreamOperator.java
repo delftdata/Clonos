@@ -83,7 +83,7 @@ public abstract class AbstractUdfStreamOperator<OUT, F extends Function>
 
 	@Override
 	public void setup(StreamTask<?, ?> containingTask, StreamConfig config, Output<StreamRecord<OUT>> output) {
-		super.setup(containingTask, config, new EmissionTimestamperOutput<>(output, config));
+		super.setup(containingTask, config, output);
 		FunctionUtils.setFunctionRuntimeContext(userFunction, getRuntimeContext());
 
 	}
@@ -166,59 +166,6 @@ public abstract class AbstractUdfStreamOperator<OUT, F extends Function>
 
 			throw new IllegalStateException("User functions are not allowed to implement " +
 				"CheckpointedFunction AND ListCheckpointed.");
-		}
-	}
-	/**
-	 * Wrapping {@link Output} that adds an emission timestamp to records.
-	 */
-	public static class EmissionTimestamperOutput<OUT> implements Output<StreamRecord<OUT>> {
-		private final Output<StreamRecord<OUT>> output;
-		private String operatorId;
-		private final StreamConfig config;
-
-		public EmissionTimestamperOutput(Output<StreamRecord<OUT>> output, String operatorId) {
-			LOG.info("CREATED INSTANCE OF EMISSION TIMESTAMPER");
-			this.output = output;
-			this.operatorId = operatorId;
-			this.config = null;
-		}
-		public EmissionTimestamperOutput(Output<StreamRecord<OUT>> output, StreamConfig config) {
-			LOG.info("CREATED INSTANCE OF EMISSION TIMESTAMPER");
-			this.output = output;
-			this.config = config;
-			this.operatorId = null;
-		}
-
-		@Override
-		public void emitWatermark(Watermark mark) {
-			output.emitWatermark(mark);
-		}
-
-		@Override
-		public void emitLatencyMarker(LatencyMarker latencyMarker) {
-			output.emitLatencyMarker(latencyMarker);
-		}
-
-		@Override
-		public void collect(StreamRecord<OUT> record) {
-			if(this.operatorId == null )
-				this.operatorId = this.config.getOperatorID().toString();
-
-			record.appendTime(operatorId,System.currentTimeMillis());
-			output.collect(record);
-		}
-
-		@Override
-		public <X> void collect(OutputTag<X> outputTag, StreamRecord<X> record) {
-			if(this.operatorId == null )
-				this.operatorId = this.config.getOperatorID().toString();
-			record.appendTime(operatorId,System.currentTimeMillis());
-			output.collect(outputTag, record);
-		}
-
-		@Override
-		public void close() {
-			output.close();
 		}
 	}
 }
