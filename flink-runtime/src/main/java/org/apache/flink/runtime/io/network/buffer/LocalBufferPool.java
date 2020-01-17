@@ -250,11 +250,11 @@ class LocalBufferPool implements BufferPool {
 				}
 
 				if (isBlocking) {
-					LOG.info("{}: availableMemorySegments empty.", this);
+					LOG.debug("{}: availableMemorySegments empty.", this);
 					beingBackpressured.set(true);
 					availableMemorySegments.wait(2000);
 					beingBackpressured.set(false);
-					LOG.info("{}: thread awakened or wait expired.", this);
+					LOG.debug("{}: thread awakened or wait expired.", this);
 				}
 				else {
 					return null;
@@ -269,7 +269,7 @@ class LocalBufferPool implements BufferPool {
 	public void recycle(MemorySegment segment) {
 		BufferListener listener;
 		if (beingBackpressured.get() == true) {
-			LOG.info("Recycle memory segment {} while under backpressure.", segment);
+			LOG.debug("Recycle memory segment {} while under backpressure.", segment);
 		} else {
 			LOG.debug("Recycle memory segment {}.", segment);
 		}
@@ -280,14 +280,14 @@ class LocalBufferPool implements BufferPool {
 			} else {
 				listener = registeredListeners.poll();
 				if (beingBackpressured.get() == true) {
-					LOG.info("Polled buffer availability listener {} while under backpressure.", listener);
+					LOG.debug("Polled buffer availability listener {} while under backpressure.", listener);
 				} else {
 					LOG.debug("Polled buffer availability listener {}.", listener);
 				}
 
 				if (listener == null) {
 					if (beingBackpressured.get() == true) {
-						LOG.info("Add memory segment {} to availableMemorySegments while under backpressure.", segment);
+						LOG.debug("Add memory segment {} to availableMemorySegments while under backpressure.", segment);
 					} else {
 						LOG.debug("Add memory segment {} to availableMemorySegments.", segment);
 					}

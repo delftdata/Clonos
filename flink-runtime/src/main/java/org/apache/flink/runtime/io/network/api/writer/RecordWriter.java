@@ -84,8 +84,6 @@ public class RecordWriter<T extends IOReadableWritable> {
 
 	private Counter numBytesOut = new SimpleCounter();
 
-	private Counter numTimesCalled = new SimpleCounter();
-
 	private final InFlightLogger<T, ?> inFlightLogger;
 
 	private boolean buffersCleared = false;
@@ -287,10 +285,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 	}
 
 	public void checkReplayInFlightLog() throws IOException, InterruptedException {
-		numTimesCalled.inc();
-		if (numTimesCalled.getCount() % 100000 == 0) {
-			LOG.info("Check for in-flight log request.");
-		}
+		LOG.debug("Check for in-flight log request.");
 
 		if (downstreamFailed() || inFlightLogPrepareSignalled()) {
 			InFlightLogPrepareEvent inFlightLogPrepareEvent = getInFlightLogPrepareEvent();

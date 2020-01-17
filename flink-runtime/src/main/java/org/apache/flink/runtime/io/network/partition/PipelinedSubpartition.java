@@ -142,13 +142,13 @@ class PipelinedSubpartition extends ResultSubpartition {
 	public void releaseBuffers() {
 		// Release all available buffers
 		synchronized (buffers) {
-			LOG.info("Release {} buffers of {}.", buffers.size(), this);
+			LOG.debug("Release {} buffers of {}.", buffers.size(), this);
 			for (BufferConsumer buffer : buffers) {
 				buffer.close();
 			}
 			buffers.clear();
 			resetBuffersInBacklog();
-			LOG.info("Released buffers of {}. Now {} buffers.", this, buffers.size());
+			LOG.debug("Released buffers of {}. Now {} buffers.", this, buffers.size());
 		}
 	}
 

@@ -672,7 +672,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			checkpointMetaData.getCheckpointId(), checkpointOptions.getCheckpointType(), getName(), lock);
 
 		synchronized (lock) {
-			LOG.info("{} (isRunning: {}) acquired lock to perform checkpoint.", isRunning, getName());
+			LOG.debug("{} (isRunning: {}) acquired lock to perform checkpoint.", isRunning, getName());
 			if (isRunning) {
 				// we can do a checkpoint
 
