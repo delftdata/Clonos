@@ -105,6 +105,15 @@ public class RecordWriter<T extends IOReadableWritable> {
 		this.numChannels = writer.getNumberOfSubpartitions();
 
 		this.inFlightLogger = new InFlightLogger<>(this.numChannels);
+		if (this.targetPartition instanceof ResultPartition) {
+			for (int i = 0; i < this.numChannels; i++) {
+				try {
+					this.inFlightLogger.assignExclusiveSegments(((ResultPartition) this.targetPartition).assignExclusiveSegments());
+				} catch (IOException e) {
+					LOG.error("Assign exclusive segments failed with {}.", e);
+				}
+			}
+		}
 
 		/*
 		 * The runtime exposes a channel abstraction for the produced results

@@ -213,6 +213,9 @@ public class NetworkEnvironment {
 				maxNumberOfMemorySegments);
 			partition.registerBufferPool(bufferPool);
 
+			// For in-flight log
+			partition.setNetworkBufferPool(networkBufferPool, networkBuffersPerChannel);
+
 			resultPartitionManager.registerResultPartition(partition);
 		} catch (Throwable t) {
 			if (bufferPool != null) {

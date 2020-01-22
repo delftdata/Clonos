@@ -18,8 +18,12 @@
 
 package org.apache.flink.runtime.inflightlogging;
 
+import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.runtime.plugable.SerializationDelegate;
 import org.apache.flink.runtime.io.network.api.CheckpointBarrier;
+import org.apache.flink.runtime.io.network.buffer.Buffer;
+import org.apache.flink.runtime.io.network.buffer.BufferRecycler;
+import org.apache.flink.runtime.io.network.buffer.NetworkBuffer;
 
 import java.io.IOException;
 import java.util.*;
@@ -27,11 +31,15 @@ import java.util.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class InFlightLogger<T, REC> {
+public class InFlightLogger<T, REC> implements BufferRecycler {
 
 	private static final Logger LOG = LoggerFactory.getLogger(InFlightLogger.class);
 
 	private SortedMap<Long, StreamSlice<REC>[]> slicedLog;
+
+	private SortedMap<Long, StreamSlice<Buffer>[]> slicedBufferLog;
+
+	private final ArrayDeque<Buffer> bufferQueue = new ArrayDeque<>();
 
 	private SerializationDelegate<REC> serializationDelegate;
 
@@ -47,6 +55,7 @@ public class InFlightLogger<T, REC> {
 
 	public InFlightLogger(int numChannels) {
 		slicedLog = new TreeMap<>();
+		slicedBufferLog = new TreeMap<>();
 		this.numOutgoingChannels = numChannels;
 		this.currentCheckpointId = 0;
 		this.serializationDelegate = null;
@@ -87,14 +96,32 @@ public class InFlightLogger<T, REC> {
 		currentCheckpointId = previousCheckpointId + 1;
 
 		StreamSlice<REC>[] newSlices = new StreamSlice[this.numOutgoingChannels];
+		StreamSlice<Buffer>[] newBufferSlices = new StreamSlice[this.numOutgoingChannels];
 
-		for(int i = 0; i < this.numOutgoingChannels; i++) {
+		for (int i = 0; i < this.numOutgoingChannels; i++) {
 			newSlices[i] = new StreamSlice<>(currentCheckpointId);
+			newBufferSlices[i] = new StreamSlice<>(currentCheckpointId);
 		}
 
 		// Assumption: The checkpointId is a monotonically increasing long number starting from 1.
 		slicedLog.put(currentCheckpointId, newSlices);
+		slicedBufferLog.put(currentCheckpointId, newBufferSlices);
 		LOG.info("Create {} slices for checkpoint no {}.", numOutgoingChannels, currentCheckpointId);
+	}
+
+	public void assignExclusiveSegments(List<MemorySegment> segments) {
+		synchronized (bufferQueue) {
+			for (MemorySegment segment : segments) {
+				bufferQueue.add(new NetworkBuffer(segment, this));
+			}
+			LOG.info("InFlightLogger bufferQueue currently has {} available buffers.", bufferQueue.size());
+		}
+	}
+
+	public void recycle(MemorySegment segment) {
+		synchronized (bufferQueue) {
+			bufferQueue.add(new NetworkBuffer(segment, this));
+		}
 	}
 
 	public TreeSet<Long> getCheckpointIdsToReplay(long downstreamCheckpointId) {
