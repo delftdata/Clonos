@@ -31,17 +31,17 @@ public class StreamSlice<T> {
 	private static final Logger LOG = LoggerFactory.getLogger(StreamSlice.class);
 
 	private long sliceId;
-	private List<T> sliceRecords;
+	private List<T> sliceData;
 	private CheckpointBarrier checkpointBarrier;
 
 	public StreamSlice(long sliceId) {
 		this.sliceId = sliceId;
-		this.sliceRecords = new ArrayList<>(); // TODO check what is a sane initial size
+		this.sliceData = new ArrayList<>(); // TODO check what is a sane initial size
 	}
 
-	public StreamSlice(long sliceId, List<T> sliceRecords) {
+	public StreamSlice(long sliceId, List<T> sliceData) {
 		this.sliceId = sliceId;
-		this.sliceRecords = sliceRecords;
+		this.sliceData = sliceData;
 	}
 
 	public long getSliceId() {
@@ -52,17 +52,17 @@ public class StreamSlice<T> {
 		this.sliceId = sliceId;
 	}
 
-	public List<T> getSliceRecords() {
-		return sliceRecords;
+	public List<T> getSliceData() {
+		return sliceData;
 	}
 
-	public void setSliceRecords(List<T> sliceRecords) {
-		this.sliceRecords = sliceRecords;
+	public void setSliceData(List<T> sliceData) {
+		this.sliceData = sliceData;
 	}
 
-	public void addRecord(T newRecord) {
-		this.sliceRecords.add(newRecord);
-		LOG.debug("Logged record {} to position {} of StreamSlice for checkpoint id {}.", newRecord, this.sliceRecords.size() - 1, sliceId);
+	public void addData(T newData) {
+		this.sliceData.add(newData);
+		LOG.debug("Logged data {} to position {} of StreamSlice for checkpoint id {}.", newData, this.sliceData.size() - 1, sliceId);
 	}
 
 	public void setCheckpointBarrier(CheckpointBarrier checkpointBarrier) {

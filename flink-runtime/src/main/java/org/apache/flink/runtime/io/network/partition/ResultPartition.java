@@ -230,7 +230,7 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 		checkState(this.networkBufferPool != null, "Bug in ResultPartition: global buffer pool has" +
 			"not been set for this ResultPartition.");
 
-		LOG.info("Request {} segments for InFlightLogger of {}.", networkBuffersPerSubpartition, this);
+		LOG.debug("Request {} segments for InFlightLogger of {}.", networkBuffersPerSubpartition, this);
 		return networkBufferPool.requestMemorySegments(networkBuffersPerSubpartition);
 	}
 

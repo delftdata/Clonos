@@ -52,6 +52,14 @@ public class BufferBuilder {
 		this.recycler = checkNotNull(recycler);
 	}
 
+	public BufferBuilder(BufferBuilder bufferBuilder, MemorySegment memorySegment, BufferRecycler recycler) {
+		bufferBuilder.memorySegment.copyTo(0, memorySegment, 0, bufferBuilder.getWrittenBytes());
+		this.memorySegment = memorySegment;
+		this.recycler = recycler;
+		this.positionMarker.move(bufferBuilder.getWrittenBytes());
+		LOG.debug("Created {} from {}. Copied {} to {}.", this, bufferBuilder, bufferBuilder.memorySegment, memorySegment);
+	}
+
 	/**
 	 * @return created matching instance of {@link BufferConsumer} to this {@link BufferBuilder}. There can exist only
 	 * one {@link BufferConsumer} per each {@link BufferBuilder} and vice versa.
@@ -139,6 +147,10 @@ public class BufferBuilder {
 
 	public int getMemorySegmentHash() {
 		return System.identityHashCode(memorySegment);
+	}
+
+	public MemorySegment getMemorySegment() {
+		return memorySegment;
 	}
 
 	private int getWrittenBytes() {
