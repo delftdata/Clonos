@@ -89,23 +89,27 @@ public class RecordWriter<T extends IOReadableWritable> {
 
 	private boolean buffersCleared = false;
 
-	public RecordWriter(ResultPartitionWriter writer) throws IOException {
+	public RecordWriter(ResultPartitionWriter writer) {
 		this(writer, new RoundRobinChannelSelector<T>());
 	}
 
 	@SuppressWarnings("unchecked")
-	public RecordWriter(ResultPartitionWriter writer, ChannelSelector<T> channelSelector) throws IOException {
+	public RecordWriter(ResultPartitionWriter writer, ChannelSelector<T> channelSelector) {
 		this(writer, channelSelector, false);
 	}
 
-	public RecordWriter(ResultPartitionWriter writer, ChannelSelector<T> channelSelector, boolean flushAlways) throws IOException {
+	public RecordWriter(ResultPartitionWriter writer, ChannelSelector<T> channelSelector, boolean flushAlways) {
 		this.flushAlways = flushAlways;
 		this.targetPartition = writer;
 		this.channelSelector = channelSelector;
 
 		this.numChannels = writer.getNumberOfSubpartitions();
 
-		this.inFlightLogger = new InFlightLogger(this.targetPartition, this.numChannels);
+		try {
+			this.inFlightLogger = new InFlightLogger(this.targetPartition, this.numChannels);
+		} catch (IOException e) {
+			throw new RuntimeException("Error while creating the RecordWriter.", e);
+		}
 
 		/*
 		 * The runtime exposes a channel abstraction for the produced results

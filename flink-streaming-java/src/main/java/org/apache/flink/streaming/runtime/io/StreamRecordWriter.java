@@ -101,7 +101,7 @@ public class StreamRecordWriter<T extends IOReadableWritable> extends RecordWrit
 	/**
 	 * Closes the writer. This stops the flushing thread (if there is one).
 	 */
-	public void close() {
+	public void close() throws IOException, InterruptedException {
 		LOG.info("Close writer {}.", this);
 		clearBuffers();
 		// make sure we terminate the thread in any case

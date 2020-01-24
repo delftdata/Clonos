@@ -87,7 +87,14 @@ public class OutputCollector<T> implements Collector<T> {
 	public void close() {
 		for (RecordWriter<?> writer : writers) {
 			LOG.debug("Close writer {}.");
-			writer.clearBuffers();
+			try {
+				writer.clearBuffers();
+			} catch (IOException e) {
+				throw new RuntimeException("Closing the writer caused an I/O exception: " + e.getMessage(), e);
+			}
+			catch (InterruptedException e) {
+				throw new RuntimeException("Closing the writer was interrupted: " + e.getMessage(), e);
+			}
 			writer.flushAll();
 		}
 	}

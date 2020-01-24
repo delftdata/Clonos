@@ -1465,7 +1465,7 @@ public class BatchTask<S extends Function, OT> extends AbstractInvokable impleme
 		return a;
 	}
 
-	public static void clearWriters(List<RecordWriter<?>> writers) {
+	public static void clearWriters(List<RecordWriter<?>> writers) throws IOException, InterruptedException {
 		for (RecordWriter<?> writer : writers) {
 			writer.clearBuffers();
 		}
