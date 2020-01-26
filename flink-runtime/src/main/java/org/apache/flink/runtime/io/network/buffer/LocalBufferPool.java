@@ -89,8 +89,6 @@ class LocalBufferPool implements BufferPool {
 
 	private BufferPoolOwner owner;
 
-	private AtomicBoolean beingBackpressured = new AtomicBoolean();
-
 	/**
 	 * Local buffer pool based on the given <tt>networkBufferPool</tt> with a minimal number of
 	 * network buffers being available.
@@ -251,9 +249,7 @@ class LocalBufferPool implements BufferPool {
 
 				if (isBlocking) {
 					LOG.debug("{}: availableMemorySegments empty.", this);
-					beingBackpressured.set(true);
 					availableMemorySegments.wait(2000);
-					beingBackpressured.set(false);
 					LOG.debug("{}: thread awakened or wait expired.", this);
 				}
 				else {
@@ -268,29 +264,14 @@ class LocalBufferPool implements BufferPool {
 	@Override
 	public void recycle(MemorySegment segment) {
 		BufferListener listener;
-		if (beingBackpressured.get() == true) {
-			LOG.debug("Recycle memory segment {} while under backpressure.", segment);
-		} else {
-			LOG.debug("Recycle memory segment {}.", segment);
-		}
 		synchronized (availableMemorySegments) {
 			if (isDestroyed || numberOfRequestedMemorySegments > currentPoolSize) {
 				returnMemorySegment(segment);
 				return;
 			} else {
 				listener = registeredListeners.poll();
-				if (beingBackpressured.get() == true) {
-					LOG.debug("Polled buffer availability listener {} while under backpressure.", listener);
-				} else {
-					LOG.debug("Polled buffer availability listener {}.", listener);
-				}
 
 				if (listener == null) {
-					if (beingBackpressured.get() == true) {
-						LOG.debug("Add memory segment {} to availableMemorySegments while under backpressure.", segment);
-					} else {
-						LOG.debug("Add memory segment {} to availableMemorySegments.", segment);
-					}
 					availableMemorySegments.add(segment);
 					availableMemorySegments.notify();
 					return;

@@ -70,9 +70,6 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 
 	private boolean fatalError;
 
-	/** For logging after error has occured. */
-	private boolean errorHasOccured;
-
 	private ChannelHandlerContext ctx;
 
 	@Override
@@ -229,16 +226,10 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 				// No queue with available data. We allow this here, because
 				// of the write callbacks that are executed after each write.
 				if (reader == null) {
-					if (errorHasOccured) {
-						LOG.info("No reader available ({} in total.)", allReaders.size());
-					}
 					return;
 				}
 
 				next = reader.getNextBuffer();
-				if (errorHasOccured) {
-					LOG.info("Reader {} getNextBuffer() {}.", reader, next);
-				}
 				if (next == null) {
 					if (!reader.isReleased()) {
 						continue;
@@ -292,9 +283,6 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 	}
 
 	private void registerAvailableReader(NetworkSequenceViewReader reader) {
-		if (errorHasOccured) {
-			LOG.info("Register available reader: {}.", reader);
-		}
 		availableReaders.add(reader);
 		reader.setRegisteredAsAvailable(true);
 	}
@@ -342,7 +330,6 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 	private void releaseAllResources(Throwable cause) throws IOException {
 		// note: this is only ever executed by one thread: the Netty IO thread!
 		LOG.info("Release resources of {} readers with cause {}.", allReaders.size(), cause);
-		errorHasOccured = true;
 		for (NetworkSequenceViewReader reader : allReaders.values()) {
 			if (cause != null) {
 				LOG.info("Release reader {} because of {}).", reader, cause);
