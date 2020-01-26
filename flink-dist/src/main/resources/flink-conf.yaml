@@ -44,7 +44,7 @@ jobmanager.heap.size: 1024m
 
 # The heap size for the TaskManager JVM
 
-taskmanager.heap.size: 1024m
+taskmanager.heap.size: 1128m
 
 
 # The number of task slots that each TaskManager offers. Each slot runs one parallel pipeline.
@@ -187,7 +187,7 @@ rest.port: 8081
 # no tuning. Adjusting them may be necessary in case of an "Insufficient number
 # of network buffers" error. The default min is 64MB, teh default max is 1GB.
 # 
-# taskmanager.network.memory.fraction: 0.1
+ taskmanager.network.memory.fraction: 0.15
 # taskmanager.network.memory.min: 67108864
 # taskmanager.network.memory.max: 1073741824
 

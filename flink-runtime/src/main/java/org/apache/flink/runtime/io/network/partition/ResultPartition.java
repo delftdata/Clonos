@@ -46,6 +46,7 @@ import java.io.IOException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.List;
+import java.util.ArrayList;
 
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkElementIndex;
@@ -212,12 +213,11 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 		}
 	}
 
-	public void setNetworkBufferPool(NetworkBufferPool networkBufferPool, int networkBuffersPerSubpartition) throws IOException {
+	public void setNetworkBufferPool(NetworkBufferPool networkBufferPool) throws IOException {
 		checkState(this.networkBufferPool == null, "Bug in input gate setup logic: global buffer pool has" +
 			"already been set for this input gate.");
 
 		this.networkBufferPool = checkNotNull(networkBufferPool);
-		this.networkBuffersPerSubpartition = networkBuffersPerSubpartition;
 	}
 
 	/**
@@ -226,12 +226,20 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 	 * @param networkBufferPool The global pool to request and recycle exclusive buffers
 	 * @param networkBuffersPerChannel The number of exclusive buffers for each channel
 	 */
-	public List<MemorySegment> assignExclusiveSegments() throws IOException {
+	public List<MemorySegment> assignExclusiveSegments(int numSegments) {
 		checkState(this.networkBufferPool != null, "Bug in ResultPartition: global buffer pool has" +
 			"not been set for this ResultPartition.");
 
-		LOG.debug("Request {} segments for InFlightLogger of {}.", networkBuffersPerSubpartition, this);
-		return networkBufferPool.requestMemorySegments(networkBuffersPerSubpartition);
+		LOG.debug("Request {} segments for InFlightLogger of {}.", numSegments, this);
+
+		List<MemorySegment> segments = new ArrayList<>();
+		try {
+			segments = networkBufferPool.requestMemorySegments(numSegments);
+		} catch (IOException e) {
+			LOG.warn("{}", e);
+		}
+
+		return segments;
 	}
 
 	public JobID getJobId() {

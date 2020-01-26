@@ -398,9 +398,14 @@ public class TaskManagerServices {
 			throw new IllegalArgumentException("The given number of memory bytes (" + networkBuf
 				+ ") corresponds to more than MAX_INT pages.");
 		}
+		final long numNetInFlightBuffersLong = numNetBuffersLong / 3;
 
 		NetworkBufferPool networkBufferPool = new NetworkBufferPool(
-			(int) numNetBuffersLong,
+			(int) (numNetBuffersLong - numNetInFlightBuffersLong),
+			segmentSize);
+
+		NetworkBufferPool inFlightNetworkBufferPool = new NetworkBufferPool(
+			(int) numNetInFlightBuffersLong,
 			segmentSize);
 
 		ConnectionManager connectionManager;
@@ -450,6 +455,7 @@ public class TaskManagerServices {
 		// we start the network first, to make sure it can allocate its buffers first
 		return new NetworkEnvironment(
 			networkBufferPool,
+			inFlightNetworkBufferPool,
 			connectionManager,
 			resultPartitionManager,
 			taskEventDispatcher,
@@ -566,6 +572,7 @@ public class TaskManagerServices {
 	 */
 	public static long calculateNetworkBufferMemory(TaskManagerServicesConfiguration tmConfig, long maxJvmHeapMemory) {
 		final NetworkEnvironmentConfiguration networkConfig = tmConfig.getNetworkConfig();
+		LOG.info("{}, maxJvmHeapMemory: {}.", networkConfig, maxJvmHeapMemory);
 
 		final float networkBufFraction = networkConfig.networkBufFraction();
 		final long networkBufMin = networkConfig.networkBufMin();

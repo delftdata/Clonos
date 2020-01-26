@@ -42,6 +42,8 @@ public class InFlightLogger implements BufferRecycler {
 
 	private final ArrayDeque<MemorySegment> memorySegmentQueue = new ArrayDeque<>();
 
+	private int totalNumSegments;
+
 	private final ResultPartition targetPartition;
 
 	private int numOutgoingChannels;
@@ -58,14 +60,15 @@ public class InFlightLogger implements BufferRecycler {
 		slicedLog = new TreeMap<>();
 		this.numOutgoingChannels = numChannels;
 		this.currentCheckpointId = 0;
+		this.totalNumSegments = 4;
 
 		if (targetPartition instanceof ResultPartition) {
 			this.targetPartition = (ResultPartition) targetPartition;
 			for (int i = 0; i < numOutgoingChannels; i++) {
-				assignExclusiveSegments(this.targetPartition.assignExclusiveSegments());
+				assignExclusiveSegments(this.targetPartition.assignExclusiveSegments(totalNumSegments));
 			}
 		} else {
-			throw new IOException("Unable to operate the InFlightLog ger. Partition is of type " + targetPartition + ".");
+			throw new IOException("Unable to operate the InFlightLogger. Partition is of type " + targetPartition + ".");
 		}
 	}
 
@@ -73,7 +76,11 @@ public class InFlightLogger implements BufferRecycler {
 		return replaying;
 	}
 
-	public void log(BufferBuilder bufferBuilder, int channelIndex) throws IOException, InterruptedException {
+	public void setReplaying(boolean newReplayingState) {
+		replaying = newReplayingState;
+	}
+
+	public void log(BufferBuilder bufferBuilder, int channelIndex) throws InterruptedException {
 		if (!replaying) {
 
 			// At the start of new epoch checkpoint id is unknown until triggerCheckpoint(). Only for the first checkpoint ever, create the slices here. In case of standby tasks, the current checkpoint will not be the first.
@@ -107,13 +114,13 @@ public class InFlightLogger implements BufferRecycler {
 		LOG.info("Create {} slices for checkpoint no {}.", numOutgoingChannels, currentCheckpointId);
 	}
 
-	public boolean assignExclusiveSegments(List<MemorySegment> segments) throws IOException {
+	public boolean assignExclusiveSegments(List<MemorySegment> segments) {
 		synchronized (memorySegmentQueue) {
 			LOG.debug("Received {} segments from the pool.", segments.size());
 			for (MemorySegment segment : segments) {
 				memorySegmentQueue.add(segment);
 			}
-			LOG.debug("InFlightLogger memorySegmentQueue currently has {} available buffers.", memorySegmentQueue.size());
+			LOG.debug("{} memorySegmentQueue currently has {} available buffers.", this, memorySegmentQueue.size());
 
 			if (segments.isEmpty()) {
 				return false;
@@ -122,7 +129,7 @@ public class InFlightLogger implements BufferRecycler {
 		}
 	}
 
-	public MemorySegment requestSegment() throws IOException, InterruptedException {
+	public MemorySegment requestSegment() throws InterruptedException {
 		MemorySegment segment = null;
 		synchronized (memorySegmentQueue) {
 			while (segment == null) {
@@ -131,8 +138,8 @@ public class InFlightLogger implements BufferRecycler {
 					break;
 				}
 
-				if (!assignExclusiveSegments(targetPartition.assignExclusiveSegments())) {
-					LOG.debug("Wait 0.5 seconds for MemorySegment to become available.");
+				if (!assignExclusiveSegments(targetPartition.assignExclusiveSegments(totalNumSegments *= 2))) {
+					LOG.info("{}: Wait 0.5 seconds for MemorySegment to become available.", this);
 					memorySegmentQueue.wait(500);
 				}
 			}
@@ -161,10 +168,10 @@ public class InFlightLogger implements BufferRecycler {
 	public List<BufferBuilder> getReplayLog(int outgoingChannelIndex, long checkpointId) throws IOException {
 
 		List<BufferBuilder> sliceOfChannel = slicedLog.get(checkpointId)[outgoingChannelIndex].getSliceData();
-		LOG.info("For checkpoint id {} and channel index {}, {} BufferBuilders have been logged.", checkpointId, outgoingChannelIndex, sliceOfChannel.size());
+		LOG.info("{}: For checkpoint id {} and channel index {}, {} BufferBuilders have been logged.", this, checkpointId, outgoingChannelIndex, sliceOfChannel.size());
 
 		replaying = true;
-		LOG.debug("Start replay log for checkpoint {}. Set replaying to true.", checkpointId);
+		LOG.debug("{}: Start replay log for checkpoint {}. Set replaying to true.", this, checkpointId);
 		return sliceOfChannel;
 	}
 
@@ -188,7 +195,7 @@ public class InFlightLogger implements BufferRecycler {
 		if (slicedLog.get(checkpointId) != null && slicedLog.get(checkpointId)[0].getCheckpointBarrier() != null) {
 			for (int channel = 0; channel < numOutgoingChannels; channel++) {
 				List<BufferBuilder> bufferBuilders = slicedLog.get(checkpointId)[channel].getSliceData();
-				LOG.debug("Recycle {} bufferBuilders.", bufferBuilders.size());
+				LOG.debug("{}: Recycle {} bufferBuilders.", this, bufferBuilders.size());
 				for (BufferBuilder bufferBuilder : bufferBuilders) {
 					recycle(bufferBuilder.getMemorySegment());
 				}
@@ -203,7 +210,7 @@ public class InFlightLogger implements BufferRecycler {
 			LOG.info("Discard slices for checkpoint {}.", slicedLog.firstKey());
 			for (int channel = 0; channel < numOutgoingChannels; channel++) {
 				List<BufferBuilder> bufferBuilders = slicedLog.get(slicedLog.firstKey())[channel].getSliceData();
-				LOG.debug("Recycle {} bufferBuilders.", bufferBuilders.size());
+				LOG.debug("{}: Recycle {} bufferBuilders.", this, bufferBuilders.size());
 				for (BufferBuilder bufferBuilder : bufferBuilders) {
 					recycle(bufferBuilder.getMemorySegment());
 				}
@@ -218,7 +225,7 @@ public class InFlightLogger implements BufferRecycler {
 			segments = memorySegmentQueue.size();
 		}
 
-		return String.format("InFlightLogger [replaying: %s, channels: %s, current checkpoint id: %d, available segments: %d]", replaying, numOutgoingChannels, currentCheckpointId, segments);
+		return String.format("InFlightLogger [task: %s, replaying: %s, channels: %s, current checkpoint id: %d, totalSegments: %d, available segments: %d]", targetPartition.getTaskName(), replaying, numOutgoingChannels, currentCheckpointId, totalNumSegments, segments);
 	}
 
 	public void logCheckpointBarrier(CheckpointBarrier checkpointBarrier) {

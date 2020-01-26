@@ -341,6 +341,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 					emitEvent(checkpointBarrier, subpartitionIndex);
 				}
 			}
+			inFlightLogger.setReplaying(false);
 
 			LOG.info("Replaying {} buffers completed. Flush buffers and check whether there is another in-flight log request.", totalReplayCounter);
 
