@@ -668,8 +668,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			CheckpointOptions checkpointOptions,
 			CheckpointMetrics checkpointMetrics) throws Exception {
 
-		LOG.info("Starting checkpoint ({}) {} on task {}. Request lock {}.",
-			checkpointMetaData.getCheckpointId(), checkpointOptions.getCheckpointType(), getName(), lock);
+		LOG.info("Starting checkpoint ({}) {} on task {}.",
+			checkpointMetaData.getCheckpointId(), checkpointOptions.getCheckpointType(), getName());
 
 		synchronized (lock) {
 			LOG.debug("{} (isRunning: {}) acquired lock to perform checkpoint.", isRunning, getName());

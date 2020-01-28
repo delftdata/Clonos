@@ -42,7 +42,7 @@ public class InFlightLogger implements BufferRecycler {
 
 	private final ArrayDeque<MemorySegment> memorySegmentQueue = new ArrayDeque<>();
 
-	private int totalNumSegments;
+	private int NumTotalSegments;
 
 	private final ResultPartition targetPartition;
 
@@ -60,7 +60,7 @@ public class InFlightLogger implements BufferRecycler {
 		slicedLog = new TreeMap<>();
 		this.numOutgoingChannels = numChannels;
 		this.currentCheckpointId = 0;
-		this.totalNumSegments = 4;
+		this.numTotalSegments = 10;
 
 		if (targetPartition instanceof ResultPartition) {
 			this.targetPartition = (ResultPartition) targetPartition;
@@ -138,10 +138,11 @@ public class InFlightLogger implements BufferRecycler {
 					break;
 				}
 
-				if (!assignExclusiveSegments(targetPartition.assignExclusiveSegments(totalNumSegments *= 2))) {
+				if (!assignExclusiveSegments(targetPartition.assignExclusiveSegments(numTotalSegments))) {
 					LOG.info("{}: Wait 0.5 seconds for MemorySegment to become available.", this);
 					memorySegmentQueue.wait(500);
-				}
+				} else {
+					numTotalSegments *= 2;
 			}
 		}
 		return segment;
@@ -225,7 +226,7 @@ public class InFlightLogger implements BufferRecycler {
 			segments = memorySegmentQueue.size();
 		}
 
-		return String.format("InFlightLogger [task: %s, replaying: %s, channels: %s, current checkpoint id: %d, totalSegments: %d, available segments: %d]", targetPartition.getTaskName(), replaying, numOutgoingChannels, currentCheckpointId, totalNumSegments, segments);
+		return String.format("InFlightLogger [task: %s, replaying: %s, channels: %s, current checkpoint id: %d, totalSegments: %d, available segments: %d]", targetPartition.getTaskName(), replaying, numOutgoingChannels, currentCheckpointId, NumTotalSegments, segments);
 	}
 
 	public void logCheckpointBarrier(CheckpointBarrier checkpointBarrier) {
