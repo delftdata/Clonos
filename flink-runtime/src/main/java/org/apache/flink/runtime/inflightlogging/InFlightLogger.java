@@ -42,7 +42,7 @@ public class InFlightLogger implements BufferRecycler {
 
 	private final ArrayDeque<MemorySegment> memorySegmentQueue = new ArrayDeque<>();
 
-	private int NumTotalSegments;
+	private int numTotalSegments;
 
 	private final ResultPartition targetPartition;
 
@@ -65,7 +65,7 @@ public class InFlightLogger implements BufferRecycler {
 		if (targetPartition instanceof ResultPartition) {
 			this.targetPartition = (ResultPartition) targetPartition;
 			for (int i = 0; i < numOutgoingChannels; i++) {
-				assignExclusiveSegments(this.targetPartition.assignExclusiveSegments(totalNumSegments));
+				assignExclusiveSegments(this.targetPartition.assignExclusiveSegments(numTotalSegments));
 			}
 		} else {
 			throw new IOException("Unable to operate the InFlightLogger. Partition is of type " + targetPartition + ".");
@@ -143,6 +143,7 @@ public class InFlightLogger implements BufferRecycler {
 					memorySegmentQueue.wait(500);
 				} else {
 					numTotalSegments *= 2;
+				}
 			}
 		}
 		return segment;
@@ -226,7 +227,7 @@ public class InFlightLogger implements BufferRecycler {
 			segments = memorySegmentQueue.size();
 		}
 
-		return String.format("InFlightLogger [task: %s, replaying: %s, channels: %s, current checkpoint id: %d, totalSegments: %d, available segments: %d]", targetPartition.getTaskName(), replaying, numOutgoingChannels, currentCheckpointId, NumTotalSegments, segments);
+		return String.format("InFlightLogger [task: %s, replaying: %s, channels: %s, current checkpoint id: %d, totalSegments: %d, available segments: %d]", targetPartition.getTaskName(), replaying, numOutgoingChannels, currentCheckpointId, numTotalSegments, segments);
 	}
 
 	public void logCheckpointBarrier(CheckpointBarrier checkpointBarrier) {
