@@ -231,7 +231,17 @@ public abstract class AbstractStreamOperator<OUT>
 				keySerializer,
 				streamTaskCloseableRegistry);
 
+		// Required for StandbyTaskFailoverStrategy
+		if (this.operatorStateBackend != null) {
+			this.operatorStateBackend.dispose();
+		}
 		this.operatorStateBackend = context.operatorStateBackend();
+
+		// Required for StandbyTaskFailoverStrategy
+		if (this.keyedStateBackend != null) {
+			this.keyedStateBackend.dispose();
+		}
+
 		this.keyedStateBackend = context.keyedStateBackend();
 
 		if (keyedStateBackend != null) {

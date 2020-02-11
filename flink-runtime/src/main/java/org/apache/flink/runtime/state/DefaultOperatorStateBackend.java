@@ -172,9 +172,12 @@ public class DefaultOperatorStateBackend implements OperatorStateBackend {
 
 	@Override
 	public void dispose() {
+		LOG.debug("Dispose registeredOperatorStates (size: {}), registeredBroadcastStates (size: {}), accessedStatesByName (size: {}), accessedBroadcastStatesByName (size: {})", registeredOperatorStates.size(), registeredBroadcastStates.size(), accessedStatesByName.size(), accessedBroadcastStatesByName.size());
 		IOUtils.closeQuietly(closeStreamOnCancelRegistry);
 		registeredOperatorStates.clear();
 		registeredBroadcastStates.clear();
+		accessedStatesByName.clear();
+		accessedBroadcastStatesByName.clear();
 	}
 
 	// -------------------------------------------------------------------------------------------
@@ -577,6 +580,10 @@ public class DefaultOperatorStateBackend implements OperatorStateBackend {
 					}
 				}
 
+				for (Map.Entry<String, PartitionableListState<?>> entry : registeredOperatorStates.entrySet()) {
+					LOG.debug("{}: registeredOperatorState: name: {}, state: {}", this, entry.getKey(), entry.getValue());
+				}
+
 				// Restore all the states
 				for (Map.Entry<String, OperatorStateHandle.StateMetaInfo> nameToOffsets :
 						stateHandle.getStateNameToPartitionOffsets().entrySet()) {
@@ -738,6 +745,8 @@ public class DefaultOperatorStateBackend implements OperatorStateBackend {
 		@SuppressWarnings("unchecked")
 		PartitionableListState<S> partitionableListState = (PartitionableListState<S>) registeredOperatorStates.get(name);
 
+		LOG.debug("getListState() registeredOperatorState: {}", partitionableListState);
+
 		if (null == partitionableListState) {
 			// no restored state for the state name; simply create new state holder
 
@@ -787,6 +796,8 @@ public class DefaultOperatorStateBackend implements OperatorStateBackend {
 		}
 
 		accessedStatesByName.put(name, partitionableListState);
+
+		LOG.debug("getListState() return state: {}", partitionableListState);
 		return partitionableListState;
 	}
 
