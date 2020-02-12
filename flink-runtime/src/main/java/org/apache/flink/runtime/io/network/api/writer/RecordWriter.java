@@ -371,7 +371,11 @@ public class RecordWriter<T extends IOReadableWritable> {
 			LOG.info("Downstream task of {} failed.", ((ResultPartition) targetPartition).getTaskName());
 			int i = 0;
 			while (!inFlightLogPrepareSignalled() && i < 100) {
-				Thread.sleep(10);
+				try {
+					Thread.sleep(10);
+				} catch (InterruptedException e) {
+					Thread.currentThread().interrupt();
+				}
 				i++;
 			}
 
