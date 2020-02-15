@@ -669,7 +669,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		if (task != null) {
 			try {
 				final SingleInputGate singleInputGate = task.getInputGateById(intermediateDataSetId);
-				log.debug("Deliver ack InFlightLogPrepareRequest to task {} SingleInputGate {}.", task, singleInputGate);
+				log.info("Deliver ack InFlightLogPrepareRequest to task {} SingleInputGate {}.", task, singleInputGate);
 				CompletableFuture<Acknowledge> ackFuture = singleInputGate.ackInFlightLogPrepareRequest(resultPartitionId);
 				task.checkInputChannelConnectionsComplete();
 				return ackFuture;

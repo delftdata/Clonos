@@ -714,7 +714,7 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 
 		final ExecutionVertex consumerVertex = intermediateResultPartition.getConsumers().get(0).get(subpartitionIndex).getTarget();
 		final Execution consumerExecution = consumerVertex.getCurrentExecutionAttempt();
-		log.debug("Producer execution {} sends ack for InFlightLogPrepareRequest sent by consumer Execution {} for subpartition {}, intermediateResultPartition {}, intermediateDataSetId {}.", producerExecution, consumerExecution, subpartitionIndex, intermediateResultPartition, intermediateDataSetId);
+		log.info("Producer execution {} sends ack for InFlightLogPrepareRequest sent by consumer Execution {} for subpartition {}, intermediateResultPartition {}, intermediateDataSetId {}.", producerExecution, consumerExecution, subpartitionIndex, intermediateResultPartition, intermediateDataSetId);
 		consumerExecution.ackInFlightLogPrepareRequest(intermediateDataSetId, resultPartitionId);
 		return CompletableFuture.completedFuture(Acknowledge.get());
 	}

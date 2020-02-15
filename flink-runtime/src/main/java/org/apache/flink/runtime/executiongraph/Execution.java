@@ -1349,6 +1349,8 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 	public void ackInFlightLogPrepareRequest(IntermediateDataSetID intermediateDataSetId, ResultPartitionID resultPartitionId) {
 		final LogicalSlot slot = assignedResource;
 
+		LOG.info("Send ackInFlightLogPrepareRequest to {}.", this);
+
 		if (slot != null) {
 			final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
 
