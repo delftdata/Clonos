@@ -1363,6 +1363,8 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 				(ack, failure) -> {
 					if (failure != null) {
 						fail(new Exception("Can not ack InFlightLogPrepareRequest to standby task.", failure));
+					} else {
+						LOG.info("Delivered ackInFlightLogPrepareRequest to TaskManagerGateway for task {}.", this);
 					}
 				},
 				executor);

@@ -41,10 +41,15 @@ import org.apache.flink.util.Preconditions;
 
 import java.util.concurrent.CompletableFuture;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
  * Implementation of the {@link TaskManagerGateway} for Flink's RPC system.
  */
 public class RpcTaskManagerGateway implements TaskManagerGateway {
+
+	private static final Logger LOG = LoggerFactory.getLogger(RpcTaskManagerGateway.class);
 
 	private final TaskExecutorGateway taskExecutorGateway;
 
@@ -128,6 +133,7 @@ public class RpcTaskManagerGateway implements TaskManagerGateway {
 
 	@Override
 	public CompletableFuture<Acknowledge> ackInFlightLogPrepareRequest(ExecutionAttemptID executionAttemptID, IntermediateDataSetID intermediateDataSetId, ResultPartitionID resultPartitionId, Time timeout) {
+		LOG.info("Send ackInFlightLogPrepareRequest to TaskExecutor for attemptID {}, intermediateDataSetId {}, resultPartitionId {}.", executionAttemptID, intermediateDataSetId, resultPartitionId);
 		return taskExecutorGateway.ackInFlightLogPrepareRequest(executionAttemptID, intermediateDataSetId, resultPartitionId, timeout);
 	}
 
