@@ -846,7 +846,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 
 					final InputChannelDeploymentDescriptor descriptor = new InputChannelDeploymentDescriptor(
 							partitionId, partitionLocation, updateConsumersOnFailover);
-					LOG.debug("New InputChannelDeploymentDescriptor " + descriptor + " for updating consumer " + consumer + ".");
+					LOG.info("New InputChannelDeploymentDescriptor " + descriptor + " for updating consumer " + consumer + ".");
 
 					consumer.sendUpdatePartitionInfoRpcCall(
 						Collections.singleton(

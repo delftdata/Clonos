@@ -708,7 +708,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 					getRpcService().execute(
 						() -> {
 							try {
-								log.debug("Update input channel of task " + task);
+								log.info("Update input channel of task " + task);
 								singleInputGate.updateInputChannel(partitionInfo.getInputChannelDeploymentDescriptor(), networkEnvironment, task.getMetricGroup().getIOMetricGroup());
 							} catch (IOException | InterruptedException e) {
 								log.error("Could not update input data location for task {}. Trying to fail task.", task.getTaskInfo().getTaskName(), e);
