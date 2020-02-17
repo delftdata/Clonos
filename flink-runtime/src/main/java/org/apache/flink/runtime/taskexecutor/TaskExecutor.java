@@ -666,6 +666,8 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 	public CompletableFuture<Acknowledge> ackInFlightLogPrepareRequest(ExecutionAttemptID executionAttemptID, IntermediateDataSetID intermediateDataSetId, ResultPartitionID resultPartitionId, Time timeout) {
 		final Task task = taskSlotTable.getTask(executionAttemptID);
 
+		log.info("ackInFlightLogPrepareRequest to task {}.", task);
+
 		if (task != null) {
 			try {
 				final SingleInputGate singleInputGate = task.getInputGateById(intermediateDataSetId);
@@ -679,7 +681,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		} else {
 			final String message = "Cannot find standby task " + executionAttemptID + " to ack InFlightLogPrepareRequest.";
 
-			log.debug(message);
+			log.info(message);
 			return FutureUtils.completedExceptionally(new TaskException(message));
 		}
 	}
