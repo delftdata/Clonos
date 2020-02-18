@@ -584,8 +584,8 @@ public class SingleInputGate implements InputGate {
 						}).thenRun(() -> {
 							try {
 								LOG.info("{}: InFlightLogPrepareRequest for subpartitionIndex {} from channel {} acknowledged by upstream.", owningTaskName, consumedSubpartitionIndex, newChannel);
-							newChannel.requestSubpartition(consumedSubpartitionIndex);
-							requestedPartitionsFlag.set(true);
+								newChannel.requestSubpartition(consumedSubpartitionIndex);
+								requestedPartitionsFlag.set(true);
 							} catch (IOException | InterruptedException e) {
 								LOG.error("{}: Request subpartition for input channel {} failed. Ignoring failure and sending fail trigger for producer (chances are it is dead).",
 							owningTaskName, newChannel, e);
