@@ -435,6 +435,7 @@ public class SingleInputGate implements InputGate {
 	public void updateInputChannel(InputChannelDeploymentDescriptor icdd, NetworkEnvironment networkEnvironment,
 			TaskIOMetricGroup metrics)
 		throws IOException, InterruptedException {
+		LOG.info("{}: Try updateInputChannel in {}.", owningTaskName, Thread.currentThread());
 		synchronized (requestLock) {
 			if (isReleased) {
 				// There was a race with a task failure/cancel

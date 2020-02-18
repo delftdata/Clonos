@@ -449,7 +449,7 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 		ResultSubpartitionView readView = subpartitions[index].createReadView(availabilityListener);
 		downstreamFailed.set(false);
 
-		LOG.debug("{}: Created/Using {} of {}", owningTaskName, readView, this);
+		LOG.info("{}: Created/Using {} of {}", owningTaskName, readView, this);
 
 		return readView;
 	}
