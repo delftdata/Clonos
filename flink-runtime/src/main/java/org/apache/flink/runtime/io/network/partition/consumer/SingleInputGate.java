@@ -577,15 +577,24 @@ public class SingleInputGate implements InputGate {
 						LOG.info("{}: any pending state restoration is now complete. Send in-flight log request event for subpartitionIndex {} from channel {} (replay).", owningTaskName, consumedSubpartitionIndex, newChannel);
 						newChannel.sendTaskEvent(new InFlightLogRequestEvent(consumedSubpartitionIndex, latestCompletedCheckpointId));
 
-						ackNewChannelFuture.get();
-						if (ackNewChannelFuture.isCompletedExceptionally()) {
+						ackNewChannelFuture.exceptionally(r -> {
 							LOG.warn("Unexpected exception while waiting for InFlightLogPrepareRequest future to complete.");
-						}
-						LOG.info("{}: InFlightLogPrepareRequest for subpartitionIndex {} from channel {} acknowledged by upstream.", owningTaskName, consumedSubpartitionIndex, newChannel);
+							r.printStackTrace();
+							return Acknowledge.get();
+						}).thenRun(() -> {
+							try {
+								LOG.info("{}: InFlightLogPrepareRequest for subpartitionIndex {} from channel {} acknowledged by upstream.", owningTaskName, consumedSubpartitionIndex, newChannel);
+							newChannel.requestSubpartition(consumedSubpartitionIndex);
+							requestedPartitionsFlag.set(true);
+							} catch (IOException | InterruptedException e) {
+								LOG.error("{}: Request subpartition for input channel {} failed. Ignoring failure and sending fail trigger for producer (chances are it is dead).",
+							owningTaskName, newChannel, e);
+							}
+						});
+					} else {
+						newChannel.requestSubpartition(consumedSubpartitionIndex);
+						requestedPartitionsFlag.set(true);
 					}
-
-					newChannel.requestSubpartition(consumedSubpartitionIndex);
-					requestedPartitionsFlag.set(true);
 				} catch (IOException e) {
 					LOG.error("{}: Request subpartition or send task event for input channel {} failed. Ignoring failure and sending fail trigger for producer (chances are it is dead).",
 						owningTaskName, newChannel, e);
@@ -593,8 +602,6 @@ public class SingleInputGate implements InputGate {
 				} catch (IllegalStateException e) {
 					LOG.error("{}: Send task event for input channel {} failed.",
 						owningTaskName, newChannel, e);
-				} catch (ExecutionException e) {
-					LOG.error("Execution exception while waiting for ackNewChannelFuture: {}.", e);
 				}
 			}
 		}
