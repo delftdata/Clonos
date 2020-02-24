@@ -398,7 +398,7 @@ public class TaskManagerServices {
 			throw new IllegalArgumentException("The given number of memory bytes (" + networkBuf
 				+ ") corresponds to more than MAX_INT pages.");
 		}
-		final long numNetInFlightBuffersLong = numNetBuffersLong / 3;
+		final long numNetInFlightBuffersLong = (numNetBuffersLong * 2)/ 3;
 
 		NetworkBufferPool networkBufferPool = new NetworkBufferPool(
 			(int) (numNetBuffersLong - numNetInFlightBuffersLong),
