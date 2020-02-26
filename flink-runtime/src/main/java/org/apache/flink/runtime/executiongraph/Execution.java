@@ -846,7 +846,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 
 					final InputChannelDeploymentDescriptor descriptor = new InputChannelDeploymentDescriptor(
 							partitionId, partitionLocation, updateConsumersOnFailover);
-					LOG.info("New InputChannelDeploymentDescriptor " + descriptor + " for updating consumer " + consumer + ".");
+					LOG.debug("New InputChannelDeploymentDescriptor " + descriptor + " for updating consumer " + consumer + ".");
 
 					consumer.sendUpdatePartitionInfoRpcCall(
 						Collections.singleton(
@@ -1349,7 +1349,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 	public void ackInFlightLogPrepareRequest(IntermediateDataSetID intermediateDataSetId, ResultPartitionID resultPartitionId) {
 		final LogicalSlot slot = assignedResource;
 
-		LOG.info("Send ackInFlightLogPrepareRequest to {} at slot {}.", this, slot);
+		LOG.debug("Send ackInFlightLogPrepareRequest to {} at slot {}.", this, slot);
 
 		if (slot != null) {
 			final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
@@ -1364,7 +1364,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 					if (failure != null) {
 						fail(new Exception("Can not ack InFlightLogPrepareRequest to standby task.", failure));
 					} else {
-						LOG.info("Delivered ackInFlightLogPrepareRequest to TaskManagerGateway for task {}.", this);
+						LOG.debug("Delivered ackInFlightLogPrepareRequest to TaskManagerGateway for task {}.", this);
 					}
 				},
 				executor);

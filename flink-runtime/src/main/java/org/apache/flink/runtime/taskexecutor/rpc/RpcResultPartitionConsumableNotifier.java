@@ -83,7 +83,7 @@ public class RpcResultPartitionConsumableNotifier implements ResultPartitionCons
 
 	@Override
 	public void ackInFlightLogPrepareRequest(ResultPartitionID partitionId, int subpartitionIndex, final TaskActions taskActions) {
-		LOG.info("Ack InFlightLogPrepareRequest of partition {} subpartition {}.", partitionId, subpartitionIndex);
+		LOG.debug("Ack InFlightLogPrepareRequest of partition {} subpartition {}.", partitionId, subpartitionIndex);
 
 		CompletableFuture<Acknowledge> acknowledgeFuture = jobMasterGateway.ackInFlightLogPrepareRequest(partitionId, subpartitionIndex, timeout);
 

@@ -563,7 +563,7 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 	}
 
 	public void ackInFlightLogPrepareRequest(int subpartitionIndex) {
-		LOG.info("Ack inFlightLogPrepareRequest for subpartition {} of {}", subpartitionIndex, this);
+		LOG.debug("Ack inFlightLogPrepareRequest for subpartition {} of {}", subpartitionIndex, this);
 		partitionConsumableNotifier.ackInFlightLogPrepareRequest(partitionId, subpartitionIndex, taskActions);
 	}
 }

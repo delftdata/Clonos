@@ -240,12 +240,12 @@ class PipelinedSubpartition extends ResultSubpartition {
 			checkState(!isReleased);
 
 			if (readView == null) {
-				LOG.info("Creating read view for {} (index: {}) of partition {}.", this, index, parent.getPartitionId());
+				LOG.debug("Creating read view for {} (index: {}) of partition {}.", this, index, parent.getPartitionId());
 
 				readView = new PipelinedSubpartitionView(this, availabilityListener);
 			} else {
 				readView.setAvailabilityListener(availabilityListener);
-				LOG.info("(Re)using read view {} for {} (index: {}) of partition {}.", readView, this, index, parent.getPartitionId());
+				LOG.debug("(Re)using read view {} for {} (index: {}) of partition {}.", readView, this, index, parent.getPartitionId());
 			}
 
 			if (!buffers.isEmpty()) {
