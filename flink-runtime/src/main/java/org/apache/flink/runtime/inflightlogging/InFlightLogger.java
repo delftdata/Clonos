@@ -141,6 +141,7 @@ public class InFlightLogger implements BufferRecycler {
 				if (!assignExclusiveSegments(targetPartition.assignExclusiveSegments(numTotalSegments))) {
 					LOG.info("{}: Wait 0.5 seconds for MemorySegment to become available.", this);
 					memorySegmentQueue.wait(500);
+					numTotalSegments = 10;
 				} else {
 					numTotalSegments *= 2;
 				}
