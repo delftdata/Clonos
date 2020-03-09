@@ -33,6 +33,9 @@ import org.apache.flink.runtime.accumulators.AccumulatorRegistry;
 import org.apache.flink.runtime.blob.BlobCacheService;
 import org.apache.flink.runtime.blob.PermanentBlobKey;
 import org.apache.flink.runtime.broadcast.BroadcastVariableManager;
+import org.apache.flink.runtime.causal.CausalLog;
+import org.apache.flink.runtime.causal.MapCausalLog;
+import org.apache.flink.runtime.causal.VertexId;
 import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore;
@@ -40,10 +43,10 @@ import org.apache.flink.runtime.checkpoint.decline.CheckpointDeclineTaskNotReady
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.deployment.InputGateDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.ResultPartitionDeploymentDescriptor;
-import org.apache.flink.runtime.event.InFlightLogRequestEvent;
-import org.apache.flink.runtime.event.InFlightLogRequestEventListener;
 import org.apache.flink.runtime.event.InFlightLogPrepareEvent;
 import org.apache.flink.runtime.event.InFlightLogPrepareEventListener;
+import org.apache.flink.runtime.event.InFlightLogRequestEvent;
+import org.apache.flink.runtime.event.InFlightLogRequestEventListener;
 import org.apache.flink.runtime.execution.CancelTaskException;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.execution.ExecutionState;
@@ -68,23 +71,17 @@ import org.apache.flink.runtime.jobgraph.tasks.InputSplitProvider;
 import org.apache.flink.runtime.jobgraph.tasks.StoppableTask;
 import org.apache.flink.runtime.jobmanager.PartitionProducerDisposedException;
 import org.apache.flink.runtime.memory.MemoryManager;
+import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.metrics.groups.TaskMetricGroup;
 import org.apache.flink.runtime.query.TaskKvStateRegistry;
 import org.apache.flink.runtime.state.CheckpointListener;
 import org.apache.flink.runtime.state.TaskStateManager;
 import org.apache.flink.runtime.util.FatalExitExceptionHandler;
-import org.apache.flink.runtime.messages.Acknowledge;
-import org.apache.flink.util.ExceptionUtils;
-import org.apache.flink.util.FlinkException;
-import org.apache.flink.util.Preconditions;
-import org.apache.flink.util.SerializedValue;
-import org.apache.flink.util.WrappingRuntimeException;
-
+import org.apache.flink.util.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
-
 import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
@@ -93,20 +90,11 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.Executor;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.TimeoutException;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 
-import static org.apache.flink.util.Preconditions.checkArgument;
-import static org.apache.flink.util.Preconditions.checkNotNull;
-import static org.apache.flink.util.Preconditions.checkState;
+import static org.apache.flink.util.Preconditions.*;
 
 /**
  * The Task represents one execution of a parallel subtask on a TaskManager.
@@ -136,51 +124,81 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 	/** The tread group that contains all task threads. */
 	private static final ThreadGroup TASK_THREADS_GROUP = new ThreadGroup("Flink Task Threads");
 
-	/** For atomic state updates. */
+	/**
+	 * For atomic state updates.
+	 */
 	private static final AtomicReferenceFieldUpdater<Task, ExecutionState> STATE_UPDATER =
-			AtomicReferenceFieldUpdater.newUpdater(Task.class, ExecutionState.class, "executionState");
+		AtomicReferenceFieldUpdater.newUpdater(Task.class, ExecutionState.class, "executionState");
 
 	// ------------------------------------------------------------------------
 	//  Constant fields that are part of the initial Task construction
 	// ------------------------------------------------------------------------
 
-	/** The job that the task belongs to. */
+	/**
+	 * The job that the task belongs to.
+	 */
 	private final JobID jobId;
 
-	/** The vertex in the JobGraph whose code the task executes. */
+	/**
+	 * The vertex in the JobGraph whose code the task executes.
+	 */
 	private final JobVertexID vertexId;
 
-	/** The execution attempt of the parallel subtask. */
+	/**
+	 * The execution attempt of the parallel subtask.
+	 */
 	private final ExecutionAttemptID executionId;
 
-	/** ID which identifies the slot in which the task is supposed to run. */
+	/**
+	 * ID which identifies the slot in which the task is supposed to run.
+	 */
 	private final AllocationID allocationId;
 
-	/** TaskInfo object for this task. */
+	private final VertexId subvertexId;
+
+	/**
+	 * TaskInfo object for this task.
+	 */
 	private final TaskInfo taskInfo;
 
-	/** The name of the task, including subtask indexes. */
+	/**
+	 * The name of the task, including subtask indexes.
+	 */
 	private final String taskNameWithSubtask;
 
-	/** The job-wide configuration object. */
+	/**
+	 * The job-wide configuration object.
+	 */
 	private final Configuration jobConfiguration;
 
-	/** The task-specific configuration. */
+	/**
+	 * The task-specific configuration.
+	 */
 	private final Configuration taskConfiguration;
 
-	/** The jar files used by this task. */
+	/**
+	 * The jar files used by this task.
+	 */
 	private final Collection<PermanentBlobKey> requiredJarFiles;
 
-	/** The classpaths used by this task. */
+	/**
+	 * The classpaths used by this task.
+	 */
 	private final Collection<URL> requiredClasspaths;
 
-	/** The name of the class that holds the invokable code. */
+	/**
+	 * The name of the class that holds the invokable code.
+	 */
 	private final String nameOfInvokableClass;
 
-	/** Access to task manager configuration and host names. */
+	/**
+	 * Access to task manager configuration and host names.
+	 */
 	private final TaskManagerRuntimeInfo taskManagerConfig;
 
-	/** The memory manager to be used by this task. */
+	/**
+	 * The memory manager to be used by this task.
+	 */
 	private final MemoryManager memoryManager;
 
 	/** The I/O manager to be used by this task. */
@@ -216,52 +234,84 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 	/** The BLOB cache, from which the task can request BLOB files. */
 	private final BlobCacheService blobService;
 
-	/** The library cache, from which the task can request its class loader. */
+	/**
+	 * The library cache, from which the task can request its class loader.
+	 */
 	private final LibraryCacheManager libraryCache;
 
-	/** The cache for user-defined files that the invokable requires. */
+	/**
+	 * The cache for user-defined files that the invokable requires.
+	 */
 	private final FileCache fileCache;
 
-	/** The gateway to the network stack, which handles inputs and produced results. */
+	/**
+	 * The gateway to the network stack, which handles inputs and produced results.
+	 */
 	private final NetworkEnvironment network;
 
-	/** The registry of this task which enables live reporting of accumulators. */
+	/**
+	 * The registry of this task which enables live reporting of accumulators.
+	 */
 	private final AccumulatorRegistry accumulatorRegistry;
 
-	/** The thread that executes the task. */
+	/**
+	 * The thread that executes the task.
+	 */
 	private final Thread executingThread;
 
-	/** Parent group for all metrics of this task. */
+	/**
+	 * Parent group for all metrics of this task.
+	 */
 	private final TaskMetricGroup metrics;
 
-	/** Partition producer state checker to request partition states from. */
+	/**
+	 * Partition producer state checker to request partition states from.
+	 */
 	private final PartitionProducerStateChecker partitionProducerStateChecker;
 
-	/** Executor to run future callbacks. */
+	/**
+	 * Executor to run future callbacks.
+	 */
 	private final Executor executor;
 
-	/** Whether the task is a standby task */
+	/**
+	 * Whether the task is a standby task
+	 */
 	private final boolean isStandby;
 
+	/**
+	 * The CausalLog of the task
+	 */
+	private final CausalLog causalLog;
 	// ------------------------------------------------------------------------
 	//  Fields that control the task execution. All these fields are volatile
 	//  (which means that they introduce memory barriers), to establish
 	//  proper happens-before semantics on parallel modification
 	// ------------------------------------------------------------------------
 
-	/** atomic flag that makes sure the invokable is canceled exactly once upon error. */
+	/**
+	 * atomic flag that makes sure the invokable is canceled exactly once upon error.
+	 */
 	private final AtomicBoolean invokableHasBeenCanceled;
 
-	/** The invokable of this task, if initialized. */
+	/**
+	 * The invokable of this task, if initialized.
+	 */
 	private volatile AbstractInvokable invokable;
 
-	/** The current execution state of the task. */
+	/**
+	 * The current execution state of the task.
+	 */
 	private volatile ExecutionState executionState = ExecutionState.CREATED;
 
-	/** The observed exception, in case the task execution failed. */
+	/**
+	 * The observed exception, in case the task execution failed.
+	 */
 	private volatile Throwable failureCause;
 
-	/** Serial executor for asynchronous calls (checkpoints, etc), lazily initialized. */
+	/**
+	 * Serial executor for asynchronous calls (checkpoints, etc), lazily initialized.
+	 */
 	private volatile ExecutorService asyncCallDispatcher;
 
 	/** Initialized from the Flink configuration. May also be set at the ExecutionConfig */
@@ -285,6 +335,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		TaskInformation taskInformation,
 		ExecutionAttemptID executionAttemptID,
 		AllocationID slotAllocationId,
+		VertexId subvertexId,
 		int subtaskIndex,
 		int attemptNumber,
 		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
@@ -305,16 +356,16 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		@Nonnull TaskMetricGroup metricGroup,
 		ResultPartitionConsumableNotifier resultPartitionConsumableNotifier,
 		PartitionProducerStateChecker partitionProducerStateChecker,
-		Executor executor) {
+		Executor executor, List<VertexId> upstreamVertices, List<VertexId> downStreamVertices) {
 
-		this(jobInformation, taskInformation, executionAttemptID, slotAllocationId,
-				subtaskIndex, attemptNumber, resultPartitionDeploymentDescriptors,
-				inputGateDeploymentDescriptors, targetSlotNumber, memManager,
-				ioManager, networkEnvironment, bcVarManager, taskStateManager,
-				taskManagerActions, inputSplitProvider, checkpointResponder,
-				blobService, libraryCache, fileCache, taskManagerConfig,
-				metricGroup, resultPartitionConsumableNotifier,
-				partitionProducerStateChecker, executor, false);
+		this(jobInformation, taskInformation, executionAttemptID, slotAllocationId, subvertexId,
+			subtaskIndex, attemptNumber, resultPartitionDeploymentDescriptors,
+			inputGateDeploymentDescriptors, targetSlotNumber, memManager,
+			ioManager, networkEnvironment, bcVarManager, taskStateManager,
+			taskManagerActions, inputSplitProvider, checkpointResponder,
+			blobService, libraryCache, fileCache, taskManagerConfig,
+			metricGroup, resultPartitionConsumableNotifier,
+			partitionProducerStateChecker, executor, false, upstreamVertices, downStreamVertices);
 	}
 
 	public Task(
@@ -322,6 +373,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		TaskInformation taskInformation,
 		ExecutionAttemptID executionAttemptID,
 		AllocationID slotAllocationId,
+		VertexId subvertexId,
 		int subtaskIndex,
 		int attemptNumber,
 		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
@@ -343,7 +395,8 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		ResultPartitionConsumableNotifier resultPartitionConsumableNotifier,
 		PartitionProducerStateChecker partitionProducerStateChecker,
 		Executor executor,
-		boolean isStandby) {
+		boolean isStandby, Collection<VertexId> upstreamVertices, Collection<VertexId> downStreamVertices) {
+
 
 		Preconditions.checkNotNull(jobInformation);
 		Preconditions.checkNotNull(taskInformation);
@@ -353,25 +406,26 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		Preconditions.checkArgument(0 <= targetSlotNumber, "The target slot number must be positive.");
 
 		this.taskInfo = new TaskInfo(
-				taskInformation.getTaskName(),
-				taskInformation.getMaxNumberOfSubtaks(),
-				subtaskIndex,
-				taskInformation.getNumberOfSubtasks(),
-				attemptNumber,
-				String.valueOf(slotAllocationId));
+			taskInformation.getTaskName(),
+			taskInformation.getMaxNumberOfSubtaks(),
+			subtaskIndex,
+			taskInformation.getNumberOfSubtasks(),
+			attemptNumber,
+			String.valueOf(slotAllocationId));
 
 		this.jobId = jobInformation.getJobId();
 		this.vertexId = taskInformation.getJobVertexId();
-		this.executionId  = Preconditions.checkNotNull(executionAttemptID);
+		this.executionId = Preconditions.checkNotNull(executionAttemptID);
 		this.allocationId = Preconditions.checkNotNull(slotAllocationId);
+		this.subvertexId = Preconditions.checkNotNull(subvertexId);
 
 		this.isStandby = isStandby;
 		if (this.isStandby) {
 			this.taskNameWithSubtask = taskInfo.getTaskNameWithSubtasks() + " (STANDBY)";
-		}
-		else {
+		} else {
 			this.taskNameWithSubtask = taskInfo.getTaskNameWithSubtasks();
 		}
+		this.causalLog = new MapCausalLog(upstreamVertices, downStreamVertices);
 
 		this.jobConfiguration = jobInformation.getJobConfiguration();
 		this.taskConfiguration = taskInformation.getTaskConfiguration();
@@ -720,6 +774,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 				vertexId,
 				executionId,
 				executionConfig,
+				subvertexId,
 				taskInfo,
 				jobConfiguration,
 				taskConfiguration,
@@ -741,8 +796,8 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 				this);
 
 			// now load and instantiate the task's invokable code
-			invokable = loadAndInstantiateInvokable(userCodeClassLoader, nameOfInvokableClass, env,
-					isStandby);
+			invokable = loadAndInstantiateInvokable(userCodeClassLoader, nameOfInvokableClass, env
+			);
 
 			// ----------------------------------------------------------------
 			//  actual task core work
@@ -1605,8 +1660,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 	private static AbstractInvokable loadAndInstantiateInvokable(
 		ClassLoader classLoader,
 		String className,
-		Environment environment,
-		boolean isStandby) throws Throwable {
+		Environment environment) throws Throwable {
 
 		final Class<? extends AbstractInvokable> invokableClass;
 		try {

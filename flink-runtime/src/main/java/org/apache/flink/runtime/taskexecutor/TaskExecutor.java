@@ -79,52 +79,20 @@ import org.apache.flink.runtime.state.TaskExecutorLocalStateStoresManager;
 import org.apache.flink.runtime.state.TaskLocalStateStore;
 import org.apache.flink.runtime.state.TaskStateManager;
 import org.apache.flink.runtime.state.TaskStateManagerImpl;
-import org.apache.flink.runtime.taskexecutor.exceptions.CheckpointException;
-import org.apache.flink.runtime.taskexecutor.exceptions.PartitionException;
-import org.apache.flink.runtime.taskexecutor.exceptions.RegistrationTimeoutException;
-import org.apache.flink.runtime.taskexecutor.exceptions.SlotAllocationException;
-import org.apache.flink.runtime.taskexecutor.exceptions.SlotOccupiedException;
-import org.apache.flink.runtime.taskexecutor.exceptions.TaskException;
-import org.apache.flink.runtime.taskexecutor.exceptions.TaskManagerException;
-import org.apache.flink.runtime.taskexecutor.exceptions.TaskSubmissionException;
-import org.apache.flink.runtime.taskexecutor.rpc.RpcCheckpointResponder;
-import org.apache.flink.runtime.taskexecutor.rpc.RpcInputSplitProvider;
-import org.apache.flink.runtime.taskexecutor.rpc.RpcKvStateRegistryListener;
-import org.apache.flink.runtime.taskexecutor.rpc.RpcPartitionStateChecker;
-import org.apache.flink.runtime.taskexecutor.rpc.RpcResultPartitionConsumableNotifier;
-import org.apache.flink.runtime.taskexecutor.slot.SlotActions;
-import org.apache.flink.runtime.taskexecutor.slot.SlotNotActiveException;
-import org.apache.flink.runtime.taskexecutor.slot.SlotNotFoundException;
-import org.apache.flink.runtime.taskexecutor.slot.SlotOffer;
-import org.apache.flink.runtime.taskexecutor.slot.TaskSlot;
-import org.apache.flink.runtime.taskexecutor.slot.TaskSlotTable;
-import org.apache.flink.runtime.taskmanager.CheckpointResponder;
-import org.apache.flink.runtime.taskmanager.Task;
-import org.apache.flink.runtime.taskmanager.TaskExecutionState;
-import org.apache.flink.runtime.taskmanager.TaskManagerActions;
-import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
+import org.apache.flink.runtime.taskexecutor.exceptions.*;
+import org.apache.flink.runtime.taskexecutor.rpc.*;
+import org.apache.flink.runtime.taskexecutor.slot.*;
+import org.apache.flink.runtime.taskmanager.*;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkException;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
-
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeoutException;
 
@@ -517,6 +485,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 				taskInformation,
 				tdd.getExecutionAttemptId(),
 				tdd.getAllocationId(),
+				tdd.getVertexId(),
 				tdd.getSubtaskIndex(),
 				tdd.getAttemptNumber(),
 				tdd.getProducedPartitions(),
@@ -538,7 +507,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 				resultPartitionConsumableNotifier,
 				partitionStateChecker,
 				getRpcService().getExecutor(),
-				tdd.getIsStandby());
+				tdd.getIsStandby(), tdd.getUptreamVertices(), tdd.getDownstreamVertices());
 
 			log.info("Received task {}.", task.getTaskInfo().getTaskNameWithSubtasks());
 

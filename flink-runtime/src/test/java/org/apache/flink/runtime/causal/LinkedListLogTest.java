@@ -22,86 +22,86 @@ public class LinkedListLogTest {
 	@Test
 	public void growthTest() {
 
-		List<String> downstreamOperators = Collections.singletonList("A");
+		List<VertexId> downstreamOperators = Collections.singletonList(new VertexId((short) 0));
 
-		DeterminantLog log = new LinkedListDeterminantLog(downstreamOperators);
+		VertexCausalLog log = new LinkedListVertexCausalLog(downstreamOperators);
 
-		for(int i = 0; i < 3; i++)
+		for (int i = 0; i < 3; i++)
 			log.appendDeterminants(test_sentence_small.getBytes()); //36 bytes. Causes one growth
 
 		String expectedResult = test_sentence_small + test_sentence_small + test_sentence_small;
-		assert(new String(log.getDeterminants()).equals(expectedResult));
-		assert(new String(log.getNextDeterminantsForDownstream("A")).equals(expectedResult));
+		assert (new String(log.getDeterminants()).equals(expectedResult));
+		assert (new String(log.getNextDeterminantsForDownstream(new VertexId((short) 0))).equals(expectedResult));
 
 	}
 
 
 	@Test
-	public void checkpointBarrierTest(){
+	public void checkpointBarrierTest() throws Exception {
 
-		List<String> downstreamOperators = Arrays.asList(new String[]{"A"});
+		List<VertexId> downstreamOperators = Arrays.asList(new VertexId((short) 0));
 
-		DeterminantLog log = new LinkedListDeterminantLog(downstreamOperators);
+		VertexCausalLog log = new LinkedListVertexCausalLog(downstreamOperators);
 
-		for(int i = 0; i < 2; i++)
+		for (int i = 0; i < 2; i++)
 			log.appendDeterminants(test_sentence_small.getBytes());
 
-		log.notifyCheckpointBarrier("1");
+		log.notifyCheckpointBarrier(1);
 
-		for(int i = 0; i < 3; i++)
+		for (int i = 0; i < 3; i++)
 			log.appendDeterminants(test_sentence_small.getBytes());
 
-		log.notifyCheckpointComplete("1");
+		log.notifyCheckpointComplete(1);
 
 		String expectedResult = test_sentence_small + test_sentence_small + test_sentence_small;
 		System.out.println(new String(log.getDeterminants()));
-		assert(new String(log.getDeterminants()).equals(expectedResult));
+		assert (new String(log.getDeterminants()).equals(expectedResult));
 
 	}
 
 	@Test
-	public void operatorDeterminantTrackingTest(){
+	public void operatorDeterminantTrackingTest() {
 
-		List<String> downstreamOperators = Arrays.asList(new String[]{"A", "B"});
+		List<VertexId> downstreamOperators = Arrays.asList(new VertexId[]{new VertexId((short) 0), new VertexId((short) 1)});
 
-		DeterminantLog log = new LinkedListDeterminantLog(downstreamOperators);
+		VertexCausalLog log = new LinkedListVertexCausalLog(downstreamOperators);
 
-		assert (Arrays.equals(log.getNextDeterminantsForDownstream("A"), new byte[0]));
+		assert (Arrays.equals(log.getNextDeterminantsForDownstream(new VertexId((short) 0)), new byte[0]));
 
-		for(int i = 0; i < 2; i++)
+		for (int i = 0; i < 2; i++)
 			log.appendDeterminants(test_sentence_small.getBytes());
 
 		String expectedResult = test_sentence_small + test_sentence_small;
 
-		assert (new String(log.getNextDeterminantsForDownstream("A")).equals(expectedResult));
-		assert (new String(log.getNextDeterminantsForDownstream("B")).equals(expectedResult));
-		assert (new String(log.getNextDeterminantsForDownstream("B")).equals(""));
+		assert (new String(log.getNextDeterminantsForDownstream(new VertexId((short) 0))).equals(expectedResult));
+		assert (new String(log.getNextDeterminantsForDownstream(new VertexId((short) 1))).equals(expectedResult));
+		assert (new String(log.getNextDeterminantsForDownstream(new VertexId((short) 1))).equals(""));
 
 
-		for(int i = 0; i < 3; i++)
+		for (int i = 0; i < 3; i++)
 			log.appendDeterminants(test_sentence_small.getBytes());
 
 
 		expectedResult = test_sentence_small + test_sentence_small + test_sentence_small;
 
-		assert (new String(log.getNextDeterminantsForDownstream("A")).equals(expectedResult));
-		assert (new String(log.getNextDeterminantsForDownstream("B")).equals(expectedResult));
-		assert (new String(log.getNextDeterminantsForDownstream("B")).equals(""));
+		assert (new String(log.getNextDeterminantsForDownstream(new VertexId((short) 0))).equals(expectedResult));
+		assert (new String(log.getNextDeterminantsForDownstream(new VertexId((short) 1))).equals(expectedResult));
+		assert (new String(log.getNextDeterminantsForDownstream(new VertexId((short) 1))).equals(""));
 
 	}
 
 
 	@Test
 	public void performanceTest() throws InterruptedException {
-		List<String> downstreamOperators = Arrays.asList(new String[]{"A", "B"});
+		List<VertexId> downstreamOperators = Arrays.asList(new VertexId[]{new VertexId((short) 0), new VertexId((short) 1)});
 		AtomicInteger count = new AtomicInteger(0);
-		DeterminantLog log = new LinkedListDeterminantLog(downstreamOperators);
+		VertexCausalLog log = new LinkedListVertexCausalLog(downstreamOperators);
 		Thread generator = new Thread(new Runnable() {
 			@Override
 			public void run() {
 				Random r = new Random();
 				byte[] arr = new byte[3];
-				while(true){
+				while (true) {
 					r.nextBytes(arr);
 					log.appendDeterminants(arr);
 					count.incrementAndGet();
@@ -113,13 +113,13 @@ public class LinkedListLogTest {
 			@Override
 			public void run() {
 				int i = 1;
-				while (true){
+				while (true) {
 					try {
 						Thread.sleep(100);
 					} catch (InterruptedException e) {
 						e.printStackTrace();
 					}
-					log.notifyCheckpointBarrier("" + i);
+					log.notifyCheckpointBarrier(i);
 				}
 			}
 		});
@@ -132,13 +132,17 @@ public class LinkedListLogTest {
 				} catch (InterruptedException e) {
 					e.printStackTrace();
 				}
-				while (true){
+				while (true) {
 					try {
 						Thread.sleep(100);
 					} catch (InterruptedException e) {
 						e.printStackTrace();
 					}
-					log.notifyCheckpointComplete("" + i);
+					try {
+						log.notifyCheckpointComplete(i);
+					} catch (Exception e) {
+						e.printStackTrace();
+					}
 				}
 			}
 		});

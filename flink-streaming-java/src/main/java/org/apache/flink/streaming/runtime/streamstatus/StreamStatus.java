@@ -19,11 +19,14 @@
 package org.apache.flink.streaming.runtime.streamstatus;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.runtime.causal.VertexCausalLogDelta;
 import org.apache.flink.streaming.api.operators.StreamSource;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
 import org.apache.flink.streaming.runtime.tasks.SourceStreamTask;
 import org.apache.flink.streaming.runtime.tasks.StreamTask;
+
+import java.util.List;
 
 /**
  * A Stream Status element informs stream tasks whether or not they should continue to expect records and watermarks
@@ -87,6 +90,11 @@ public final class StreamStatus extends StreamElement {
 	public final int status;
 
 	public StreamStatus(int status) {
+		this(status, null);
+	}
+
+	public StreamStatus(int status, List<VertexCausalLogDelta> logDeltas) {
+		super(logDeltas);
 		if (status != IDLE_STATUS && status != ACTIVE_STATUS) {
 			throw new IllegalArgumentException("Invalid status value for StreamStatus; " +
 				"allowed values are " + ACTIVE_STATUS + " (for ACTIVE) and " + IDLE_STATUS + " (for IDLE).");

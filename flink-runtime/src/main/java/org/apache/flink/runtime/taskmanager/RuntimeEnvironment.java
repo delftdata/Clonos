@@ -25,6 +25,7 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.accumulators.AccumulatorRegistry;
 import org.apache.flink.runtime.broadcast.BroadcastVariableManager;
+import org.apache.flink.runtime.causal.VertexId;
 import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
 import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
 import org.apache.flink.runtime.execution.Environment;
@@ -53,9 +54,10 @@ public class RuntimeEnvironment implements Environment {
 	private final JobID jobId;
 	private final JobVertexID jobVertexId;
 	private final ExecutionAttemptID executionId;
-	
+	private final VertexId vertexId;
+
 	private final TaskInfo taskInfo;
-	
+
 	private final Configuration jobConfiguration;
 	private final Configuration taskConfiguration;
 	private final ExecutionConfig executionConfig;
@@ -89,33 +91,35 @@ public class RuntimeEnvironment implements Environment {
 	// ------------------------------------------------------------------------
 
 	public RuntimeEnvironment(
-			JobID jobId,
-			JobVertexID jobVertexId,
-			ExecutionAttemptID executionId,
-			ExecutionConfig executionConfig,
-			TaskInfo taskInfo,
-			Configuration jobConfiguration,
-			Configuration taskConfiguration,
-			ClassLoader userCodeClassLoader,
-			MemoryManager memManager,
-			IOManager ioManager,
-			BroadcastVariableManager bcVarManager,
-			TaskStateManager taskStateManager,
-			AccumulatorRegistry accumulatorRegistry,
-			TaskKvStateRegistry kvStateRegistry,
-			InputSplitProvider splitProvider,
-			Map<String, Future<Path>> distCacheEntries,
-			ResultPartitionWriter[] writers,
-			InputGate[] inputGates,
-			TaskEventDispatcher taskEventDispatcher,
-			CheckpointResponder checkpointResponder,
-			TaskManagerRuntimeInfo taskManagerInfo,
-			TaskMetricGroup metrics,
-			Task containingTask) {
+		JobID jobId,
+		JobVertexID jobVertexId,
+		ExecutionAttemptID executionId,
+		ExecutionConfig executionConfig,
+		VertexId vertexId,
+		TaskInfo taskInfo,
+		Configuration jobConfiguration,
+		Configuration taskConfiguration,
+		ClassLoader userCodeClassLoader,
+		MemoryManager memManager,
+		IOManager ioManager,
+		BroadcastVariableManager bcVarManager,
+		TaskStateManager taskStateManager,
+		AccumulatorRegistry accumulatorRegistry,
+		TaskKvStateRegistry kvStateRegistry,
+		InputSplitProvider splitProvider,
+		Map<String, Future<Path>> distCacheEntries,
+		ResultPartitionWriter[] writers,
+		InputGate[] inputGates,
+		TaskEventDispatcher taskEventDispatcher,
+		CheckpointResponder checkpointResponder,
+		TaskManagerRuntimeInfo taskManagerInfo,
+		TaskMetricGroup metrics,
+		Task containingTask) {
 
 		this.jobId = checkNotNull(jobId);
 		this.jobVertexId = checkNotNull(jobVertexId);
 		this.executionId = checkNotNull(executionId);
+		this.vertexId = checkNotNull(vertexId);
 		this.taskInfo = checkNotNull(taskInfo);
 		this.executionConfig = checkNotNull(executionConfig);
 		this.jobConfiguration = checkNotNull(jobConfiguration);
@@ -253,6 +257,11 @@ public class RuntimeEnvironment implements Environment {
 	@Override
 	public TaskEventDispatcher getTaskEventDispatcher() {
 		return taskEventDispatcher;
+	}
+
+	@Override
+	public VertexId getVertexId() {
+		return null;
 	}
 
 	@Override

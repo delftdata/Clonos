@@ -19,8 +19,11 @@
 package org.apache.flink.streaming.runtime.streamrecord;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.runtime.causal.VertexCausalLogDelta;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatus;
+
+import java.util.List;
 
 /**
  * An element in a data stream. Can be a record or a Watermark.
@@ -28,8 +31,23 @@ import org.apache.flink.streaming.runtime.streamstatus.StreamStatus;
 @Internal
 public abstract class StreamElement {
 
+	private List<VertexCausalLogDelta> logDeltas;
+
+	public StreamElement(List<VertexCausalLogDelta> logDeltas) {
+		this.logDeltas = logDeltas;
+	}
+
+	public List<VertexCausalLogDelta> getLogDeltas() {
+		return logDeltas;
+	}
+
+	public void setLogDeltas(List<VertexCausalLogDelta> logDeltas) {
+		this.logDeltas = logDeltas;
+	}
+
 	/**
 	 * Checks whether this element is a watermark.
+	 *
 	 * @return True, if this element is a watermark, false otherwise.
 	 */
 	public final boolean isWatermark() {

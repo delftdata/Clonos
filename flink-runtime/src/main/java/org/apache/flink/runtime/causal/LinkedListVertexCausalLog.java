@@ -1,20 +1,23 @@
 package org.apache.flink.runtime.causal;
 
-import java.util.*;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
 
-public class LinkedListDeterminantLog implements DeterminantLog {
+public class LinkedListVertexCausalLog implements VertexCausalLog {
 
 
 	private List<CheckpointSlice> log;
-	private Map<String, Offset> operatorOffsets;
+	private Map<VertexId, Offset> vertexOffsets;
 
-	private static final String DEFAULT_SLICE_ID = "0";
+	private static final long DEFAULT_SLICE_ID = 0;
 
-	public LinkedListDeterminantLog(List<String> operatorIds) {
+	public LinkedListVertexCausalLog(List<VertexId> downstreamVertexIds) {
 		log = new LinkedList<>();
 		log.add(new CheckpointSlice(DEFAULT_SLICE_ID));
-		this.operatorOffsets = new HashMap<>(operatorIds.size());
-		for (String opId:  operatorIds) operatorOffsets.put(opId, new Offset(0,0));
+		this.vertexOffsets = new HashMap<>(downstreamVertexIds.size());
+		for (VertexId opId : downstreamVertexIds) vertexOffsets.put(opId, new Offset(0, 0));
 
 	}
 
@@ -35,34 +38,39 @@ public class LinkedListDeterminantLog implements DeterminantLog {
 
 	@Override
 	public void appendDeterminants(byte[] determinants) {
-		log.get(log.size()-1).append(determinants);
+		log.get(log.size() - 1).append(determinants);
 	}
 
 	@Override
-	public void notifyCheckpointBarrier(String checkpointId) {
+	public void notifyCheckpointBarrier(long checkpointId) {
 		log.add(new CheckpointSlice(checkpointId));
 	}
 
 	@Override
-	public void notifyCheckpointComplete(String checkpointId) {
+	public void notifyDownstreamFailure(VertexId vertexId) {
+		vertexOffsets.put(vertexId, new Offset(0, 0));
+	}
+
+	@Override
+	public void notifyCheckpointComplete(long checkpointId) {
 		int index = 0;
-		while(log.get(index).id.compareTo(checkpointId) <= -1)
+		while (log.get(index).id <= checkpointId)
 			index++;
 
 		log = log.subList(index, log.size());
 
-		for(Offset o : operatorOffsets.values())
+		for (Offset o : vertexOffsets.values())
 			o.setSliceIndex(Math.max(0, o.getSliceIndex() - index));
 	}
 
 	@Override
-	public byte[] getNextDeterminantsForDownstream(String operatorId) {
+	public byte[] getNextDeterminantsForDownstream(VertexId vertexId) {
 
-		Offset offset = operatorOffsets.get(operatorId);
+		Offset offset = vertexOffsets.get(vertexId);
 
 		int total = log.get(offset.sliceIndex).getSize() - offset.sliceOffset;
 
-		for(int i = offset.sliceIndex+1; i < log.size(); i++)
+		for (int i = offset.sliceIndex + 1; i < log.size(); i++)
 			total += log.get(i).getSize();
 
 		byte[] toReturn = new byte[total];
@@ -70,16 +78,16 @@ public class LinkedListDeterminantLog implements DeterminantLog {
 		List<byte[]> first = log.get(offset.sliceIndex).getDeterminants();
 		int pos = 0;
 		int index = 0;
-		while(pos != offset.sliceOffset)
+		while (pos != offset.sliceOffset)
 			pos += first.get(index++).length;
 
 		int posInToReturn = 0;
-		for(int i = index; i < first.size(); i++) {
+		for (int i = index; i < first.size(); i++) {
 			System.arraycopy(first.get(i), 0, toReturn, posInToReturn, first.get(i).length);
 			posInToReturn += first.get(i).length;
 		}
 
-		for(int sliceIndex = offset.sliceIndex + 1; sliceIndex < log.size(); sliceIndex++){
+		for (int sliceIndex = offset.sliceIndex + 1; sliceIndex < log.size(); sliceIndex++) {
 			List<byte[]> determinantsOfSlice = log.get(sliceIndex).getDeterminants();
 			for (byte[] bytes : determinantsOfSlice) {
 				System.arraycopy(bytes, 0, toReturn, posInToReturn, bytes.length);
@@ -124,22 +132,22 @@ public class LinkedListDeterminantLog implements DeterminantLog {
 		}
 	}
 
-	private class CheckpointSlice{
-		private String id;
+	private class CheckpointSlice {
+		private long id;
 		private List<byte[]> determinants;
 		private int totalSize;
 
-		public CheckpointSlice(String id) {
+		public CheckpointSlice(long id) {
 			this.id = id;
 			this.determinants = new LinkedList<>();
 			this.totalSize = 0;
 		}
 
-		public String getId() {
+		public long getId() {
 			return id;
 		}
 
-		public void setId(String id) {
+		public void setId(long id) {
 			this.id = id;
 		}
 

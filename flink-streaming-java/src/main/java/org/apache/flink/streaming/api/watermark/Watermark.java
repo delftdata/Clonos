@@ -19,7 +19,10 @@
 package org.apache.flink.streaming.api.watermark;
 
 import org.apache.flink.annotation.PublicEvolving;
+import org.apache.flink.runtime.causal.VertexCausalLogDelta;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
+
+import java.util.List;
 
 /**
  * A Watermark tells operators that no elements with a timestamp older or equal
@@ -41,18 +44,27 @@ import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
 @PublicEvolving
 public final class Watermark extends StreamElement {
 
-	/** The watermark that signifies end-of-event-time. */
+	/**
+	 * The watermark that signifies end-of-event-time.
+	 */
 	public static final Watermark MAX_WATERMARK = new Watermark(Long.MAX_VALUE);
 
 	// ------------------------------------------------------------------------
 
-	/** The timestamp of the watermark in milliseconds. */
+	/**
+	 * The timestamp of the watermark in milliseconds.
+	 */
 	private final long timestamp;
 
 	/**
 	 * Creates a new watermark with the given timestamp in milliseconds.
 	 */
 	public Watermark(long timestamp) {
+		this(timestamp, null);
+	}
+
+	public Watermark(long timestamp, List<VertexCausalLogDelta> logDeltas) {
+		super(logDeltas);
 		this.timestamp = timestamp;
 	}
 

@@ -33,30 +33,21 @@ import org.apache.flink.runtime.accumulators.StringifiedAccumulatorResult;
 import org.apache.flink.runtime.blob.BlobWriter;
 import org.apache.flink.runtime.blob.PermanentBlobKey;
 import org.apache.flink.runtime.blob.VoidBlobWriter;
-import org.apache.flink.runtime.checkpoint.CheckpointCoordinator;
-import org.apache.flink.runtime.checkpoint.CheckpointIDCounter;
-import org.apache.flink.runtime.checkpoint.CheckpointRetentionPolicy;
-import org.apache.flink.runtime.checkpoint.CheckpointStatsSnapshot;
-import org.apache.flink.runtime.checkpoint.CheckpointStatsTracker;
-import org.apache.flink.runtime.checkpoint.CompletedCheckpointStore;
-import org.apache.flink.runtime.checkpoint.MasterTriggerRestoreHook;
+import org.apache.flink.runtime.causal.VertexId;
+import org.apache.flink.runtime.checkpoint.*;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.concurrent.FutureUtils.ConjunctFuture;
 import org.apache.flink.runtime.concurrent.ScheduledExecutorServiceAdapter;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.execution.SuppressRestartsException;
 import org.apache.flink.runtime.executiongraph.failover.FailoverStrategy;
-import org.apache.flink.runtime.executiongraph.failover.RunStandbyTaskStrategy;
 import org.apache.flink.runtime.executiongraph.failover.RestartAllStrategy;
+import org.apache.flink.runtime.executiongraph.failover.RunStandbyTaskStrategy;
 import org.apache.flink.runtime.executiongraph.restart.ExecutionGraphRestartCallback;
 import org.apache.flink.runtime.executiongraph.restart.RestartCallback;
 import org.apache.flink.runtime.executiongraph.restart.RestartStrategy;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
-import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
-import org.apache.flink.runtime.jobgraph.JobStatus;
-import org.apache.flink.runtime.jobgraph.JobVertex;
-import org.apache.flink.runtime.jobgraph.JobVertexID;
-import org.apache.flink.runtime.jobgraph.ScheduleMode;
+import org.apache.flink.runtime.jobgraph.*;
 import org.apache.flink.runtime.jobgraph.tasks.CheckpointCoordinatorConfiguration;
 import org.apache.flink.runtime.jobmanager.scheduler.CoLocationGroup;
 import org.apache.flink.runtime.jobmanager.scheduler.LocationPreferenceConstraint;
@@ -67,48 +58,21 @@ import org.apache.flink.runtime.state.SharedStateRegistry;
 import org.apache.flink.runtime.state.StateBackend;
 import org.apache.flink.runtime.taskmanager.TaskExecutionState;
 import org.apache.flink.types.Either;
-import org.apache.flink.util.ExceptionUtils;
-import org.apache.flink.util.FlinkException;
-import org.apache.flink.util.OptionalFailure;
-import org.apache.flink.util.Preconditions;
-import org.apache.flink.util.SerializedThrowable;
-import org.apache.flink.util.SerializedValue;
-import org.apache.flink.util.StringUtils;
-
+import org.apache.flink.util.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
-
 import java.io.IOException;
 import java.net.URL;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.NoSuchElementException;
-import java.util.concurrent.CancellationException;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executor;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeoutException;
+import java.util.*;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.stream.Collectors;
 
-import static org.apache.flink.util.Preconditions.checkArgument;
-import static org.apache.flink.util.Preconditions.checkNotNull;
-import static org.apache.flink.util.Preconditions.checkState;
+import static org.apache.flink.util.Preconditions.*;
 
 /**
  * The execution graph is the central data structure that coordinates the distributed
@@ -817,7 +781,6 @@ public class ExecutionGraph implements AccessExecutionGraph {
 
 		final ArrayList<ExecutionJobVertex> newExecJobVertices = new ArrayList<>(topologiallySorted.size());
 		final long createTimestamp = System.currentTimeMillis();
-
 		for (JobVertex jobVertex : topologiallySorted) {
 
 			if (jobVertex.isInputVertex() && !jobVertex.isStoppable()) {
@@ -828,6 +791,7 @@ public class ExecutionGraph implements AccessExecutionGraph {
 			ExecutionJobVertex ejv = new ExecutionJobVertex(
 				this,
 				jobVertex,
+				(short) numVerticesTotal,
 				1,
 				rpcTimeout,
 				globalModVersion,
@@ -1595,18 +1559,59 @@ public class ExecutionGraph implements AccessExecutionGraph {
 						attempt.fail(new Exception("TaskManager sent illegal state update: " + state.getExecutionState()));
 						return false;
 				}
-			}
-			catch (Throwable t) {
+			} catch (Throwable t) {
 				ExceptionUtils.rethrowIfFatalErrorOrOOM(t);
 
 				// failures during updates leave the ExecutionGraph inconsistent
 				failGlobal(t);
 				return false;
 			}
-		}
-		else {
+		} else {
 			return false;
 		}
+	}
+
+	public Collection<VertexId> getUpstreamVertices(JobVertexID jobVertexID) {
+		//Set to eliminate duplicates from results
+		Set<VertexId> result = new HashSet<>();
+
+		Deque<ExecutionJobVertex> added = new ArrayDeque<>();
+		//Initialize stack with immediately neighbours
+		added.addAll(tasks.get(jobVertexID).getInputs().stream().map(IntermediateResult::getProducer).collect(Collectors.toList()));
+		//Start DF reachability
+		while (added.size() != 0) {
+			ExecutionJobVertex jv = added.pop();
+			result.addAll(Arrays.asList(jv.getTaskVertices()).stream().map(ExecutionVertex::getVertexId).collect(Collectors.toList()));
+			added.addAll(jv.getInputs().stream().map(IntermediateResult::getProducer).collect(Collectors.toList()));
+		}
+
+		return result;
+	}
+
+	public Collection<VertexId> getDownstreamVertices(JobVertexID jobVertexID) {
+		//Set to eliminate duplicates from results
+		Set<VertexId> result = new HashSet<>();
+
+		Deque<ExecutionJobVertex> added = new ArrayDeque<>();
+		//Initialize stack with immediately neighbours
+		List<IntermediateResultPartition> intermediatePartitions = Arrays.asList(tasks.get(jobVertexID).getProducedDataSets()).stream().map(part -> Arrays.asList(part.getPartitions())).flatMap(List::stream).collect(Collectors.toList());
+		List<ExecutionEdge> executionEdges = intermediatePartitions.stream().flatMap(i -> i.getConsumers().stream().flatMap(List::stream)).collect(Collectors.toList());
+		List<ExecutionVertex> consumerVertexes = executionEdges.stream().map(e -> e.getTarget()).collect(Collectors.toList());
+		added.addAll(consumerVertexes.stream().map(v -> v.getJobVertex()).collect(Collectors.toList()));
+
+		//Start DF reachability
+		while (added.size() != 0) {
+			ExecutionJobVertex jv = added.pop();
+
+			result.addAll(Arrays.asList(jv.getTaskVertices()).stream().map(ExecutionVertex::getVertexId).collect(Collectors.toList()));
+
+			intermediatePartitions = Arrays.asList(tasks.get(jobVertexID).getProducedDataSets()).stream().map(part -> Arrays.asList(part.getPartitions())).flatMap(List::stream).collect(Collectors.toList());
+			executionEdges = intermediatePartitions.stream().flatMap(i -> i.getConsumers().stream().flatMap(List::stream)).collect(Collectors.toList());
+			consumerVertexes = executionEdges.stream().map(e -> e.getTarget()).collect(Collectors.toList());
+			added.addAll(consumerVertexes.stream().map(v -> v.getJobVertex()).collect(Collectors.toList()));
+		}
+
+		return result;
 	}
 
 	/**

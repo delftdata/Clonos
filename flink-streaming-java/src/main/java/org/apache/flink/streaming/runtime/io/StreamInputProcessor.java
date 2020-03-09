@@ -41,7 +41,6 @@ import org.apache.flink.runtime.plugable.NonReusingDeserializationDelegate;
 import org.apache.flink.streaming.api.CheckpointingMode;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.api.watermark.Watermark;
-import org.apache.flink.streaming.runtime.io.RecordWriterOutput;
 import org.apache.flink.streaming.runtime.metrics.WatermarkGauge;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElementSerializer;
@@ -50,7 +49,6 @@ import org.apache.flink.streaming.runtime.streamstatus.StatusWatermarkValve;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatus;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatusMaintainer;
 import org.apache.flink.streaming.runtime.tasks.StreamTask;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -189,6 +187,7 @@ public class StreamInputProcessor<IN> {
 			if (currentRecordDeserializer != null) {
 				LOG.debug("processInput() of task: {} from buffer {}, channel {}", taskName, currentRecordDeserializer.getBuffer(), currentChannel);
 				DeserializationResult result = currentRecordDeserializer.getNextRecord(deserializationDelegate);
+				//todo figure out upstream task id, generate determinant
 
 				if (result.isBufferConsumed()) {
 					currentRecordDeserializer.getCurrentBuffer().recycleBuffer();

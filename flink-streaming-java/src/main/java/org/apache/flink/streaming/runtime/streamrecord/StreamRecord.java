@@ -18,8 +18,7 @@
 package org.apache.flink.streaming.runtime.streamrecord;
 
 import org.apache.flink.annotation.Internal;
-import org.apache.flink.runtime.causal.DeterminantCache;
-import org.apache.flink.runtime.causal.determinant.Determinant;
+import org.apache.flink.runtime.causal.VertexCausalLogDelta;
 
 import java.util.List;
 
@@ -31,21 +30,31 @@ import java.util.List;
 @Internal
 public final class StreamRecord<T> extends StreamElement {
 
-	/** The actual value held by this record. */
+	/**
+	 * The actual value held by this record.
+	 */
 	private T value;
 
-	/** The timestamp of the record. */
+	/**
+	 * The timestamp of the record.
+	 */
 	private long timestamp;
 
-	/** Flag whether the timestamp is actually set. */
+	/**
+	 * Flag whether the timestamp is actually set.
+	 */
 	private boolean hasTimestamp;
 
-	private List<DeterminantCache.DeterminantLogDelta> logDeltas;
 
 	/**
 	 * Creates a new StreamRecord. The record does not have a timestamp.
 	 */
 	public StreamRecord(T value) {
+		this(value, null);
+	}
+
+	public StreamRecord(T value, List<VertexCausalLogDelta> logDeltas) {
+		super(logDeltas);
 		this.value = value;
 	}
 
@@ -53,10 +62,15 @@ public final class StreamRecord<T> extends StreamElement {
 	 * Creates a new StreamRecord wrapping the given value. The timestamp is set to the
 	 * given timestamp.
 	 *
-	 * @param value The value to wrap in this {@link StreamRecord}
+	 * @param value     The value to wrap in this {@link StreamRecord}
 	 * @param timestamp The timestamp in milliseconds
 	 */
 	public StreamRecord(T value, long timestamp) {
+		this(value, timestamp, null);
+	}
+
+	public StreamRecord(T value, long timestamp, List<VertexCausalLogDelta> logDeltas) {
+		super(logDeltas);
 		this.value = value;
 		this.timestamp = timestamp;
 		this.hasTimestamp = true;

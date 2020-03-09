@@ -20,9 +20,9 @@ package org.apache.flink.runtime.messages
 
 import java.util
 
+import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore
 import org.apache.flink.runtime.deployment.{InputChannelDeploymentDescriptor, TaskDeploymentDescriptor}
 import org.apache.flink.runtime.executiongraph.{ExecutionAttemptID, PartitionInfo}
-import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID
 import org.apache.flink.runtime.taskmanager.TaskExecutionState
 
@@ -74,7 +74,7 @@ object TaskMessages {
     extends TaskMessage with RequiresLeaderSessionID
 
   /**
-   * Switches the state of the standby task associated with [[attemptID]] into RUNNING.
+   * Acknowledges an in-flight log prepare request to the task associated with [[attemptID]].
    * The result is sent back to the sender as a
    * [[TaskOperationResult]] message.
    *
@@ -84,13 +84,12 @@ object TaskMessages {
     extends TaskMessage with RequiresLeaderSessionID
 
   /**
-   * Acknowledges an in-flight log prepare request to the task associated with [[attemptID]].
+   * Switches the state of the standby task associated with [[attemptID]] into RUNNING.
    * The result is sent back to the sender as a
    * [[TaskOperationResult]] message.
    *
    * @param attemptID The task's execution attempt ID.
    */
-
   case class switchStandbyTaskToRunning(attemptID: ExecutionAttemptID)
     extends TaskMessage with RequiresLeaderSessionID
 

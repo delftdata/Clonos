@@ -19,26 +19,22 @@
 package org.apache.flink.streaming.runtime.streamrecord;
 
 import org.apache.flink.annotation.Internal;
-import org.apache.flink.api.common.typeutils.CompatibilityResult;
-import org.apache.flink.api.common.typeutils.CompatibilityUtil;
-import org.apache.flink.api.common.typeutils.CompositeTypeSerializerConfigSnapshot;
-import org.apache.flink.api.common.typeutils.TypeDeserializerAdapter;
-import org.apache.flink.api.common.typeutils.TypeSerializer;
-import org.apache.flink.api.common.typeutils.TypeSerializerConfigSnapshot;
-import org.apache.flink.api.common.typeutils.UnloadableDummyTypeSerializer;
+import org.apache.flink.api.common.typeutils.*;
 import org.apache.flink.api.java.tuple.Tuple2;
-import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataInputDeserializer;
+import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataOutputView;
-import org.apache.flink.core.memory.DataOutputSerializer;
+import org.apache.flink.runtime.causal.VertexCausalLogDelta;
+import org.apache.flink.runtime.causal.VertexId;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatus;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.util.LinkedList;
+import java.util.List;
 
 import static java.util.Objects.requireNonNull;
 
@@ -160,14 +156,24 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 		}
 		else if (tag == TAG_STREAM_STATUS) {
 			target.writeInt(source.readInt());
-		}
-		else if (tag == TAG_LATENCY_MARKER) {
+		} else if (tag == TAG_LATENCY_MARKER) {
 			target.writeLong(source.readLong());
 			target.writeInt(source.readInt());
 			target.writeInt(source.readInt());
 		} else {
 			throw new IOException("Corrupt stream, found tag: " + tag);
 		}
+	}
+
+	private void serializeLogDeltas(List<VertexCausalLogDelta> logDeltas, DataOutputView target) throws IOException {
+
+		target.writeShort(logDeltas.size());
+		for (VertexCausalLogDelta d : logDeltas) {
+			target.writeShort(d.getVertexId().getVertexId());
+			target.writeShort(d.getLogDelta().length);
+			target.write(d.getLogDelta());
+		}
+
 	}
 
 	@Override
@@ -182,25 +188,35 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 				target.write(TAG_REC_WITHOUT_TIMESTAMP);
 			}
 			typeSerializer.serialize(record.getValue(), target);
-		}
-		else if (value.isWatermark()) {
+		} else if (value.isWatermark()) {
 			target.write(TAG_WATERMARK);
 			target.writeLong(value.asWatermark().getTimestamp());
-		}
-		else if (value.isStreamStatus()) {
+		} else if (value.isStreamStatus()) {
 			target.write(TAG_STREAM_STATUS);
 			target.writeInt(value.asStreamStatus().getStatus());
-		}
-		else if (value.isLatencyMarker()) {
+		} else if (value.isLatencyMarker()) {
 			target.write(TAG_LATENCY_MARKER);
 			target.writeLong(value.asLatencyMarker().getMarkedTime());
 			target.writeLong(value.asLatencyMarker().getOperatorId().getLowerPart());
 			target.writeLong(value.asLatencyMarker().getOperatorId().getUpperPart());
 			target.writeInt(value.asLatencyMarker().getSubtaskIndex());
-		}
-		else {
+		} else {
 			throw new RuntimeException();
 		}
+		serializeLogDeltas(value.getLogDeltas(), target);
+	}
+
+	private List<VertexCausalLogDelta> deserializeLogDeltas(DataInputView source) throws IOException {
+		short numDeltas = source.readShort();
+		List<VertexCausalLogDelta> logDeltas = new LinkedList<>();
+		for (int i = 0; i < numDeltas; i++) {
+			short taskID = source.readShort();
+			short deltaLength = source.readShort();
+			byte[] bytes = new byte[deltaLength];
+			source.read(bytes);
+			logDeltas.add(new VertexCausalLogDelta(new VertexId(taskID), bytes));
+		}
+		return logDeltas;
 	}
 
 	@Override
@@ -214,19 +230,19 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 		}
 		if (tag == TAG_REC_WITH_TIMESTAMP) {
 			long timestamp = source.readLong();
-			return new StreamRecord<T>(typeSerializer.deserialize(source), timestamp);
+			return new StreamRecord<T>(typeSerializer.deserialize(source), timestamp, deserializeLogDeltas(source));
 		}
 		else if (tag == TAG_REC_WITHOUT_TIMESTAMP) {
-			return new StreamRecord<T>(typeSerializer.deserialize(source));
+			return new StreamRecord<T>(typeSerializer.deserialize(source), deserializeLogDeltas(source));
 		}
 		else if (tag == TAG_WATERMARK) {
-			return new Watermark(source.readLong());
+			return new Watermark(source.readLong(), deserializeLogDeltas(source));
 		}
 		else if (tag == TAG_STREAM_STATUS) {
-			return new StreamStatus(source.readInt());
+			return new StreamStatus(source.readInt(), deserializeLogDeltas(source));
 		}
 		else if (tag == TAG_LATENCY_MARKER) {
-			return new LatencyMarker(source.readLong(), new OperatorID(source.readLong(), source.readLong()), source.readInt());
+			return new LatencyMarker(source.readLong(), new OperatorID(source.readLong(), source.readLong()), source.readInt(), deserializeLogDeltas(source));
 		}
 		else {
 			LOG.debug("On crash source line is: {}.", source.readLine());

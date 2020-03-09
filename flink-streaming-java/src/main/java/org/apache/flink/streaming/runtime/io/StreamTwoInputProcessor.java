@@ -41,7 +41,6 @@ import org.apache.flink.runtime.plugable.NonReusingDeserializationDelegate;
 import org.apache.flink.streaming.api.CheckpointingMode;
 import org.apache.flink.streaming.api.operators.TwoInputStreamOperator;
 import org.apache.flink.streaming.api.watermark.Watermark;
-import org.apache.flink.streaming.runtime.io.RecordWriterOutput;
 import org.apache.flink.streaming.runtime.metrics.WatermarkGauge;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElementSerializer;
@@ -50,7 +49,6 @@ import org.apache.flink.streaming.runtime.streamstatus.StatusWatermarkValve;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatus;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatusMaintainer;
 import org.apache.flink.streaming.runtime.tasks.TwoInputStreamTask;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -223,6 +221,7 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 				DeserializationResult result;
 				if (currentChannel < numInputChannels1) {
 					result = currentRecordDeserializer.getNextRecord(deserializationDelegate1);
+					//todo figure out upstream task id and generate determinant
 				} else {
 					result = currentRecordDeserializer.getNextRecord(deserializationDelegate2);
 				}

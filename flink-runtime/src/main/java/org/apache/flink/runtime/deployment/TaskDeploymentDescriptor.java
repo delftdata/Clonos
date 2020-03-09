@@ -21,6 +21,7 @@ package org.apache.flink.runtime.deployment;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.blob.PermanentBlobKey;
 import org.apache.flink.runtime.blob.PermanentBlobService;
+import org.apache.flink.runtime.causal.VertexId;
 import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
@@ -30,7 +31,6 @@ import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.SerializedValue;
 
 import javax.annotation.Nullable;
-
 import java.io.File;
 import java.io.IOException;
 import java.io.Serializable;
@@ -43,13 +43,27 @@ import java.util.Collection;
 public final class TaskDeploymentDescriptor implements Serializable {
 
 	private static final long serialVersionUID = -3233562176034358530L;
+	private final VertexId vertexId;
+	private final Collection<VertexId> uptreamVertices;
+	private final Collection<VertexId> downstreamVertices;
+
+	public VertexId getVertexId() {
+		return this.vertexId;
+	}
+
+	public Collection<VertexId> getUptreamVertices() {
+		return uptreamVertices;
+	}
+
+	public Collection<VertexId> getDownstreamVertices() {
+		return downstreamVertices;
+	}
 
 	/**
 	 * Wrapper class for serialized values which may be offloaded to the {@link
 	 * org.apache.flink.runtime.blob.BlobServer} or not.
 	 *
-	 * @param <T>
-	 * 		type of the serialized value
+	 * @param <T> type of the serialized value
 	 */
 	@SuppressWarnings("unused")
 	public static class MaybeOffloaded<T> implements Serializable {
@@ -155,17 +169,18 @@ public final class TaskDeploymentDescriptor implements Serializable {
 		MaybeOffloaded<TaskInformation> serializedTaskInformation,
 		ExecutionAttemptID executionAttemptId,
 		AllocationID allocationId,
+		VertexId vertexId,
 		int subtaskIndex,
 		int attemptNumber,
 		int targetSlotNumber,
 		@Nullable JobManagerTaskRestore taskRestore,
 		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
-		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors) {
+		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors, Collection<VertexId> uptreamVertices, Collection<VertexId> downstreamVertices) {
 
 		this(jobId, serializedJobInformation, serializedTaskInformation,
-				executionAttemptId, allocationId, subtaskIndex, attemptNumber,
-				targetSlotNumber, taskRestore, resultPartitionDeploymentDescriptors,
-				inputGateDeploymentDescriptors, false);
+			executionAttemptId, allocationId, vertexId, subtaskIndex, attemptNumber,
+			targetSlotNumber, taskRestore, resultPartitionDeploymentDescriptors,
+			inputGateDeploymentDescriptors, false, uptreamVertices, downstreamVertices);
 		}
 
 	public TaskDeploymentDescriptor(
@@ -174,13 +189,14 @@ public final class TaskDeploymentDescriptor implements Serializable {
 		MaybeOffloaded<TaskInformation> serializedTaskInformation,
 		ExecutionAttemptID executionAttemptId,
 		AllocationID allocationId,
+		VertexId vertexId,
 		int subtaskIndex,
 		int attemptNumber,
 		int targetSlotNumber,
 		@Nullable JobManagerTaskRestore taskRestore,
 		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
 		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors,
-		boolean isStandby) {
+		boolean isStandby, Collection<VertexId> uptreamVertices, Collection<VertexId> downstreamVertices) {
 
 		this.jobId = Preconditions.checkNotNull(jobId);
 
@@ -189,7 +205,10 @@ public final class TaskDeploymentDescriptor implements Serializable {
 
 		this.executionId = Preconditions.checkNotNull(executionAttemptId);
 		this.allocationId = Preconditions.checkNotNull(allocationId);
+		this.vertexId = Preconditions.checkNotNull(vertexId);
 		this.isStandby = isStandby;
+		this.uptreamVertices = Preconditions.checkNotNull(uptreamVertices);
+		this.downstreamVertices = Preconditions.checkNotNull(downstreamVertices);
 
 		Preconditions.checkArgument(0 <= subtaskIndex, "The subtask index must be positive.");
 		this.subtaskIndex = subtaskIndex;

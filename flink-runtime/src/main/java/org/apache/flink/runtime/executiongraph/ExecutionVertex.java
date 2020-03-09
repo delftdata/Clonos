@@ -25,22 +25,15 @@ import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.runtime.JobException;
 import org.apache.flink.runtime.blob.PermanentBlobKey;
+import org.apache.flink.runtime.causal.VertexId;
 import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
-import org.apache.flink.runtime.deployment.InputChannelDeploymentDescriptor;
-import org.apache.flink.runtime.deployment.InputGateDeploymentDescriptor;
-import org.apache.flink.runtime.deployment.PartialInputChannelDeploymentDescriptor;
-import org.apache.flink.runtime.deployment.ResultPartitionDeploymentDescriptor;
-import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
+import org.apache.flink.runtime.deployment.*;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.instance.SimpleSlot;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionType;
-import org.apache.flink.runtime.jobgraph.DistributionPattern;
-import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
-import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
-import org.apache.flink.runtime.jobgraph.JobEdge;
-import org.apache.flink.runtime.jobgraph.JobVertexID;
+import org.apache.flink.runtime.jobgraph.*;
 import org.apache.flink.runtime.jobmanager.scheduler.CoLocationConstraint;
 import org.apache.flink.runtime.jobmanager.scheduler.CoLocationGroup;
 import org.apache.flink.runtime.jobmanager.scheduler.LocationPreferenceConstraint;
@@ -53,21 +46,11 @@ import org.apache.flink.types.Either;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.SerializedValue;
-
 import org.slf4j.Logger;
 
 import javax.annotation.Nullable;
-
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
 import static org.apache.flink.runtime.execution.ExecutionState.FINISHED;
@@ -90,6 +73,8 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 	private final Map<IntermediateResultPartitionID, IntermediateResultPartition> resultPartitions;
 
 	private final ExecutionEdge[][] inputEdges;
+
+	private final VertexId vertexId;
 
 	private final int subTaskIndex;
 
@@ -122,13 +107,15 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 	 */
 	@VisibleForTesting
 	ExecutionVertex(
-			ExecutionJobVertex jobVertex,
-			int subTaskIndex,
-			IntermediateResult[] producedDataSets,
-			Time timeout) {
+		ExecutionJobVertex jobVertex,
+		VertexId vertexId,
+		int subTaskIndex,
+		IntermediateResult[] producedDataSets,
+		Time timeout) {
 
 		this(
 			jobVertex,
+			vertexId,
 			subTaskIndex,
 			producedDataSets,
 			timeout,
@@ -150,18 +137,20 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 	 *            The number of prior Executions (= execution attempts) to keep.
 	 */
 	public ExecutionVertex(
-			ExecutionJobVertex jobVertex,
-			int subTaskIndex,
-			IntermediateResult[] producedDataSets,
-			Time timeout,
-			long initialGlobalModVersion,
-			long createTimestamp,
-			int maxPriorExecutionHistoryLength) {
+		ExecutionJobVertex jobVertex,
+		VertexId vertexId,
+		int subTaskIndex,
+		IntermediateResult[] producedDataSets,
+		Time timeout,
+		long initialGlobalModVersion,
+		long createTimestamp,
+		int maxPriorExecutionHistoryLength) {
 
 		this.jobVertex = jobVertex;
+		this.vertexId = vertexId;
 		this.subTaskIndex = subTaskIndex;
 		this.taskNameWithSubtask = String.format("%s (%d/%d)",
-				jobVertex.getJobVertex().getName(), subTaskIndex + 1, jobVertex.getParallelism());
+			jobVertex.getJobVertex().getName(), subTaskIndex + 1, jobVertex.getParallelism());
 
 		this.resultPartitions = new LinkedHashMap<>(producedDataSets.length, 1);
 
@@ -847,16 +836,20 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 		}
 	}
 
+	public VertexId getVertexId() {
+		return vertexId;
+	}
+
 	/**
 	 * Creates a task deployment descriptor to deploy a subtask to the given target slot.
 	 * TODO: This should actually be in the EXECUTION
 	 */
 	TaskDeploymentDescriptor createDeploymentDescriptor(
-			ExecutionAttemptID executionId,
-			LogicalSlot targetSlot,
-			@Nullable JobManagerTaskRestore taskRestore,
-			int attemptNumber,
-			boolean isStandby) throws ExecutionGraphException {
+		ExecutionAttemptID executionId,
+		LogicalSlot targetSlot,
+		@Nullable JobManagerTaskRestore taskRestore,
+		int attemptNumber,
+		boolean isStandby) throws ExecutionGraphException {
 
 		// Produced intermediate results
 		List<ResultPartitionDeploymentDescriptor> producedPartitions = new ArrayList<>(resultPartitions.size());
@@ -935,19 +928,22 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			serializedTaskInformation = new TaskDeploymentDescriptor.Offloaded<>(taskInformationOrBlobKey.right());
 		}
 
+		Collection<VertexId> upstreamVertices = this.jobVertex.getGraph().getUpstreamVertices(this.getJobvertexId());
+		Collection<VertexId> downstreamVertices = this.jobVertex.getGraph().getDownstreamVertices(this.getJobvertexId());
 		return new TaskDeploymentDescriptor(
 			getJobId(),
 			serializedJobInformation,
 			serializedTaskInformation,
 			executionId,
 			targetSlot.getAllocationId(),
+			this.vertexId,
 			subTaskIndex,
 			attemptNumber,
 			targetSlot.getPhysicalSlotNumber(),
 			taskRestore,
 			producedPartitions,
 			consumedPartitions,
-			isStandby);
+			isStandby, upstreamVertices, downstreamVertices);
 	}
 
 	public CompletableFuture<Void> addStandbyExecution() {

@@ -6,10 +6,9 @@ import java.util.*;
 /**
  * Implements the <link>UpstreamDeterminantCache</> as a Growable Circular Array
  */
-public class CircularDeterminantLog implements DeterminantLog {
+public class CircularVertexCausalLog implements VertexCausalLog {
 
 	private static final int DEFAULT_START_SIZE = 65536;
-	private static final String NO_CHECKPOINT_CHECKPOINTID = "0";
 	private static final int GROWTH_FACTOR = 2;
 
 	private byte[] array;
@@ -18,22 +17,22 @@ public class CircularDeterminantLog implements DeterminantLog {
 	private int size;
 
 	private Queue<CheckpointOffset> offsets;
-	private Map<String, Integer> operatorOffsets;
+	private Map<VertexId, Integer> vertexOffsets;
 
 
-	public CircularDeterminantLog(int startSize, List<String> downstreamOperatorIds) {
+	public CircularVertexCausalLog(int startSize, Collection<VertexId> downstreamVertexIds) {
 		array = new byte[startSize];
 		offsets = new LinkedList<>();
 		start = 0;
 		end = 0;
 		size = 0;
 
-		operatorOffsets = new HashMap<String, Integer>();
-		for (String id : downstreamOperatorIds) operatorOffsets.put(id, 0);
+		vertexOffsets = new HashMap<VertexId, Integer>();
+		for (VertexId id : downstreamVertexIds) vertexOffsets.put(id, 0);
 	}
 
-	public CircularDeterminantLog(List<String> downstreamOperatorIds) {
-		this(DEFAULT_START_SIZE, downstreamOperatorIds);
+	public CircularVertexCausalLog(Collection<VertexId> downstreamVertexIds) {
+		this(DEFAULT_START_SIZE, downstreamVertexIds);
 	}
 
 	@Override
@@ -68,14 +67,19 @@ public class CircularDeterminantLog implements DeterminantLog {
 
 
 	@Override
-	public void notifyCheckpointBarrier(String checkpointId) {
+	public void notifyCheckpointBarrier(long checkpointId) {
 		offsets.add(new CheckpointOffset(checkpointId, end));
 		//record current position, as all records pertaining to this checkpoint are going to be between end
 		// and next offsets end
 	}
 
 	@Override
-	public void notifyCheckpointComplete(String checkpointId) {
+	public void notifyDownstreamFailure(VertexId vertexId) {
+		vertexOffsets.put(vertexId, start);
+	}
+
+	@Override
+	public void notifyCheckpointComplete(long checkpointId) throws Exception {
 		CheckpointOffset top;
 		while (true) {
 			top = offsets.peek();
@@ -83,7 +87,7 @@ public class CircularDeterminantLog implements DeterminantLog {
 			if (top == null)
 				break;
 
-			if (top.id.compareTo(checkpointId) < 1)
+			if (checkpointId >= top.id)
 				offsets.poll();
 			else
 				break;
@@ -96,10 +100,10 @@ public class CircularDeterminantLog implements DeterminantLog {
 
 
 	@Override
-	public byte[] getNextDeterminantsForDownstream(String operatorId) {
-		byte[] toReturn = new byte[circularDistance(operatorOffsets.get(operatorId), end, array.length)];
-		circularArrayCopy(array, operatorOffsets.get(operatorId), end, array.length, toReturn);
-		operatorOffsets.put(operatorId, end);
+	public byte[] getNextDeterminantsForDownstream(VertexId vertexId) {
+		byte[] toReturn = new byte[circularDistance(vertexOffsets.get(vertexId), end, array.length)];
+		circularArrayCopy(array, vertexOffsets.get(vertexId), end, array.length, toReturn);
+		vertexOffsets.put(vertexId, end);
 		return toReturn;
 	}
 
@@ -131,20 +135,21 @@ public class CircularDeterminantLog implements DeterminantLog {
 		return array.length - size > toAdd;
 	}
 
+
 	private class CheckpointOffset {
-		private String id;
+		private long id;
 		private int offset;
 
-		public CheckpointOffset(String id, int offset) {
+		public CheckpointOffset(long id, int offset) {
 			this.id = id;
 			this.offset = offset;
 		}
 
-		public String getId() {
+		public long getId() {
 			return id;
 		}
 
-		public void setId(String id) {
+		public void setId(long id) {
 			this.id = id;
 		}
 

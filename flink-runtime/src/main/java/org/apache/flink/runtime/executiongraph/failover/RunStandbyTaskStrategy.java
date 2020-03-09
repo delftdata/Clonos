@@ -18,21 +18,19 @@
 
 package org.apache.flink.runtime.executiongraph.failover;
 
+import org.apache.flink.runtime.concurrent.FutureUtils;
+import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.executiongraph.Execution;
 import org.apache.flink.runtime.executiongraph.ExecutionGraph;
 import org.apache.flink.runtime.executiongraph.ExecutionJobVertex;
 import org.apache.flink.runtime.executiongraph.ExecutionVertex;
-import org.apache.flink.runtime.execution.ExecutionState;
-
-import org.apache.flink.runtime.concurrent.FutureUtils;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.List;
 import java.util.ArrayList;
-import java.util.concurrent.Executor;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -40,22 +38,25 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * Failover strategy that maintains a standby task for each task
  * on the execution graph along with its state and substitutes a failed
  * task with its associated one.
- *
  */
 public class RunStandbyTaskStrategy extends FailoverStrategy {
 
 	private static final Logger LOG = LoggerFactory.getLogger(RunStandbyTaskStrategy.class);
 
-	/** The execution graph to recover */
+	/**
+	 * The execution graph to recover
+	 */
 	private final ExecutionGraph executionGraph;
 
-	/** The executor for creating, connecting, scheduling, and running a STANDBY task */
+	/**
+	 * The executor for creating, connecting, scheduling, and running a STANDBY task
+	 */
 	private final Executor callbackExecutor;
 
 	/**
 	 * Creates a new failover strategy that recovers from failures by restarting all tasks
 	 * of the execution graph.
-	 * 
+	 *
 	 * @param executionGraph The execution graph to handle.
 	 */
 	public RunStandbyTaskStrategy(ExecutionGraph executionGraph) {
@@ -76,46 +77,43 @@ public class RunStandbyTaskStrategy extends FailoverStrategy {
 
 		try {
 			LOG.info(getStrategyName() + "failover strategy is triggered for the recovery of task " +
-					vertexToRecover.getTaskNameWithSubtaskIndex() +
-					". Activating standby task for this task.");
+				vertexToRecover.getTaskNameWithSubtaskIndex() +
+				". Activating standby task for this task.");
 			vertexToRecover.runStandbyExecution();
-		}
-		catch (IllegalStateException e) {
+		} catch (IllegalStateException e) {
 			executionGraph.failGlobal(
-					new Exception("Error during standby task recovery: no standby execution to run -- triggering full recovery", e));
-		}
-		catch (Exception e) {
+				new Exception("Error during standby task recovery: no standby execution to run -- triggering full recovery", e));
+		} catch (Exception e) {
 			executionGraph.failGlobal(
-					new Exception("Error during standby task recovery -- triggering full recovery", e));
+				new Exception("Error during standby task recovery -- triggering full recovery", e));
 		}
 	}
 
 	@Override
 	public void notifyNewVertices(List<ExecutionJobVertex> newExecutionJobVerticesTopological) {
-		final boolean isStandby = true;
-                final ArrayList<CompletableFuture<Void>> schedulingFutures = new ArrayList<>();
+		final ArrayList<CompletableFuture<Void>> schedulingFutures = new ArrayList<>();
 
-                for (ExecutionJobVertex executionJobVertex : newExecutionJobVerticesTopological) {
+		for (ExecutionJobVertex executionJobVertex : newExecutionJobVerticesTopological) {
 			for (ExecutionVertex executionVertex : executionJobVertex.getTaskVertices()) {
 
 				final CompletableFuture<Void> currentExecutionFuture =
 					// TODO: Anti-affinity constraint
 					CompletableFuture.runAsync(
-							() -> waitForExecutionToReachRunningState(executionVertex));
+						() -> waitForExecutionToReachRunningState(executionVertex));
 				currentExecutionFuture.whenComplete(
-						(Void ignored, Throwable t) -> {
-							if (t == null) {
-								// this should aalso respect the topological order
-								final CompletableFuture<Void> standbyExecutionFuture =
-									executionVertex.addStandbyExecution();
-								schedulingFutures.add(standbyExecutionFuture);
-							} else {
-								schedulingFutures.add(
-										new CompletableFuture<>());
-								schedulingFutures.get(schedulingFutures.size() - 1)
-									.completeExceptionally(t);
-							}
-						});
+					(Void ignored, Throwable t) -> {
+						if (t == null) {
+							// this should aalso respect the topological order
+							final CompletableFuture<Void> standbyExecutionFuture =
+								executionVertex.addStandbyExecution();
+							schedulingFutures.add(standbyExecutionFuture);
+						} else {
+							schedulingFutures.add(
+								new CompletableFuture<>());
+							schedulingFutures.get(schedulingFutures.size() - 1)
+								.completeExceptionally(t);
+						}
+					});
 			}
 		}
 
@@ -138,8 +136,8 @@ public class RunStandbyTaskStrategy extends FailoverStrategy {
 		do {
 			executionState = executionVertex.getExecutionState();
 		} while (executionState == ExecutionState.CREATED ||
-				executionState == ExecutionState.SCHEDULED ||
-				executionState == ExecutionState.DEPLOYING);
+			executionState == ExecutionState.SCHEDULED ||
+			executionState == ExecutionState.DEPLOYING);
 	}
 
 	@Override
