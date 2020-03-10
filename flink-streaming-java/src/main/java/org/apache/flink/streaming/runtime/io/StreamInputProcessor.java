@@ -23,6 +23,8 @@ import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.SimpleCounter;
+import org.apache.flink.runtime.causal.CausalLog;
+import org.apache.flink.runtime.causal.VertexCausalLogDelta;
 import org.apache.flink.runtime.event.AbstractEvent;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
@@ -87,12 +89,18 @@ public class StreamInputProcessor<IN> {
 
 	private final Object lock;
 
+	private final CausalLog causalLog;
+
 	// ---------------- Status and Watermark Valve ------------------
 
-	/** Valve that controls how watermarks and stream statuses are forwarded. */
+	/**
+	 * Valve that controls how watermarks and stream statuses are forwarded.
+	 */
 	private StatusWatermarkValve statusWatermarkValve;
 
-	/** Number of input channels the valve needs to handle. */
+	/**
+	 * Number of input channels the valve needs to handle.
+	 */
 	private final int numInputChannels;
 
 	/**
@@ -138,7 +146,7 @@ public class StreamInputProcessor<IN> {
 		} else {
 			this.taskName = new String("Unknown");
 		}
-
+		this.causalLog = checkpointedTask.getCausalLog();
 		this.barrierHandler = InputProcessorUtil.createCheckpointBarrierHandler(
 			checkpointedTask, checkpointMode, ioManager, inputGate, taskManagerConfig);
 
@@ -187,7 +195,6 @@ public class StreamInputProcessor<IN> {
 			if (currentRecordDeserializer != null) {
 				LOG.debug("processInput() of task: {} from buffer {}, channel {}", taskName, currentRecordDeserializer.getBuffer(), currentChannel);
 				DeserializationResult result = currentRecordDeserializer.getNextRecord(deserializationDelegate);
-				//todo figure out upstream task id, generate determinant
 
 				if (result.isBufferConsumed()) {
 					currentRecordDeserializer.getCurrentBuffer().recycleBuffer();
@@ -196,6 +203,10 @@ public class StreamInputProcessor<IN> {
 
 				if (result.isFullRecord()) {
 					StreamElement recordOrMark = deserializationDelegate.getInstance();
+
+					for (VertexCausalLogDelta d : recordOrMark.getLogDeltas())
+						this.causalLog.appendDeterminantsToVertexLog(d.getVertexId(), d.getLogDelta());
+					//this.causalLog.addDeterminant();
 
 					if (recordOrMark.isWatermark()) {
 						// handle watermark

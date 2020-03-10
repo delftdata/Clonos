@@ -14,9 +14,9 @@ public interface VertexCausalLog extends CheckpointListener {
 
 	void appendDeterminants(byte[] determinants);
 
-	byte[] getNextDeterminantsForDownstream(VertexId vertexId);
+	byte[] getNextDeterminantsForDownstream(int channel);
 
 	void notifyCheckpointBarrier(long checkpointId);
 
-	void notifyDownstreamFailure(VertexId vertexId);
+	void notifyDownstreamFailure(int channel);
 }

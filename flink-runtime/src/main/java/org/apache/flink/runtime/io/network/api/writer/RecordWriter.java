@@ -21,8 +21,8 @@ package org.apache.flink.runtime.io.network.api.writer;
 import org.apache.flink.core.io.IOReadableWritable;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.SimpleCounter;
+import org.apache.flink.runtime.causal.CausalLog;
 import org.apache.flink.runtime.event.AbstractEvent;
-import org.apache.flink.runtime.event.InFlightLogEvent;
 import org.apache.flink.runtime.event.InFlightLogPrepareEvent;
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
 import org.apache.flink.runtime.inflightlogging.InFlightLogger;
@@ -35,8 +35,8 @@ import org.apache.flink.runtime.io.network.buffer.BufferConsumer;
 import org.apache.flink.runtime.io.network.partition.ResultPartition;
 import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
 import org.apache.flink.runtime.plugable.SerializationDelegate;
+import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
 import org.apache.flink.util.XORShiftRandom;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -89,6 +89,8 @@ public class RecordWriter<T extends IOReadableWritable> {
 
 	private boolean buffersCleared = false;
 
+	private CausalLog causalLog;
+
 	public RecordWriter(ResultPartitionWriter writer) {
 		this(writer, new RoundRobinChannelSelector<T>());
 	}
@@ -99,11 +101,16 @@ public class RecordWriter<T extends IOReadableWritable> {
 	}
 
 	public RecordWriter(ResultPartitionWriter writer, ChannelSelector<T> channelSelector, boolean flushAlways) {
+		this(writer, channelSelector, flushAlways, null);
+	}
+
+	public RecordWriter(ResultPartitionWriter writer, ChannelSelector<T> channelSelector, boolean flushAlways, CausalLog causalLog) {
 		this.flushAlways = flushAlways;
 		this.targetPartition = writer;
 		this.channelSelector = channelSelector;
 
 		this.numChannels = writer.getNumberOfSubpartitions();
+		this.causalLog = causalLog;
 
 		try {
 			this.inFlightLogger = new InFlightLogger(this.targetPartition, this.numChannels);
@@ -126,6 +133,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 
 	public void emit(T record) throws IOException, InterruptedException {
 		for (int targetChannel : channelSelector.selectChannels(record, numChannels)) {
+
 			sendToTarget(record, targetChannel);
 		}
 	}
@@ -149,6 +157,11 @@ public class RecordWriter<T extends IOReadableWritable> {
 
 	private void sendToTarget(T record, int targetChannel) throws IOException, InterruptedException {
 		RecordSerializer<T> serializer = serializers[targetChannel];
+
+		try { //This try catch is most likely inneficient.
+			((SerializationDelegate<StreamElement>) record).getInstance().setLogDeltas(causalLog.getNextDeterminantsForDownstream(targetChannel));
+		} catch (Exception e) {
+		} // could be null pointer for causalLog or cast exception
 
 		SerializationResult result = serializer.addRecord(record);
 

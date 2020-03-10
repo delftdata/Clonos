@@ -1,23 +1,22 @@
 package org.apache.flink.runtime.causal;
 
-import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Map;
 
 public class LinkedListVertexCausalLog implements VertexCausalLog {
 
 
 	private List<CheckpointSlice> log;
-	private Map<VertexId, Offset> vertexOffsets;
-
+	Offset[] offsets;
 	private static final long DEFAULT_SLICE_ID = 0;
 
-	public LinkedListVertexCausalLog(List<VertexId> downstreamVertexIds) {
+	public LinkedListVertexCausalLog(int numDownstreamChannels) {
 		log = new LinkedList<>();
 		log.add(new CheckpointSlice(DEFAULT_SLICE_ID));
-		this.vertexOffsets = new HashMap<>(downstreamVertexIds.size());
-		for (VertexId opId : downstreamVertexIds) vertexOffsets.put(opId, new Offset(0, 0));
+		offsets = new Offset[numDownstreamChannels];
+		for (int i = 0; i < numDownstreamChannels; i++) {
+			offsets[i] = new Offset(0, 0);
+		}
 
 	}
 
@@ -47,8 +46,8 @@ public class LinkedListVertexCausalLog implements VertexCausalLog {
 	}
 
 	@Override
-	public void notifyDownstreamFailure(VertexId vertexId) {
-		vertexOffsets.put(vertexId, new Offset(0, 0));
+	public void notifyDownstreamFailure(int channel) {
+		offsets[channel] = new Offset(0, 0);
 	}
 
 	@Override
@@ -59,14 +58,14 @@ public class LinkedListVertexCausalLog implements VertexCausalLog {
 
 		log = log.subList(index, log.size());
 
-		for (Offset o : vertexOffsets.values())
+		for (Offset o : offsets)
 			o.setSliceIndex(Math.max(0, o.getSliceIndex() - index));
 	}
 
 	@Override
-	public byte[] getNextDeterminantsForDownstream(VertexId vertexId) {
+	public byte[] getNextDeterminantsForDownstream(int channel) {
 
-		Offset offset = vertexOffsets.get(vertexId);
+		Offset offset = offsets[channel];
 
 		int total = log.get(offset.sliceIndex).getSize() - offset.sliceOffset;
 

@@ -1,7 +1,8 @@
 package org.apache.flink.runtime.causal;
 
 
-import java.util.*;
+import java.util.LinkedList;
+import java.util.Queue;
 
 /**
  * Implements the <link>UpstreamDeterminantCache</> as a Growable Circular Array
@@ -17,23 +18,24 @@ public class CircularVertexCausalLog implements VertexCausalLog {
 	private int size;
 
 	private Queue<CheckpointOffset> offsets;
-	private Map<VertexId, Integer> vertexOffsets;
+	private int[] channelOffsets;
 
 
-	public CircularVertexCausalLog(int startSize, Collection<VertexId> downstreamVertexIds) {
+	public CircularVertexCausalLog(int numDownstreamChannels) {
+		this(DEFAULT_START_SIZE, numDownstreamChannels);
+	}
+
+	public CircularVertexCausalLog(int startSize, int numDownstreamChannels) {
 		array = new byte[startSize];
 		offsets = new LinkedList<>();
 		start = 0;
 		end = 0;
 		size = 0;
 
-		vertexOffsets = new HashMap<VertexId, Integer>();
-		for (VertexId id : downstreamVertexIds) vertexOffsets.put(id, 0);
+		//initialized to 0s
+		channelOffsets = new int[numDownstreamChannels];
 	}
 
-	public CircularVertexCausalLog(Collection<VertexId> downstreamVertexIds) {
-		this(DEFAULT_START_SIZE, downstreamVertexIds);
-	}
 
 	@Override
 	public byte[] getDeterminants() {
@@ -50,11 +52,11 @@ public class CircularVertexCausalLog implements VertexCausalLog {
 		} else {
 			if (end >= start) {
 				int bytesTillLoop = array.length - end;
-				if(determinants.length > bytesTillLoop) {
+				if (determinants.length > bytesTillLoop) {
 					System.arraycopy(determinants, 0, array, end, bytesTillLoop);
 					System.arraycopy(determinants, bytesTillLoop, array, 0, determinants.length - bytesTillLoop);
 
-				}else {
+				} else {
 					System.arraycopy(determinants, 0, array, end, determinants.length);
 				}
 			} else {
@@ -74,8 +76,8 @@ public class CircularVertexCausalLog implements VertexCausalLog {
 	}
 
 	@Override
-	public void notifyDownstreamFailure(VertexId vertexId) {
-		vertexOffsets.put(vertexId, start);
+	public void notifyDownstreamFailure(int channel) {
+		channelOffsets[channel] = start;
 	}
 
 	@Override
@@ -100,10 +102,10 @@ public class CircularVertexCausalLog implements VertexCausalLog {
 
 
 	@Override
-	public byte[] getNextDeterminantsForDownstream(VertexId vertexId) {
-		byte[] toReturn = new byte[circularDistance(vertexOffsets.get(vertexId), end, array.length)];
-		circularArrayCopy(array, vertexOffsets.get(vertexId), end, array.length, toReturn);
-		vertexOffsets.put(vertexId, end);
+	public byte[] getNextDeterminantsForDownstream(int channel) {
+		byte[] toReturn = new byte[circularDistance(channelOffsets[channel], end, array.length)];
+		circularArrayCopy(array, channelOffsets[channel], end, array.length, toReturn);
+		channelOffsets[channel] = end;
 		return toReturn;
 	}
 

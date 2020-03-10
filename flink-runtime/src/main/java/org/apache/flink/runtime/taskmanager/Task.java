@@ -356,7 +356,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		@Nonnull TaskMetricGroup metricGroup,
 		ResultPartitionConsumableNotifier resultPartitionConsumableNotifier,
 		PartitionProducerStateChecker partitionProducerStateChecker,
-		Executor executor, List<VertexId> upstreamVertices, List<VertexId> downStreamVertices) {
+		Executor executor, List<VertexId> upstreamVertices) {
 
 		this(jobInformation, taskInformation, executionAttemptID, slotAllocationId, subvertexId,
 			subtaskIndex, attemptNumber, resultPartitionDeploymentDescriptors,
@@ -365,7 +365,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 			taskManagerActions, inputSplitProvider, checkpointResponder,
 			blobService, libraryCache, fileCache, taskManagerConfig,
 			metricGroup, resultPartitionConsumableNotifier,
-			partitionProducerStateChecker, executor, false, upstreamVertices, downStreamVertices);
+			partitionProducerStateChecker, executor, false, upstreamVertices);
 	}
 
 	public Task(
@@ -395,7 +395,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		ResultPartitionConsumableNotifier resultPartitionConsumableNotifier,
 		PartitionProducerStateChecker partitionProducerStateChecker,
 		Executor executor,
-		boolean isStandby, Collection<VertexId> upstreamVertices, Collection<VertexId> downStreamVertices) {
+		boolean isStandby, Collection<VertexId> upstreamVertices) {
 
 
 		Preconditions.checkNotNull(jobInformation);
@@ -425,7 +425,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		} else {
 			this.taskNameWithSubtask = taskInfo.getTaskNameWithSubtasks();
 		}
-		this.causalLog = new MapCausalLog(upstreamVertices, downStreamVertices);
+		this.causalLog = new MapCausalLog(this.subvertexId, upstreamVertices, resultPartitionDeploymentDescriptors.size());
 
 		this.jobConfiguration = jobInformation.getJobConfiguration();
 		this.taskConfiguration = taskInformation.getTaskConfiguration();
@@ -1484,13 +1484,13 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		final AbstractInvokable invokable = this.invokable;
 
 		if (executionState == ExecutionState.RUNNING && invokable != null) {
-
 			Runnable runnable = new Runnable() {
 				@Override
 				public void run() {
 					try {
 						invokable.notifyCheckpointComplete(checkpointID);
 						taskStateManager.notifyCheckpointComplete(checkpointID);
+						causalLog.notifyCheckpointComplete(checkpointID);
 					} catch (Throwable t) {
 						if (getExecutionState() == ExecutionState.RUNNING) {
 							// fail task if checkpoint confirmation failed.
@@ -1688,6 +1688,10 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		} catch (Exception e) {
 			throw new FlinkException("Could not instantiate the task's invokable class.", e);
 		}
+	}
+
+	public CausalLog getCausalLog() {
+		return causalLog;
 	}
 
 	// ------------------------------------------------------------------------

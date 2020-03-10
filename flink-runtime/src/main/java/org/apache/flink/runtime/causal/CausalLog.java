@@ -1,11 +1,13 @@
 package org.apache.flink.runtime.causal;
 
+import org.apache.flink.runtime.state.CheckpointListener;
+
 import java.util.List;
 
 /**
  * A CausalLog contains the determinant logs of all upstream operators and itself.
  */
-public interface CausalLog {
+public interface CausalLog extends CheckpointListener {
 
 
 	List<VertexCausalLogDelta> getDeterminants();
@@ -16,13 +18,18 @@ public interface CausalLog {
 	void appendDeterminantsToVertexLog(VertexId vertexId, byte[] determinants);
 
 	/*
+	Appends determinants to this tasks log.
+	 */
+	void addDeterminant(byte[] determinants);
+
+	/*
 	Returns a list of deltas containing the updates that have since been obtained for all upstream vertexes or this vertex.
 	 */
-	List<VertexCausalLogDelta> getNextDeterminantsForDownstream(VertexId vertexId);
+	List<VertexCausalLogDelta> getNextDeterminantsForDownstream(int channel);
 
 	void notifyCheckpointBarrier(long checkpointId);
 
-	void notifyDownstreamFailure(VertexId vertexId);
+	void notifyDownstreamFailure(int channel);
 
 	byte[] getDeterminantsOfUpstream(VertexId vertexId);
 

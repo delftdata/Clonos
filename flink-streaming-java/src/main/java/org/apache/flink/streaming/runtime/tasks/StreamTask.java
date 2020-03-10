@@ -23,6 +23,7 @@ import org.apache.flink.api.common.accumulators.Accumulator;
 import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.core.fs.CloseableRegistry;
 import org.apache.flink.core.fs.FileSystemSafetyNet;
+import org.apache.flink.runtime.causal.CausalLog;
 import org.apache.flink.runtime.causal.VertexId;
 import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
@@ -672,10 +673,14 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		}
 	}
 
+	public CausalLog getCausalLog() {
+		return this.getEnvironment().getContainingTask().getCausalLog();
+	}
+
 	private boolean performCheckpoint(
-			CheckpointMetaData checkpointMetaData,
-			CheckpointOptions checkpointOptions,
-			CheckpointMetrics checkpointMetrics) throws Exception {
+		CheckpointMetaData checkpointMetaData,
+		CheckpointOptions checkpointOptions,
+		CheckpointMetrics checkpointMetrics) throws Exception {
 
 		LOG.info("Starting checkpoint ({}) {} on task {}.",
 			checkpointMetaData.getCheckpointId(), checkpointOptions.getCheckpointType(), getName());
@@ -709,6 +714,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 					LOG.info("{}: Create slices of InFlightLogger {} for new checkpoint (previous checkpoint id is {}).", getName(), inFlightLogger, checkpointId);
 					inFlightLogger.createSlices(checkpointId);
 				}
+				getCausalLog().notifyCheckpointBarrier(checkpointId);
 
 				return true;
 			}

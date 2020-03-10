@@ -23,6 +23,8 @@ import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.SimpleCounter;
+import org.apache.flink.runtime.causal.CausalLog;
+import org.apache.flink.runtime.causal.VertexCausalLogDelta;
 import org.apache.flink.runtime.event.AbstractEvent;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
@@ -89,6 +91,8 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 	private final RecordWriterOutput<?>[] recordWriterOutputs;
 
 	private final Object lock;
+
+	private final CausalLog causalLog;
 
 	// ---------------- Status and Watermark Valves ------------------
 
@@ -164,6 +168,7 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 		this.recordWriterOutputs = recordWriterOutputs;
 
 		this.lock = checkNotNull(lock);
+		causalLog = checkpointedTask.getCausalLog();
 
 		StreamElementSerializer<IN1> ser1 = new StreamElementSerializer<>(inputSerializer1);
 		this.deserializationDelegate1 = new NonReusingDeserializationDelegate<>(ser1);
@@ -234,15 +239,15 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 				if (result.isFullRecord()) {
 					if (currentChannel < numInputChannels1) {
 						StreamElement recordOrWatermark = deserializationDelegate1.getInstance();
+						for (VertexCausalLogDelta d : recordOrWatermark.getLogDeltas())
+							causalLog.appendDeterminantsToVertexLog(d.getVertexId(), d.getLogDelta());
 						if (recordOrWatermark.isWatermark()) {
 							statusWatermarkValve1.inputWatermark(recordOrWatermark.asWatermark(), currentChannel);
 							continue;
-						}
-						else if (recordOrWatermark.isStreamStatus()) {
+						} else if (recordOrWatermark.isStreamStatus()) {
 							statusWatermarkValve1.inputStreamStatus(recordOrWatermark.asStreamStatus(), currentChannel);
 							continue;
-						}
-						else if (recordOrWatermark.isLatencyMarker()) {
+						} else if (recordOrWatermark.isLatencyMarker()) {
 							synchronized (lock) {
 								streamOperator.processLatencyMarker1(recordOrWatermark.asLatencyMarker());
 							}
@@ -259,18 +264,17 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 							return true;
 
 						}
-					}
-					else {
+					} else {
 						StreamElement recordOrWatermark = deserializationDelegate2.getInstance();
+						for (VertexCausalLogDelta d : recordOrWatermark.getLogDeltas())
+							causalLog.appendDeterminantsToVertexLog(d.getVertexId(), d.getLogDelta());
 						if (recordOrWatermark.isWatermark()) {
 							statusWatermarkValve2.inputWatermark(recordOrWatermark.asWatermark(), currentChannel - numInputChannels1);
 							continue;
-						}
-						else if (recordOrWatermark.isStreamStatus()) {
+						} else if (recordOrWatermark.isStreamStatus()) {
 							statusWatermarkValve2.inputStreamStatus(recordOrWatermark.asStreamStatus(), currentChannel - numInputChannels1);
 							continue;
-						}
-						else if (recordOrWatermark.isLatencyMarker()) {
+						} else if (recordOrWatermark.isLatencyMarker()) {
 							synchronized (lock) {
 								streamOperator.processLatencyMarker2(recordOrWatermark.asLatencyMarker());
 							}
