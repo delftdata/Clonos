@@ -1,5 +1,9 @@
 package org.apache.flink.runtime.causal;
 
+import org.apache.flink.runtime.causal.determinant.Determinant;
+import org.apache.flink.runtime.causal.determinant.DeterminantEncodingStrategy;
+import org.apache.flink.runtime.causal.determinant.SimpleDeterminantEncodingStrategy;
+
 import java.util.*;
 
 /*
@@ -8,6 +12,7 @@ Causal log for this operator. Contains Vertex Specific Causal logs for itself an
 public class MapCausalLog implements CausalLog {
 	private Map<VertexId, VertexCausalLog> determinantLogs;
 	private VertexId myVertexId;
+	private DeterminantEncodingStrategy determinantEncodingStrategy;
 
 	public MapCausalLog(VertexId myVertexId, Collection<VertexId> upstreamVertexIds, int numDownstreamChannels) {
 		this.determinantLogs = new HashMap<>();
@@ -15,6 +20,7 @@ public class MapCausalLog implements CausalLog {
 		for (VertexId u : upstreamVertexIds)
 			determinantLogs.put(u, new CircularVertexCausalLog(numDownstreamChannels));
 		determinantLogs.put(this.myVertexId, new CircularVertexCausalLog(numDownstreamChannels));
+		determinantEncodingStrategy = new SimpleDeterminantEncodingStrategy();
 	}
 
 	@Override
@@ -35,6 +41,13 @@ public class MapCausalLog implements CausalLog {
 	@Override
 	public void addDeterminant(byte[] determinants) {
 		this.determinantLogs.get(this.myVertexId).appendDeterminants(determinants);
+	}
+
+	@Override
+	public void addDeterminant(Determinant determinant) {
+		this.determinantLogs.get(this.myVertexId).appendDeterminants(
+			this.determinantEncodingStrategy.encode(determinant)
+		);
 	}
 
 	@Override

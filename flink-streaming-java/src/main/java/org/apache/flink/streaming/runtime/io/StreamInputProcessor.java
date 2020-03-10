@@ -25,6 +25,7 @@ import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.SimpleCounter;
 import org.apache.flink.runtime.causal.CausalLog;
 import org.apache.flink.runtime.causal.VertexCausalLogDelta;
+import org.apache.flink.runtime.causal.determinant.OrderDeterminant;
 import org.apache.flink.runtime.event.AbstractEvent;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
@@ -206,7 +207,7 @@ public class StreamInputProcessor<IN> {
 
 					for (VertexCausalLogDelta d : recordOrMark.getLogDeltas())
 						this.causalLog.appendDeterminantsToVertexLog(d.getVertexId(), d.getLogDelta());
-					//this.causalLog.addDeterminant();
+					this.causalLog.addDeterminant(new OrderDeterminant(currentChannel));
 
 					if (recordOrMark.isWatermark()) {
 						// handle watermark
