@@ -21,11 +21,13 @@ package org.apache.flink.streaming.runtime.tasks;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
+import org.apache.flink.runtime.causal.CausalLoggingManager;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.metrics.MetricNames;
 import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
+import org.apache.flink.streaming.runtime.io.ForceFeederStreamInputProcessor;
 import org.apache.flink.streaming.runtime.io.StreamInputProcessor;
 import org.apache.flink.streaming.runtime.metrics.WatermarkGauge;
 
@@ -38,6 +40,7 @@ import javax.annotation.Nullable;
 public class OneInputStreamTask<IN, OUT> extends StreamTask<OUT, OneInputStreamOperator<IN, OUT>> {
 
 	private StreamInputProcessor<IN> inputProcessor;
+	private ForceFeederStreamInputProcessor<IN> forceFeeder;
 
 	private volatile boolean running = true;
 
@@ -80,6 +83,21 @@ public class OneInputStreamTask<IN, OUT> extends StreamTask<OUT, OneInputStreamO
 			InputGate[] inputGates = getEnvironment().getAllInputGates();
 
 			inputProcessor = new StreamInputProcessor<>(
+				inputGates,
+				inSerializer,
+				this,
+				configuration.getCheckpointMode(),
+				getCheckpointLock(),
+				getEnvironment().getIOManager(),
+				getEnvironment().getTaskManagerInfo().getConfiguration(),
+				getStreamStatusMaintainer(),
+				this.headOperator,
+				getEnvironment().getMetricGroup().getIOMetricGroup(),
+				inputWatermarkGauge,
+				getStreamOutputs());
+
+			if (isCausal() && isStandby()) {
+				this.forceFeeder = new ForceFeederStreamInputProcessor<>(
 					inputGates,
 					inSerializer,
 					this,
@@ -92,6 +110,7 @@ public class OneInputStreamTask<IN, OUT> extends StreamTask<OUT, OneInputStreamO
 					getEnvironment().getMetricGroup().getIOMetricGroup(),
 					inputWatermarkGauge,
 					getStreamOutputs());
+			}
 		}
 		headOperator.getMetricGroup().gauge(MetricNames.IO_CURRENT_INPUT_WATERMARK, this.inputWatermarkGauge);
 		// wrap watermark gauge since registered metrics must be unique
@@ -100,6 +119,19 @@ public class OneInputStreamTask<IN, OUT> extends StreamTask<OUT, OneInputStreamO
 
 	@Override
 	protected void run() throws Exception {
+		if (isCausal() && isStandby()) {
+			CausalLoggingManager causalLoggingManager = getCausalLoggingManager();
+			causalLoggingManager.silenceAll();
+			while (causalLoggingManager.hasRecoveryDeterminant()) {
+
+				final ForceFeederStreamInputProcessor<IN> forceFeeder = this.forceFeeder;
+
+				while (running && forceFeeder.processInput()) {
+					// all the work happens in the "processInput" method
+				}
+			}
+			causalLoggingManager.unsilenceAll();
+		}
 		// cache processor reference on the stack, to make the code more JIT friendly
 		final StreamInputProcessor<IN> inputProcessor = this.inputProcessor;
 

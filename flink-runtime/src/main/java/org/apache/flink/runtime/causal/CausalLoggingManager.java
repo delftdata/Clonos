@@ -8,7 +8,7 @@ import java.util.List;
 /**
  * A CausalLog contains the determinant logs of all upstream operators and itself.
  */
-public interface CausalLog extends CheckpointListener {
+public interface CausalLoggingManager extends CheckpointListener {
 
 
 	List<VertexCausalLogDelta> getDeterminants();
@@ -39,4 +39,16 @@ public interface CausalLog extends CheckpointListener {
 
 	byte[] getDeterminantsOfUpstream(VertexId vertexId);
 
+	void registerSilenceable(Silenceable silenceable);
+
+	void silenceAll();
+
+	void unsilenceAll();
+
+
+	Determinant getNextRecoveryDeterminant();
+
+	boolean hasRecoveryDeterminant();
+
+	void enrichWithDeltas(Object record, int targetChannel);
 }

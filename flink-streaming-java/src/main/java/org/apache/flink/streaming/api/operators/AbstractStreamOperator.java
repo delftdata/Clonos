@@ -32,6 +32,7 @@ import org.apache.flink.core.fs.CloseableRegistry;
 import org.apache.flink.core.memory.DataOutputViewStreamWrapper;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.MetricGroup;
+import org.apache.flink.runtime.causal.CausalLoggingManager;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.jobgraph.OperatorID;
@@ -614,6 +615,10 @@ public abstract class AbstractStreamOperator<OUT>
 
 	public KeyedStateStore getKeyedStateStore() {
 		return keyedStateStore;
+	}
+
+	public CausalLoggingManager getCausalLog() {
+		return this.container.getCausalLoggingManager();
 	}
 
 	// ------------------------------------------------------------------------

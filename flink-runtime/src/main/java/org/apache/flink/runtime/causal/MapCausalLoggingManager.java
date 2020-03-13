@@ -3,24 +3,30 @@ package org.apache.flink.runtime.causal;
 import org.apache.flink.runtime.causal.determinant.Determinant;
 import org.apache.flink.runtime.causal.determinant.DeterminantEncodingStrategy;
 import org.apache.flink.runtime.causal.determinant.SimpleDeterminantEncodingStrategy;
+import org.apache.flink.runtime.plugable.SerializationDelegate;
+import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
 
 import java.util.*;
 
 /*
 Causal log for this operator. Contains Vertex Specific Causal logs for itself and all upstream operators.
  */
-public class MapCausalLog implements CausalLog {
+public class MapCausalLoggingManager implements CausalLoggingManager {
 	private Map<VertexId, VertexCausalLog> determinantLogs;
 	private VertexId myVertexId;
 	private DeterminantEncodingStrategy determinantEncodingStrategy;
+	private List<Silenceable> registeredSilenceables;
 
-	public MapCausalLog(VertexId myVertexId, Collection<VertexId> upstreamVertexIds, int numDownstreamChannels) {
+	private Queue<Determinant> recoveryDeterminants;
+
+	public MapCausalLoggingManager(VertexId myVertexId, Collection<VertexId> upstreamVertexIds, int numDownstreamChannels) {
 		this.determinantLogs = new HashMap<>();
 		this.myVertexId = myVertexId;
 		for (VertexId u : upstreamVertexIds)
 			determinantLogs.put(u, new CircularVertexCausalLog(numDownstreamChannels));
-		determinantLogs.put(this.myVertexId, new CircularVertexCausalLog(numDownstreamChannels));
-		determinantEncodingStrategy = new SimpleDeterminantEncodingStrategy();
+		this.determinantLogs.put(this.myVertexId, new CircularVertexCausalLog(numDownstreamChannels));
+		this.determinantEncodingStrategy = new SimpleDeterminantEncodingStrategy();
+		this.registeredSilenceables = new ArrayList<Silenceable>(10);
 	}
 
 	@Override
@@ -80,6 +86,41 @@ public class MapCausalLog implements CausalLog {
 	@Override
 	public byte[] getDeterminantsOfUpstream(VertexId vertexId) {
 		return determinantLogs.get(vertexId).getDeterminants();
+	}
+
+
+	@Override
+	public void registerSilenceable(Silenceable silenceable) {
+		this.registeredSilenceables.add(silenceable);
+	}
+
+	@Override
+	public void silenceAll() {
+		for (Silenceable s : this.registeredSilenceables)
+			s.silence();
+	}
+
+	@Override
+	public void unsilenceAll() {
+		for (Silenceable s : this.registeredSilenceables)
+			s.unsilence();
+
+	}
+
+	@Override
+	public Determinant getNextRecoveryDeterminant() {
+		return recoveryDeterminants.remove();
+	}
+
+	@Override
+	public boolean hasRecoveryDeterminant() {
+		return !recoveryDeterminants.isEmpty();
+	}
+
+	@Override
+	public void enrichWithDeltas(Object record, int targetChannel) {
+		SerializationDelegate<StreamElement> r = (SerializationDelegate<StreamElement>) record;
+		r.getInstance().setLogDeltas(this.getNextDeterminantsForDownstream(targetChannel));
 	}
 
 	@Override

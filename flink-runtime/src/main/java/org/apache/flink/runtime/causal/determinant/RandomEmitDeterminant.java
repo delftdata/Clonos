@@ -1,10 +1,9 @@
 package org.apache.flink.runtime.causal.determinant;
 
-public class OrderDeterminant extends Determinant {
+public class RandomEmitDeterminant extends Determinant {
+	byte channel;
 
-	private byte channel;
-
-	public OrderDeterminant(byte channel) {
+	public RandomEmitDeterminant(byte channel) {
 		this.channel = channel;
 	}
 

@@ -23,7 +23,7 @@ import org.apache.flink.api.common.accumulators.Accumulator;
 import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.core.fs.CloseableRegistry;
 import org.apache.flink.core.fs.FileSystemSafetyNet;
-import org.apache.flink.runtime.causal.CausalLog;
+import org.apache.flink.runtime.causal.CausalLoggingManager;
 import org.apache.flink.runtime.causal.VertexId;
 import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
@@ -289,7 +289,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 				ThreadFactory timerThreadFactory = new DispatcherThreadFactory(TRIGGER_THREAD_GROUP,
 					"Time Trigger for " + getName(), getUserCodeClassLoader());
 
-				timerService = new SystemProcessingTimeService(this, getCheckpointLock(), timerThreadFactory);
+				timerService = new SystemProcessingTimeService(this, getCheckpointLock(), timerThreadFactory, getCausalLoggingManager());
 			}
 
 			operatorChain = new OperatorChain<>(this, streamRecordWriters);
@@ -339,6 +339,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			if (canceled) {
 				throw new CancelTaskException();
 			}
+
 
 			// let the task do its work
 			isRunning = true;
@@ -673,8 +674,12 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		}
 	}
 
-	public CausalLog getCausalLog() {
-		return this.getEnvironment().getContainingTask().getCausalLog();
+	public boolean isCausal() {
+		return getCausalLoggingManager() != null;
+	}
+
+	public CausalLoggingManager getCausalLoggingManager() {
+		return this.getEnvironment().getContainingTask().getCausalLoggingManager();
 	}
 
 	private boolean performCheckpoint(
@@ -714,7 +719,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 					LOG.info("{}: Create slices of InFlightLogger {} for new checkpoint (previous checkpoint id is {}).", getName(), inFlightLogger, checkpointId);
 					inFlightLogger.createSlices(checkpointId);
 				}
-				getCausalLog().notifyCheckpointBarrier(checkpointId);
+				getCausalLoggingManager().notifyCheckpointBarrier(checkpointId);
 
 				return true;
 			}
@@ -763,6 +768,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 							LOG.debug("{}: Discard slices of InFlightLogger {} for checkpoint {}.", getName(), inFlightLogger, checkpointId);
 							inFlightLogger.discardSlice(checkpointId);
 						}
+
+						getCausalLoggingManager().notifyCheckpointComplete(checkpointId);
 					}
 				}
 			}

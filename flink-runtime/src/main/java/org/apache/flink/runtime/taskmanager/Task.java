@@ -33,8 +33,8 @@ import org.apache.flink.runtime.accumulators.AccumulatorRegistry;
 import org.apache.flink.runtime.blob.BlobCacheService;
 import org.apache.flink.runtime.blob.PermanentBlobKey;
 import org.apache.flink.runtime.broadcast.BroadcastVariableManager;
-import org.apache.flink.runtime.causal.CausalLog;
-import org.apache.flink.runtime.causal.MapCausalLog;
+import org.apache.flink.runtime.causal.CausalLoggingManager;
+import org.apache.flink.runtime.causal.MapCausalLoggingManager;
 import org.apache.flink.runtime.causal.VertexId;
 import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
@@ -282,7 +282,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 	/**
 	 * The CausalLog of the task
 	 */
-	private final CausalLog causalLog;
+	private final CausalLoggingManager causalLoggingManager;
 	// ------------------------------------------------------------------------
 	//  Fields that control the task execution. All these fields are volatile
 	//  (which means that they introduce memory barriers), to establish
@@ -425,8 +425,10 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		} else {
 			this.taskNameWithSubtask = taskInfo.getTaskNameWithSubtasks();
 		}
-		this.causalLog = new MapCausalLog(this.subvertexId, upstreamVertices, resultPartitionDeploymentDescriptors.size());
-
+		if (upstreamVertices != null)
+			this.causalLoggingManager = new MapCausalLoggingManager(this.subvertexId, upstreamVertices, resultPartitionDeploymentDescriptors.size());
+		else
+			this.causalLoggingManager = null;
 		this.jobConfiguration = jobInformation.getJobConfiguration();
 		this.taskConfiguration = taskInformation.getTaskConfiguration();
 		this.requiredJarFiles = jobInformation.getRequiredJarFileBlobKeys();
@@ -1490,7 +1492,6 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 					try {
 						invokable.notifyCheckpointComplete(checkpointID);
 						taskStateManager.notifyCheckpointComplete(checkpointID);
-						causalLog.notifyCheckpointComplete(checkpointID);
 					} catch (Throwable t) {
 						if (getExecutionState() == ExecutionState.RUNNING) {
 							// fail task if checkpoint confirmation failed.
@@ -1690,8 +1691,12 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		}
 	}
 
-	public CausalLog getCausalLog() {
-		return causalLog;
+	public boolean isCausal() {
+		return getCausalLoggingManager() != null;
+	}
+
+	public CausalLoggingManager getCausalLoggingManager() {
+		return causalLoggingManager;
 	}
 
 	// ------------------------------------------------------------------------
