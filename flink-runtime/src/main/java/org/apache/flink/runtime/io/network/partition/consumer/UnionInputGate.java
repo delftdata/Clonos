@@ -20,23 +20,15 @@ package org.apache.flink.runtime.io.network.partition.consumer;
 
 import org.apache.flink.runtime.event.TaskEvent;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
-
 import org.apache.flink.shaded.guava18.com.google.common.collect.Maps;
 import org.apache.flink.shaded.guava18.com.google.common.collect.Sets;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.ArrayDeque;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 
-import static org.apache.flink.util.Preconditions.checkArgument;
-import static org.apache.flink.util.Preconditions.checkNotNull;
-import static org.apache.flink.util.Preconditions.checkState;
+import static org.apache.flink.util.Preconditions.*;
 
 /**
  * Input gate wrapper to union the input from multiple input gates.
@@ -83,10 +75,14 @@ public class UnionInputGate implements InputGate, InputGateListener {
 	 */
 	private final Set<InputGate> enqueuedInputGatesWithData = new HashSet<>();
 
-	/** The total number of input channels across all unioned input gates. */
+	/**
+	 * The total number of input channels across all unioned input gates.
+	 */
 	private final int totalNumberOfInputChannels;
 
-	/** Registered listener to forward input gate notifications to. */
+	/**
+	 * Registered listener to forward input gate notifications to.
+	 */
 	private volatile InputGateListener inputGateListener;
 
 	/**
@@ -94,8 +90,11 @@ public class UnionInputGate implements InputGate, InputGateListener {
 	 * (inclusive) to the total number of input channels (exclusive).
 	 */
 	private final Map<InputGate, Integer> inputGateToIndexOffsetMap;
+	private final Map<Integer, InputGate> offsetToInputGateMap;
 
-	/** Flag indicating whether partitions have been requested. */
+	/**
+	 * Flag indicating whether partitions have been requested.
+	 */
 	private boolean requestedPartitionsFlag;
 
 	private String taskName;
@@ -105,6 +104,8 @@ public class UnionInputGate implements InputGate, InputGateListener {
 		checkArgument(inputGates.length > 1, "Union input gate should union at least two input gates.");
 
 		this.inputGateToIndexOffsetMap = Maps.newHashMapWithExpectedSize(inputGates.length);
+		int averageConnections = (int) Math.ceil(Arrays.asList(inputGates).stream().map(InputGate::getNumberOfInputChannels).reduce(0, Integer::sum) / inputGates.length);
+		this.offsetToInputGateMap = Maps.newHashMapWithExpectedSize(averageConnections);
 		this.inputGatesWithRemainingData = Sets.newHashSetWithExpectedSize(inputGates.length);
 
 		int currentNumberOfInputChannels = 0;
@@ -121,6 +122,8 @@ public class UnionInputGate implements InputGate, InputGateListener {
 
 			// The offset to use for buffer or event instances received from this input gate.
 			inputGateToIndexOffsetMap.put(checkNotNull(inputGate), currentNumberOfInputChannels);
+			for (int i = currentNumberOfInputChannels; i < inputGate.getNumberOfInputChannels(); i++)
+				offsetToInputGateMap.put(i, inputGate);
 			inputGatesWithRemainingData.add(inputGate);
 
 			currentNumberOfInputChannels += inputGate.getNumberOfInputChannels();
@@ -236,6 +239,7 @@ public class UnionInputGate implements InputGate, InputGateListener {
 		}
 	}
 
+
 	private static class InputGateWithData {
 		private final InputGate inputGate;
 		private final BufferOrEvent bufferOrEvent;
@@ -265,6 +269,26 @@ public class UnionInputGate implements InputGate, InputGateListener {
 	}
 
 	@Override
+	public void notifyCheckpointComplete(long checkpointId) throws Exception {
+		for (InputGate i : inputGates) {
+			i.notifyCheckpointComplete(checkpointId);
+		}
+	}
+
+	@Override
+	public boolean testRecord(int channelIndex, int hashcode) {
+		InputGate gate = offsetToInputGateMap.get(channelIndex);
+		int startIndex = inputGateToIndexOffsetMap.get(gate);
+		return gate.testRecord(channelIndex - startIndex, hashcode);
+	}
+
+	@Override
+	public void notifyCheckpointBarrier(long checkpointId) {
+		for (InputGate i : inputGates)
+			i.notifyCheckpointBarrier(checkpointId);
+	}
+
+	@Override
 	public int getPageSize() {
 		int pageSize = -1;
 		for (InputGate gate : inputGates) {
@@ -276,6 +300,7 @@ public class UnionInputGate implements InputGate, InputGateListener {
 		}
 		return pageSize;
 	}
+
 
 	@Override
 	public void notifyInputGateNonEmpty(InputGate inputGate) {

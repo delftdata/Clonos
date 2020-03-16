@@ -32,23 +32,16 @@ import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.inflightlogging.InFlightLogger;
 import org.apache.flink.runtime.io.network.api.CancelCheckpointMarker;
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
+import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.apache.flink.runtime.plugable.SerializationDelegate;
-import org.apache.flink.runtime.state.CheckpointStorage;
-import org.apache.flink.runtime.state.CheckpointStreamFactory;
-import org.apache.flink.runtime.state.StateBackend;
-import org.apache.flink.runtime.state.StateBackendLoader;
-import org.apache.flink.runtime.state.TaskStateManager;
+import org.apache.flink.runtime.state.*;
 import org.apache.flink.runtime.taskmanager.DispatcherThreadFactory;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.api.graph.StreamEdge;
-import org.apache.flink.streaming.api.operators.OperatorSnapshotFinalizer;
-import org.apache.flink.streaming.api.operators.OperatorSnapshotFutures;
-import org.apache.flink.streaming.api.operators.StreamOperator;
-import org.apache.flink.streaming.api.operators.StreamTaskStateInitializer;
-import org.apache.flink.streaming.api.operators.StreamTaskStateInitializerImpl;
+import org.apache.flink.streaming.api.operators.*;
 import org.apache.flink.streaming.runtime.io.RecordWriterOutput;
 import org.apache.flink.streaming.runtime.io.StreamRecordWriter;
 import org.apache.flink.streaming.runtime.partitioner.ConfigurableStreamPartitioner;
@@ -57,22 +50,20 @@ import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatusMaintainer;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.Preconditions;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
-
 import java.io.Closeable;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.CompletableFuture;
 
 /**
  * Base class for all streaming tasks. A task is the unit of local processing that is deployed
@@ -170,22 +161,34 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	/** Flag to mark this task as canceled. */
 	private volatile boolean canceled;
 
-	/** Future for standby tasks that completes when they are required to run */
+	/**
+	 * Future for standby tasks that completes when they are required to run
+	 */
 	private volatile CompletableFuture<Void> standbyFuture;
 
-	/** Future for standby tasks that completes when they are required to run */
+	/**
+	 * Future for standby tasks that completes when they are required to run
+	 */
 	private volatile CompletableFuture<Void> inputChannelConnectionsFuture;
 
-	/** Thread pool for async snapshot workers. */
+	/**
+	 * Thread pool for async snapshot workers.
+	 */
 	private ExecutorService asyncOperationsThreadPool;
 
-	/** Handler for exceptions during checkpointing in the stream task. Used in synchronous part of the checkpoint. */
+	/**
+	 * Handler for exceptions during checkpointing in the stream task. Used in synchronous part of the checkpoint.
+	 */
 	private CheckpointExceptionHandler synchronousCheckpointExceptionHandler;
 
-	/** Wrapper for synchronousCheckpointExceptionHandler to deal with rethrown exceptions. Used in the async part. */
+	/**
+	 * Wrapper for synchronousCheckpointExceptionHandler to deal with rethrown exceptions. Used in the async part.
+	 */
 	private AsyncCheckpointExceptionHandler asynchronousCheckpointExceptionHandler;
 
 	private final List<StreamRecordWriter<SerializationDelegate<StreamRecord<OUT>>>> streamRecordWriters;
+
+	private final InputGate[] inputGates;
 
 	// ------------------------------------------------------------------------
 
@@ -222,11 +225,12 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		if (isStandby()) {
 			this.standbyFuture = new CompletableFuture<>();
 			this.inputChannelConnectionsFuture = new CompletableFuture<>();
-		}
-		else {
+		} else {
 			this.standbyFuture = null;
 			this.inputChannelConnectionsFuture = null;
 		}
+
+		this.inputGates = environment.getAllInputGates();
 
 	}
 
@@ -687,9 +691,9 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 				// Step (2): Send the checkpoint barrier downstream
 				operatorChain.broadcastCheckpointBarrier(
-						checkpointMetaData.getCheckpointId(),
-						checkpointMetaData.getTimestamp(),
-						checkpointOptions);
+					checkpointMetaData.getCheckpointId(),
+					checkpointMetaData.getTimestamp(),
+					checkpointOptions);
 
 				// Step (3): Take the state snapshot. This should be largely asynchronous, to not
 				//           impact progress of the streaming topology
@@ -700,6 +704,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 					LOG.info("{}: Create slices of InFlightLogger {} for new checkpoint (previous checkpoint id is {}).", getName(), inFlightLogger, checkpointId);
 					inFlightLogger.createSlices(checkpointId);
 				}
+				for (InputGate i : inputGates)
+					i.notifyCheckpointBarrier(checkpointMetaData.getCheckpointId());
 
 				return true;
 			}
@@ -747,7 +753,10 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 						for (InFlightLogger inFlightLogger : getInFlightLoggers()) {
 							LOG.debug("{}: Discard slices of InFlightLogger {} for checkpoint {}.", getName(), inFlightLogger, checkpointId);
 							inFlightLogger.discardSlice(checkpointId);
+
 						}
+						for (InputGate inputGate : inputGates)
+							inputGate.notifyCheckpointComplete(checkpointId);
 					}
 				}
 			}
@@ -848,6 +857,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			inputChannelConnectionsFuture.complete(null);
 		}
 	}
+
 
 	// ------------------------------------------------------------------------
 	//  State backend

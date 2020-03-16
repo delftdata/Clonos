@@ -19,6 +19,7 @@
 package org.apache.flink.runtime.io.network.partition.consumer;
 
 import org.apache.flink.runtime.event.TaskEvent;
+import org.apache.flink.runtime.state.CheckpointListener;
 
 import java.io.IOException;
 import java.util.Optional;
@@ -65,7 +66,7 @@ import java.util.Optional;
  * will have an input gate attached to it. This will provide its input, which will consist of one
  * subpartition from each partition of the intermediate result.
  */
-public interface InputGate {
+public interface InputGate extends CheckpointListener {
 
 	int getNumberOfInputChannels();
 
@@ -91,5 +92,11 @@ public interface InputGate {
 
 	void registerListener(InputGateListener listener);
 
+	boolean testRecord(int channelIndex, int hashcode);
+
+	void notifyCheckpointBarrier(long checkpointId);
+
 	int getPageSize();
+
+
 }

@@ -41,7 +41,6 @@ import org.apache.flink.runtime.plugable.NonReusingDeserializationDelegate;
 import org.apache.flink.streaming.api.CheckpointingMode;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.api.watermark.Watermark;
-import org.apache.flink.streaming.runtime.io.RecordWriterOutput;
 import org.apache.flink.streaming.runtime.metrics.WatermarkGauge;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElementSerializer;
@@ -50,7 +49,6 @@ import org.apache.flink.streaming.runtime.streamstatus.StatusWatermarkValve;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatus;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatusMaintainer;
 import org.apache.flink.streaming.runtime.tasks.StreamTask;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -89,12 +87,18 @@ public class StreamInputProcessor<IN> {
 
 	private final Object lock;
 
+	private final InputGate inputGate;
+
 	// ---------------- Status and Watermark Valve ------------------
 
-	/** Valve that controls how watermarks and stream statuses are forwarded. */
+	/**
+	 * Valve that controls how watermarks and stream statuses are forwarded.
+	 */
 	private StatusWatermarkValve statusWatermarkValve;
 
-	/** Number of input channels the valve needs to handle. */
+	/**
+	 * Number of input channels the valve needs to handle.
+	 */
 	private final int numInputChannels;
 
 	/**
@@ -118,20 +122,20 @@ public class StreamInputProcessor<IN> {
 
 	@SuppressWarnings("unchecked")
 	public StreamInputProcessor(
-			InputGate[] inputGates,
-			TypeSerializer<IN> inputSerializer,
-			StreamTask<?, ?> checkpointedTask,
-			CheckpointingMode checkpointMode,
-			Object lock,
-			IOManager ioManager,
-			Configuration taskManagerConfig,
-			StreamStatusMaintainer streamStatusMaintainer,
-			OneInputStreamOperator<IN, ?> streamOperator,
-			TaskIOMetricGroup metrics,
-			WatermarkGauge watermarkGauge,
-			RecordWriterOutput<?>[] recordWriterOutputs) throws IOException {
+		InputGate[] inputGates,
+		TypeSerializer<IN> inputSerializer,
+		StreamTask<?, ?> checkpointedTask,
+		CheckpointingMode checkpointMode,
+		Object lock,
+		IOManager ioManager,
+		Configuration taskManagerConfig,
+		StreamStatusMaintainer streamStatusMaintainer,
+		OneInputStreamOperator<IN, ?> streamOperator,
+		TaskIOMetricGroup metrics,
+		WatermarkGauge watermarkGauge,
+		RecordWriterOutput<?>[] recordWriterOutputs) throws IOException {
 
-		InputGate inputGate = InputGateUtil.createInputGate(inputGates);
+		this.inputGate = InputGateUtil.createInputGate(inputGates);
 
 		if (inputGate instanceof SingleInputGate) {
 			this.taskName = ((SingleInputGate) inputGate).getTaskName();
@@ -165,8 +169,8 @@ public class StreamInputProcessor<IN> {
 		this.streamOperator = checkNotNull(streamOperator);
 
 		this.statusWatermarkValve = new StatusWatermarkValve(
-				numInputChannels,
-				new ForwardingValveOutputHandler(streamOperator, lock));
+			numInputChannels,
+			new ForwardingValveOutputHandler(streamOperator, lock));
 
 		this.watermarkGauge = watermarkGauge;
 		metrics.gauge("checkpointAlignmentTime", barrierHandler::getAlignmentDurationNanos);
@@ -215,11 +219,13 @@ public class StreamInputProcessor<IN> {
 					} else {
 						// now we can do the actual processing
 						StreamRecord<IN> record = recordOrMark.asRecord();
-						synchronized (lock) {
-							numRecordsIn.inc();
-							streamOperator.setKeyContextElement1(record);
-							LOG.debug("{}: Process element no {}: {}.", taskName, numRecordsIn.getCount(), record);
-							streamOperator.processElement(record);
+						if (!this.inputGate.testRecord(currentChannel, record.getRecordID().hashCode())) {
+							synchronized (lock) {
+								numRecordsIn.inc();
+								streamOperator.setKeyContextElement1(record);
+								LOG.debug("{}: Process element no {}: {}.", taskName, numRecordsIn.getCount(), record);
+								streamOperator.processElement(record);
+							}
 						}
 						return true;
 					}
@@ -232,16 +238,14 @@ public class StreamInputProcessor<IN> {
 					currentChannel = bufferOrEvent.getChannelIndex();
 					currentRecordDeserializer = recordDeserializers[currentChannel];
 					currentRecordDeserializer.setNextBuffer(bufferOrEvent.getBuffer());
-				}
-				else {
+				} else {
 					// Event received
 					final AbstractEvent event = bufferOrEvent.getEvent();
 					if (event.getClass() != EndOfPartitionEvent.class) {
 						throw new IOException("Unexpected event: " + event);
 					}
 				}
-			}
-			else {
+			} else {
 				isFinished = true;
 				if (!barrierHandler.isEmpty()) {
 					throw new IllegalStateException("Trailing data in checkpoint barrier handler.");

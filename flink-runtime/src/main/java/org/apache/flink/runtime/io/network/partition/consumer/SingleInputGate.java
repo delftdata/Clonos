@@ -26,11 +26,10 @@ import org.apache.flink.runtime.deployment.InputChannelDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.InputGateDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.ResultPartitionLocation;
 import org.apache.flink.runtime.event.AbstractEvent;
-import org.apache.flink.runtime.event.InFlightLogRequestEvent;
 import org.apache.flink.runtime.event.InFlightLogPrepareEvent;
+import org.apache.flink.runtime.event.InFlightLogRequestEvent;
 import org.apache.flink.runtime.event.TaskEvent;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
-import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.io.network.ConnectionID;
 import org.apache.flink.runtime.io.network.NetworkEnvironment;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
@@ -41,36 +40,23 @@ import org.apache.flink.runtime.io.network.buffer.BufferProvider;
 import org.apache.flink.runtime.io.network.buffer.NetworkBufferPool;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionType;
-import org.apache.flink.runtime.io.network.partition.PartitionNotFoundException;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannel.BufferAndAvailability;
 import org.apache.flink.runtime.jobgraph.DistributionPattern;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
+import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
-import org.apache.flink.runtime.taskmanager.TaskActions;
 import org.apache.flink.runtime.taskmanager.Task;
-
-import org.apache.flink.runtime.concurrent.FutureUtils;
-
+import org.apache.flink.runtime.taskmanager.TaskActions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.BitSet;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Timer;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
-import static org.apache.flink.util.Preconditions.checkArgument;
-import static org.apache.flink.util.Preconditions.checkNotNull;
-import static org.apache.flink.util.Preconditions.checkState;
+import static org.apache.flink.util.Preconditions.*;
 
 /**
  * An input gate consumes one or more partitions of a single produced intermediate result.
@@ -116,23 +102,31 @@ public class SingleInputGate implements InputGate {
 
 	private static final Logger LOG = LoggerFactory.getLogger(SingleInputGate.class);
 
-	/** Lock object to guard partition requests and runtime channel updates. */
+	/**
+	 * Lock object to guard partition requests and runtime channel updates.
+	 */
 	private final Object requestLock = new Object();
 
-	/** The name of the owning task, for logging purposes. */
+	/**
+	 * The name of the owning task, for logging purposes.
+	 */
 	private final String owningTaskName;
 
-	/** The job ID of the owning task. */
+	/**
+	 * The job ID of the owning task.
+	 */
 	private final JobID jobId;
 
-	/**
+	/*currentChannel*
 	 * The ID of the consumed intermediate result. Each input gate consumes partitions of the
 	 * intermediate result specified by this ID. This ID also identifies the input gate at the
 	 * consuming task.
 	 */
 	private final IntermediateDataSetID consumedResultId;
 
-	/** The type of the partition the input gate is consuming. */
+	/**
+	 * The type of the partition the input gate is consuming.
+	 */
 	private final ResultPartitionType consumedPartitionType;
 
 	/**
@@ -141,7 +135,9 @@ public class SingleInputGate implements InputGate {
 	 */
 	private final int consumedSubpartitionIndex;
 
-	/** The number of input channels (equivalent to the number of consumed partitions). */
+	/**
+	 * The number of input channels (equivalent to the number of consumed partitions).
+	 */
 	private final int numberOfInputChannels;
 
 	/**
@@ -150,8 +146,13 @@ public class SingleInputGate implements InputGate {
 	 */
 	private final Map<IntermediateResultPartitionID, InputChannel> inputChannels;
 
-	/** Channels, which notified this input gate about available data. */
+	/**
+	 * Channels, which notified this input gate about available data.
+	 */
 	private final ArrayDeque<InputChannel> inputChannelsWithData = new ArrayDeque<>();
+
+
+	private final SlicedDeduplicator[] deduplicators;
 
 	/**
 	 * Field guaranteeing uniqueness for inputChannelsWithData queue. Both of those fields should be unified
@@ -161,7 +162,9 @@ public class SingleInputGate implements InputGate {
 
 	private final BitSet channelsWithEndOfPartitionEvents;
 
-	/** The partition state listener listening to failed partition requests. */
+	/**
+	 * The partition state listener listening to failed partition requests.
+	 */
 	private final TaskActions taskActions;
 
 	/**
@@ -247,6 +250,10 @@ public class SingleInputGate implements InputGate {
 		this.latestCompletedCheckpointId = 0;
 		this.restoreStateFutures = new ArrayList<CompletableFuture<Void>>();
 		this.ackChannelFutures = new HashMap<ResultPartitionID, CompletableFuture<Acknowledge>>(numberOfInputChannels);
+		this.deduplicators = new SlicedDeduplicator[numberOfInputChannels];
+		for (int i = 0; i < numberOfInputChannels; i++){
+			this.deduplicators[i] = new SlicedDeduplicator();
+		}
 	}
 
 	// ------------------------------------------------------------------------
@@ -292,6 +299,7 @@ public class SingleInputGate implements InputGate {
 			throw new IllegalStateException("Input gate has not been initialized with buffers.");
 		}
 	}
+
 
 	public int getNumberOfQueuedBuffers() {
 		// re-try 3 times, if fails, return 0 for "unknown"
@@ -960,8 +968,7 @@ public class SingleInputGate implements InputGate {
 				);
 
 				numLocalChannels++;
-			}
-			else if (partitionLocation.isRemote()) {
+			} else if (partitionLocation.isRemote()) {
 				inputChannels[i] = new RemoteInputChannel(inputGate, i, partitionId,
 					partitionLocation.getConnectionId(),
 					networkEnvironment.getConnectionManager(),
@@ -971,8 +978,7 @@ public class SingleInputGate implements InputGate {
 				);
 
 				numRemoteChannels++;
-			}
-			else if (partitionLocation.isUnknown()) {
+			} else if (partitionLocation.isUnknown()) {
 				inputChannels[i] = new UnknownInputChannel(inputGate, i, partitionId,
 					networkEnvironment.getResultPartitionManager(),
 					networkEnvironment.getTaskEventDispatcher(),
@@ -983,8 +989,7 @@ public class SingleInputGate implements InputGate {
 				);
 
 				numUnknownChannels++;
-			}
-			else {
+			} else {
 				throw new IllegalStateException("Unexpected partition location.");
 			}
 
@@ -999,4 +1004,23 @@ public class SingleInputGate implements InputGate {
 
 		return inputGate;
 	}
+
+	@Override
+	public void notifyCheckpointComplete(long checkpointId) throws Exception {
+		for (SlicedDeduplicator d : deduplicators)
+			d.notifyCheckpointComplete(checkpointId);
+
+	}
+
+	@Override
+	public boolean testRecord(int channelIndex, int hashcode) {
+		return deduplicators[channelIndex].testRecord(hashcode);
+	}
+
+	@Override
+	public void notifyCheckpointBarrier(long checkpointId) {
+		for (SlicedDeduplicator d : deduplicators)
+			d.notifyCheckpointBarrier(checkpointId);
+	}
+
 }
