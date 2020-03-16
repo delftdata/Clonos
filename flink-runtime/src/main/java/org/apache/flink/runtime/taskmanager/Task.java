@@ -356,7 +356,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		@Nonnull TaskMetricGroup metricGroup,
 		ResultPartitionConsumableNotifier resultPartitionConsumableNotifier,
 		PartitionProducerStateChecker partitionProducerStateChecker,
-		Executor executor, List<VertexId> upstreamVertices) {
+		Executor executor) {
 
 		this(jobInformation, taskInformation, executionAttemptID, slotAllocationId, subvertexId,
 			subtaskIndex, attemptNumber, resultPartitionDeploymentDescriptors,
@@ -365,7 +365,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 			taskManagerActions, inputSplitProvider, checkpointResponder,
 			blobService, libraryCache, fileCache, taskManagerConfig,
 			metricGroup, resultPartitionConsumableNotifier,
-			partitionProducerStateChecker, executor, false, upstreamVertices);
+			partitionProducerStateChecker, executor, false, null);
 	}
 
 	public Task(
