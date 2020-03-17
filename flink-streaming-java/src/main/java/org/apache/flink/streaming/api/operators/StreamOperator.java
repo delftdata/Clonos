@@ -151,10 +151,11 @@ public interface StreamOperator<OUT> extends CheckpointListener, KeyContext, Dis
 
 	/**
 	 * Adds an input record to the current lineage reduction.
+	 * Also resets the LineageAttachingOutput's counter.
 	 *
 	 * @param record the record to be added
 	 */
-	void addToLineage(StreamRecord<?> record);
+	void updateLineageWithNewInputRecord(StreamRecord<?> record);
 
 	/**
 	 * Returns the current lineage-based RecordID for the given key. If not keyed, then just general.

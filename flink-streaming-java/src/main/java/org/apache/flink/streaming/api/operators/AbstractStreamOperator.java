@@ -18,6 +18,9 @@
 
 package org.apache.flink.streaming.api.operators;
 
+import com.google.common.primitives.Ints;
+import org.apache.curator.shaded.com.google.common.hash.HashFunction;
+import org.apache.curator.shaded.com.google.common.hash.Hashing;
 import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.ExecutionConfig;
@@ -97,9 +100,11 @@ public abstract class AbstractStreamOperator<OUT>
 
 	protected transient StreamConfig config;
 
-	protected transient Output<StreamRecord<OUT>> output;
+	protected transient LineageAttachingOutput<OUT> output;
 
-	/** The runtime context for UDFs. */
+	/**
+	 * The runtime context for UDFs.
+	 */
 	private transient StreamingRuntimeContext runtimeContext;
 
 	// ---------------- key/value state ------------------
@@ -160,6 +165,7 @@ public abstract class AbstractStreamOperator<OUT>
 
 	private ListState<Tuple2<Integer, RecordID>> lineageState;
 
+
 	// ------------------------------------------------------------------------
 	//  Life Cycle
 	// ------------------------------------------------------------------------
@@ -171,7 +177,8 @@ public abstract class AbstractStreamOperator<OUT>
 		this.config = config;
 		try {
 			OperatorMetricGroup operatorMetricGroup = environment.getMetricGroup().addOperator(config.getOperatorID(), config.getOperatorName());
-			this.output = new CountingOutput(output, operatorMetricGroup.getIOMetricGroup().getNumRecordsOutCounter());
+			this.output = new LineageAttachingOutput<>(new CountingOutput(output, operatorMetricGroup.getIOMetricGroup().getNumRecordsOutCounter()), this);
+			;
 			if (config.isChainStart()) {
 				operatorMetricGroup.getIOMetricGroup().reuseInputMetricsForTask();
 			}
@@ -182,10 +189,9 @@ public abstract class AbstractStreamOperator<OUT>
 		} catch (Exception e) {
 			LOG.warn("An error occurred while instantiating task metrics.", e);
 			this.metrics = UnregisteredMetricGroups.createUnregisteredOperatorMetricGroup();
-			this.output = output;
+			this.output = new LineageAttachingOutput<OUT>(output, this);
 		}
 
-		this.output = new LineageAttachingOutput<>(this.output, this);
 		this.keyToLineage = new HashMap<>();
 		try {
 			Configuration taskManagerConfig = environment.getTaskManagerInfo().getConfiguration();
@@ -687,10 +693,15 @@ public abstract class AbstractStreamOperator<OUT>
 	public static class LineageAttachingOutput<OUT> implements Output<StreamRecord<OUT>> {
 		private final Output<StreamRecord<OUT>> output;
 		private final StreamOperator<OUT> container;
+		private int counter;
+		private byte[] baseID; // used in 1..n-m operations
+		private HashFunction hashFunction;
 
 		public LineageAttachingOutput(Output<StreamRecord<OUT>> output, StreamOperator<OUT> container) {
 			this.output = output;
 			this.container = container;
+			this.counter = 0;
+			this.hashFunction = Hashing.goodFastHash(32);
 		}
 
 
@@ -701,7 +712,17 @@ public abstract class AbstractStreamOperator<OUT>
 
 		@Override
 		public <X> void collect(OutputTag<X> outputTag, StreamRecord<X> record) {
-			record.setRecordID(container.getLineage());
+			if (counter != 0) {
+				//append and hash strategy.
+				//Probably super slow.
+				byte[] toHash = new byte[RecordID.NUMBER_OF_BYTES + Integer.BYTES];
+				System.arraycopy(baseID, 0, toHash, 0, 4);
+				System.arraycopy(Ints.toByteArray(counter), 0, toHash, RecordID.NUMBER_OF_BYTES, Integer.BYTES);
+				record.setRecordID(new RecordID(hashFunction.hashBytes(toHash).asBytes()));
+			} else {
+				baseID = container.getLineage().clone().getId();
+				record.setRecordID(container.getLineage());
+			}
 			output.collect(outputTag, record);
 		}
 
@@ -719,6 +740,10 @@ public abstract class AbstractStreamOperator<OUT>
 		@Override
 		public void close() {
 			output.close();
+		}
+
+		public void resetCounter() {
+			this.counter = 0;
 		}
 	}
 
@@ -853,7 +878,8 @@ public abstract class AbstractStreamOperator<OUT>
 	}
 
 	@Override
-	public void addToLineage(StreamRecord<?> record) {
+	public void updateLineageWithNewInputRecord(StreamRecord<?> record) {
+		this.output.resetCounter();
 		int key = keyedStateBackend == null ? 0 : keyedStateBackend.getCurrentKey().hashCode();
 		RecordID current = keyToLineage.get(key);
 		if (current == null)
