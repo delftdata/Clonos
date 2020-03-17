@@ -90,6 +90,10 @@ public class RecordID implements Comparable<RecordID>, Serializable {
 		return merger.merge(one, two);
 	}
 
+	public static RecordID mergeIntoFirst(RecordID one, RecordID two) {
+		return merger.mergeIntoFirst(one, two);
+	}
+
 	private interface RecordIDMergingOperation {
 		RecordID merge(RecordID one, RecordID two);
 

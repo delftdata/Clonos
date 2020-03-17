@@ -222,6 +222,7 @@ public class StreamInputProcessor<IN> {
 						if (!this.inputGate.testRecord(currentChannel, record.getRecordID().hashCode())) {
 							synchronized (lock) {
 								numRecordsIn.inc();
+								streamOperator.addToLineage(record);
 								streamOperator.setKeyContextElement1(record);
 								LOG.debug("{}: Process element no {}: {}.", taskName, numRecordsIn.getCount(), record);
 								streamOperator.processElement(record);

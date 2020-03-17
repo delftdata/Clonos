@@ -24,6 +24,7 @@ import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.state.CheckpointListener;
 import org.apache.flink.runtime.state.CheckpointStreamFactory;
 import org.apache.flink.streaming.api.graph.StreamConfig;
+import org.apache.flink.streaming.runtime.streamrecord.RecordID;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.tasks.StreamTask;
 import org.apache.flink.util.Disposable;
@@ -147,4 +148,19 @@ public interface StreamOperator<OUT> extends CheckpointListener, KeyContext, Dis
 	MetricGroup getMetricGroup();
 
 	OperatorID getOperatorID();
+
+	/**
+	 * Adds an input record to the current lineage reduction.
+	 *
+	 * @param record the record to be added
+	 */
+	void addToLineage(StreamRecord<?> record);
+
+	/**
+	 * Returns the current lineage-based RecordID for the given key. If not keyed, then just general.
+	 * Also resets the lineage state for that key.
+	 *
+	 * @return
+	 */
+	RecordID getLineage();
 }

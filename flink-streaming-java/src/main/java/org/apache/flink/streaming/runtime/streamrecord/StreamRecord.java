@@ -79,6 +79,10 @@ public final class StreamRecord<T> extends StreamElement {
 		return recordID;
 	}
 
+	public void setRecordID(RecordID recordID) {
+		this.recordID = recordID;
+	}
+
 	/**
 	 * Returns the timestamp associated with this stream value in milliseconds.
 	 */
