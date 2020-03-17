@@ -51,17 +51,27 @@ public final class StreamRecord<T> extends StreamElement {
 		this.value = value;
 	}
 
+	public StreamRecord(T value, RecordID recordID) {
+		this(value);
+		this.recordID = recordID;
+	}
+
 	/**
 	 * Creates a new StreamRecord wrapping the given value. The timestamp is set to the
 	 * given timestamp.
 	 *
-	 * @param value The value to wrap in this {@link StreamRecord}
+	 * @param value     The value to wrap in this {@link StreamRecord}
 	 * @param timestamp The timestamp in milliseconds
 	 */
 	public StreamRecord(T value, long timestamp) {
 		this.value = value;
 		this.timestamp = timestamp;
 		this.hasTimestamp = true;
+	}
+
+	public StreamRecord(T value, long timestamp, RecordID recordID) {
+		this(value, timestamp);
+		this.recordID = recordID;
 	}
 
 	// ------------------------------------------------------------------------
@@ -160,6 +170,7 @@ public final class StreamRecord<T> extends StreamElement {
 	 */
 	public StreamRecord<T> copy(T valueCopy) {
 		StreamRecord<T> copy = new StreamRecord<>(valueCopy);
+		copy.recordID = this.recordID.clone();
 		copy.timestamp = this.timestamp;
 		copy.hasTimestamp = this.hasTimestamp;
 		return copy;
@@ -173,6 +184,7 @@ public final class StreamRecord<T> extends StreamElement {
 		target.value = valueCopy;
 		target.timestamp = this.timestamp;
 		target.hasTimestamp = this.hasTimestamp;
+		target.recordID = this.recordID.clone();
 	}
 
 	// ------------------------------------------------------------------------
@@ -187,8 +199,9 @@ public final class StreamRecord<T> extends StreamElement {
 		else if (o != null && getClass() == o.getClass()) {
 			StreamRecord<?> that = (StreamRecord<?>) o;
 			return this.hasTimestamp == that.hasTimestamp &&
-					(!this.hasTimestamp || this.timestamp == that.timestamp) &&
-					(this.value == null ? that.value == null : this.value.equals(that.value));
+				this.recordID.equals(that.recordID) &&
+				(!this.hasTimestamp || this.timestamp == that.timestamp) &&
+				(this.value == null ? that.value == null : this.value.equals(that.value));
 		}
 		else {
 			return false;

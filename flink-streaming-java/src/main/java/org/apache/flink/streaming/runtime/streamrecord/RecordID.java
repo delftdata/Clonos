@@ -10,9 +10,9 @@ import java.util.Random;
 /**
  * The ID of a record in a Stream. Independent from AbstractID as these are fixed to a pair of longs
  */
-public class RecordID implements Comparable<RecordID>, Serializable {
+public class RecordID implements Comparable<RecordID>, Serializable, Cloneable {
 
-	private static final int NUMBER_OF_BYTES = 4; //32 bit
+	public static final int NUMBER_OF_BYTES = 4; //32 bit
 	private static final Random RND = new Random();
 	private static final RecordIDMergingOperation merger = new XORRecordIDMergingOperation();
 
@@ -92,6 +92,13 @@ public class RecordID implements Comparable<RecordID>, Serializable {
 
 	public static RecordID mergeIntoFirst(RecordID one, RecordID two) {
 		return merger.mergeIntoFirst(one, two);
+	}
+
+	@Override
+	public RecordID clone() {
+		byte[] copyBytes = new byte[NUMBER_OF_BYTES];
+		System.arraycopy(this.id, 0, copyBytes, 0, NUMBER_OF_BYTES);
+		return new RecordID(copyBytes);
 	}
 
 	private interface RecordIDMergingOperation {

@@ -19,22 +19,14 @@
 package org.apache.flink.streaming.runtime.streamrecord;
 
 import org.apache.flink.annotation.Internal;
-import org.apache.flink.api.common.typeutils.CompatibilityResult;
-import org.apache.flink.api.common.typeutils.CompatibilityUtil;
-import org.apache.flink.api.common.typeutils.CompositeTypeSerializerConfigSnapshot;
-import org.apache.flink.api.common.typeutils.TypeDeserializerAdapter;
-import org.apache.flink.api.common.typeutils.TypeSerializer;
-import org.apache.flink.api.common.typeutils.TypeSerializerConfigSnapshot;
-import org.apache.flink.api.common.typeutils.UnloadableDummyTypeSerializer;
+import org.apache.flink.api.common.typeutils.*;
 import org.apache.flink.api.java.tuple.Tuple2;
-import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataInputDeserializer;
+import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataOutputView;
-import org.apache.flink.core.memory.DataOutputSerializer;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatus;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -66,6 +58,8 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 
 
 	private final TypeSerializer<T> typeSerializer;
+
+	private final byte[] intermediateIdBuffer = new byte[RecordID.NUMBER_OF_BYTES];
 
 	public StreamElementSerializer(TypeSerializer<T> serializer) {
 		if (serializer instanceof StreamElementSerializer) {
@@ -150,9 +144,13 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 		if (tag == TAG_REC_WITH_TIMESTAMP) {
 			// move timestamp
 			target.writeLong(source.readLong());
+			source.read(intermediateIdBuffer);
+			target.write(intermediateIdBuffer);
 			typeSerializer.copy(source, target);
 		}
 		else if (tag == TAG_REC_WITHOUT_TIMESTAMP) {
+			source.read(intermediateIdBuffer);
+			target.write(intermediateIdBuffer);
 			typeSerializer.copy(source, target);
 		}
 		else if (tag == TAG_WATERMARK) {
@@ -181,6 +179,7 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 			} else {
 				target.write(TAG_REC_WITHOUT_TIMESTAMP);
 			}
+			target.write(record.getRecordID().getId());
 			typeSerializer.serialize(record.getValue(), target);
 		}
 		else if (value.isWatermark()) {
@@ -214,10 +213,14 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 		}
 		if (tag == TAG_REC_WITH_TIMESTAMP) {
 			long timestamp = source.readLong();
-			return new StreamRecord<T>(typeSerializer.deserialize(source), timestamp);
+			byte[] idBytes = new byte[RecordID.NUMBER_OF_BYTES];
+			source.read(idBytes);
+			return new StreamRecord<T>(typeSerializer.deserialize(source), timestamp, new RecordID(idBytes));
 		}
 		else if (tag == TAG_REC_WITHOUT_TIMESTAMP) {
-			return new StreamRecord<T>(typeSerializer.deserialize(source));
+			byte[] idBytes = new byte[RecordID.NUMBER_OF_BYTES];
+			source.read(idBytes);
+			return new StreamRecord<T>(typeSerializer.deserialize(source), new RecordID(idBytes));
 		}
 		else if (tag == TAG_WATERMARK) {
 			return new Watermark(source.readLong());
@@ -239,14 +242,16 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 		int tag = source.readByte();
 		if (tag == TAG_REC_WITH_TIMESTAMP) {
 			long timestamp = source.readLong();
-			T value = typeSerializer.deserialize(source);
 			StreamRecord<T> reuseRecord = reuse.asRecord();
+			source.read(reuseRecord.getRecordID().getId());
+			T value = typeSerializer.deserialize(source);
 			reuseRecord.replace(value, timestamp);
 			return reuseRecord;
 		}
 		else if (tag == TAG_REC_WITHOUT_TIMESTAMP) {
-			T value = typeSerializer.deserialize(source);
 			StreamRecord<T> reuseRecord = reuse.asRecord();
+			source.read(reuseRecord.getRecordID().getId());
+			T value = typeSerializer.deserialize(source);
 			reuseRecord.replace(value);
 			return reuseRecord;
 		}
