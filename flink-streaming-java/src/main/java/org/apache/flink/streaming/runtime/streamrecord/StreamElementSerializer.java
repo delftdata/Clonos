@@ -144,13 +144,11 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 		if (tag == TAG_REC_WITH_TIMESTAMP) {
 			// move timestamp
 			target.writeLong(source.readLong());
-			source.read(intermediateIdBuffer);
-			target.write(intermediateIdBuffer);
+			target.write(source, RecordID.NUMBER_OF_BYTES);
 			typeSerializer.copy(source, target);
 		}
 		else if (tag == TAG_REC_WITHOUT_TIMESTAMP) {
-			source.read(intermediateIdBuffer);
-			target.write(intermediateIdBuffer);
+			target.write(source, RecordID.NUMBER_OF_BYTES);
 			typeSerializer.copy(source, target);
 		}
 		else if (tag == TAG_WATERMARK) {
