@@ -41,7 +41,6 @@ import org.apache.flink.runtime.plugable.NonReusingDeserializationDelegate;
 import org.apache.flink.streaming.api.CheckpointingMode;
 import org.apache.flink.streaming.api.operators.TwoInputStreamOperator;
 import org.apache.flink.streaming.api.watermark.Watermark;
-import org.apache.flink.streaming.runtime.io.RecordWriterOutput;
 import org.apache.flink.streaming.runtime.metrics.WatermarkGauge;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElementSerializer;
@@ -50,7 +49,6 @@ import org.apache.flink.streaming.runtime.streamstatus.StatusWatermarkValve;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatus;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatusMaintainer;
 import org.apache.flink.streaming.runtime.tasks.TwoInputStreamTask;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -80,6 +78,7 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 	private static final Logger LOG = LoggerFactory.getLogger(StreamTwoInputProcessor.class);
 
 	private final RecordDeserializer<DeserializationDelegate<StreamElement>>[] recordDeserializers;
+	private final InputGate inputGate;
 
 	private RecordDeserializer<DeserializationDelegate<StreamElement>> currentRecordDeserializer;
 
@@ -150,7 +149,7 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 			WatermarkGauge input2WatermarkGauge,
 			RecordWriterOutput<?>[] recordWriterOutputs) throws IOException {
 
-		final InputGate inputGate = InputGateUtil.createInputGate(inputGates1, inputGates2);
+		this.inputGate = InputGateUtil.createInputGate(inputGates1, inputGates2);
 
 		if (inputGate instanceof SingleInputGate) {
 			this.taskName = ((SingleInputGate) inputGate).getTaskName();
@@ -251,11 +250,14 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 						}
 						else {
 							StreamRecord<IN1> record = recordOrWatermark.asRecord();
-							synchronized (lock) {
-								numRecordsIn.inc();
-								streamOperator.setKeyContextElement1(record);
-								LOG.debug("{}: Process element no {}: {}.", taskName, numRecordsIn.getCount(), record);
-								streamOperator.processElement1(record);
+							if (!this.inputGate.testRecord(currentChannel, record.getRecordID().hashCode())) {
+								synchronized (lock) {
+									numRecordsIn.inc();
+									streamOperator.notifyInputRecord(record);
+									streamOperator.setKeyContextElement1(record);
+									LOG.debug("{}: Process element no {}: {}.", taskName, numRecordsIn.getCount(), record);
+									streamOperator.processElement1(record);
+								}
 							}
 							return true;
 
@@ -279,11 +281,14 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 						}
 						else {
 							StreamRecord<IN2> record = recordOrWatermark.asRecord();
-							synchronized (lock) {
-								numRecordsIn.inc();
-								streamOperator.setKeyContextElement2(record);
-								LOG.debug("{}: Process element no {}: {}.", taskName, numRecordsIn.getCount(), record);
-								streamOperator.processElement2(record);
+							if (!this.inputGate.testRecord(currentChannel, record.getRecordID().hashCode())) {
+								synchronized (lock) {
+									numRecordsIn.inc();
+									streamOperator.notifyInputRecord(record);
+									streamOperator.setKeyContextElement2(record);
+									LOG.debug("{}: Process element no {}: {}.", taskName, numRecordsIn.getCount(), record);
+									streamOperator.processElement2(record);
+								}
 							}
 							return true;
 						}
