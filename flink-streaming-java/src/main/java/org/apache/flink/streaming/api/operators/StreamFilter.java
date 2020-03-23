@@ -19,6 +19,8 @@ package org.apache.flink.streaming.api.operators;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.functions.FilterFunction;
+import org.apache.flink.streaming.api.operators.lineage.LineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.OneToOneLineageAttachingOutput;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
 /**
@@ -39,5 +41,10 @@ public class StreamFilter<IN> extends AbstractUdfStreamOperator<IN, FilterFuncti
 		if (userFunction.filter(element.getValue())) {
 			output.collect(element);
 		}
+	}
+
+	@Override
+	public LineageAttachingOutput<IN> wrapInLineageAttachingOutput(Output<StreamRecord<IN>> output) {
+		return new OneToOneLineageAttachingOutput<>(output);
 	}
 }

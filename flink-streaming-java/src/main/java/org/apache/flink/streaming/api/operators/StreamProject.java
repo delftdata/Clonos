@@ -20,6 +20,8 @@ package org.apache.flink.streaming.api.operators;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.java.tuple.Tuple;
+import org.apache.flink.streaming.api.operators.lineage.LineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.OneToOneLineageAttachingOutput;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
 /**
@@ -58,5 +60,10 @@ public class StreamProject<IN, OUT extends Tuple>
 	public void open() throws Exception {
 		super.open();
 		outTuple = outSerializer.createInstance();
+	}
+
+	@Override
+	public LineageAttachingOutput<OUT> wrapInLineageAttachingOutput(Output<StreamRecord<OUT>> output) {
+		return new OneToOneLineageAttachingOutput<>(output);
 	}
 }

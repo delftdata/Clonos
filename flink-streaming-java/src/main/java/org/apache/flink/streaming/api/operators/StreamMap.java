@@ -19,6 +19,8 @@ package org.apache.flink.streaming.api.operators;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.functions.MapFunction;
+import org.apache.flink.streaming.api.operators.lineage.LineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.OneToOneLineageAttachingOutput;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
 /**
@@ -39,5 +41,10 @@ public class StreamMap<IN, OUT>
 	@Override
 	public void processElement(StreamRecord<IN> element) throws Exception {
 		output.collect(element.replace(userFunction.map(element.getValue())));
+	}
+
+	@Override
+	public LineageAttachingOutput<OUT> wrapInLineageAttachingOutput(Output<StreamRecord<OUT>> output) {
+		return new OneToOneLineageAttachingOutput<>(output);
 	}
 }

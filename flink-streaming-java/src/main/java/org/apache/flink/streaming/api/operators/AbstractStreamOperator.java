@@ -18,18 +18,14 @@
 
 package org.apache.flink.streaming.api.operators;
 
-import com.google.common.primitives.Ints;
-import org.apache.curator.shaded.com.google.common.hash.HashFunction;
-import org.apache.curator.shaded.com.google.common.hash.Hashing;
 import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.ExecutionConfig;
-import org.apache.flink.api.common.state.*;
-import org.apache.flink.api.common.typeinfo.TypeHint;
-import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.api.common.state.KeyedStateStore;
+import org.apache.flink.api.common.state.State;
+import org.apache.flink.api.common.state.StateDescriptor;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.java.functions.KeySelector;
-import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.MetricOptions;
 import org.apache.flink.core.fs.CloseableRegistry;
@@ -44,9 +40,10 @@ import org.apache.flink.runtime.metrics.groups.TaskManagerJobMetricGroup;
 import org.apache.flink.runtime.metrics.groups.UnregisteredMetricGroups;
 import org.apache.flink.runtime.state.*;
 import org.apache.flink.streaming.api.graph.StreamConfig;
+import org.apache.flink.streaming.api.operators.lineage.LineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.MockLineageAttachingOutput;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamrecord.LatencyMarker;
-import org.apache.flink.streaming.runtime.streamrecord.RecordID;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeService;
 import org.apache.flink.streaming.runtime.tasks.StreamTask;
@@ -57,8 +54,6 @@ import org.slf4j.LoggerFactory;
 
 import java.io.Closeable;
 import java.io.Serializable;
-import java.util.HashMap;
-import java.util.Map;
 
 /**
  * Base class for all stream operators. Operators that contain a user function should extend the class
@@ -84,7 +79,6 @@ public abstract class AbstractStreamOperator<OUT>
 	 * The logger used by the operator class and its subclasses.
 	 */
 	protected static final Logger LOG = LoggerFactory.getLogger(AbstractStreamOperator.class);
-	public static final String LINEAGE_INFO_NAME = "__LINEAGE_INFO__";
 
 	// ----------- configuration properties -------------
 
@@ -155,15 +149,6 @@ public abstract class AbstractStreamOperator<OUT>
 	private long input1Watermark = Long.MIN_VALUE;
 	private long input2Watermark = Long.MIN_VALUE;
 
-	//---------------------------- Lineage ---------------------------------
-
-	// Integer is used because type of key is not known. Thus Object.hashcode() is passed,
-	// If not keyed operator, key "0" is used for all lineage.
-	// todo windows are weird. If tumbling just reduce Ids, but if slinding can remerge old ids to remove them and merge new ids
-	// todo This should be checkpointed and restored to ensure correctness
-	private Map<Integer, RecordID> keyToLineage;
-
-	private ListState<Tuple2<Integer, RecordID>> lineageState;
 
 
 	// ------------------------------------------------------------------------
@@ -175,10 +160,11 @@ public abstract class AbstractStreamOperator<OUT>
 		final Environment environment = containingTask.getEnvironment();
 		this.container = containingTask;
 		this.config = config;
+		Output<StreamRecord<OUT>> outputToWrap;
 		try {
 			OperatorMetricGroup operatorMetricGroup = environment.getMetricGroup().addOperator(config.getOperatorID(), config.getOperatorName());
-			this.output = new LineageAttachingOutput<>(new CountingOutput(output, operatorMetricGroup.getIOMetricGroup().getNumRecordsOutCounter()), this);
-			;
+			outputToWrap = new CountingOutput(output, operatorMetricGroup.getIOMetricGroup().getNumRecordsOutCounter());
+
 			if (config.isChainStart()) {
 				operatorMetricGroup.getIOMetricGroup().reuseInputMetricsForTask();
 			}
@@ -189,10 +175,10 @@ public abstract class AbstractStreamOperator<OUT>
 		} catch (Exception e) {
 			LOG.warn("An error occurred while instantiating task metrics.", e);
 			this.metrics = UnregisteredMetricGroups.createUnregisteredOperatorMetricGroup();
-			this.output = new LineageAttachingOutput<OUT>(output, this);
+			outputToWrap = output;
 		}
+		this.output = wrapInLineageAttachingOutput(outputToWrap);
 
-		this.keyToLineage = new HashMap<>();
 		try {
 			Configuration taskManagerConfig = environment.getTaskManagerInfo().getConfiguration();
 			int historySize = taskManagerConfig.getInteger(MetricOptions.LATENCY_HISTORY_SIZE);
@@ -269,15 +255,9 @@ public abstract class AbstractStreamOperator<OUT>
 				keyedStateInputs, // access to keyed state stream
 				operatorStateInputs); // access to operator state stream
 
+			this.output.initializeState(initializationContext);
 			initializeState(initializationContext);
-			//Do this here so all operators do it
-			this.lineageState = initializationContext.getOperatorStateStore().getListState(new ListStateDescriptor<Tuple2<Integer, RecordID>>(LINEAGE_INFO_NAME, TypeInformation.of(new TypeHint<Tuple2<Integer, RecordID>>() {
-			})));
-			if (context.isRestored()) {
-				for (Tuple2<Integer, RecordID> t : lineageState.get()) {
-					this.keyToLineage.put(t.f0, t.f1);
-				}
-			}
+
 		} finally {
 			closeFromRegistry(operatorStateInputs, streamTaskCloseableRegistry);
 			closeFromRegistry(keyedStateInputs, streamTaskCloseableRegistry);
@@ -394,10 +374,8 @@ public abstract class AbstractStreamOperator<OUT>
 				keyGroupRange,
 				getContainingTask().getCancelables())) {
 
+			this.output.snapshotState(snapshotContext);
 			snapshotState(snapshotContext);
-			this.lineageState.clear();
-			for (Map.Entry<Integer, RecordID> entry : keyToLineage.entrySet())
-				lineageState.add(new Tuple2<>(entry.getKey(), entry.getValue()));
 
 			snapshotInProgress.setKeyedStateRawFuture(snapshotContext.getKeyedStateStreamFuture());
 			snapshotInProgress.setOperatorStateRawFuture(snapshotContext.getOperatorStateStreamFuture());
@@ -690,62 +668,7 @@ public abstract class AbstractStreamOperator<OUT>
 
 	// ----------------------- Helper classes -----------------------
 
-	public static class LineageAttachingOutput<OUT> implements Output<StreamRecord<OUT>> {
-		private final Output<StreamRecord<OUT>> output;
-		private final StreamOperator<OUT> container;
-		private int counter;
-		private byte[] baseID; // used in 1..n-m operations
-		private HashFunction hashFunction;
 
-		public LineageAttachingOutput(Output<StreamRecord<OUT>> output, StreamOperator<OUT> container) {
-			this.output = output;
-			this.container = container;
-			this.counter = 0;
-			this.hashFunction = Hashing.goodFastHash(32);
-		}
-
-
-		@Override
-		public void emitWatermark(Watermark mark) {
-			output.emitWatermark(mark);
-		}
-
-		@Override
-		public <X> void collect(OutputTag<X> outputTag, StreamRecord<X> record) {
-			if (counter != 0) {
-				//append and hash strategy.
-				//Probably super slow.
-				byte[] toHash = new byte[RecordID.NUMBER_OF_BYTES + Integer.BYTES];
-				System.arraycopy(baseID, 0, toHash, 0, 4);
-				System.arraycopy(Ints.toByteArray(counter), 0, toHash, RecordID.NUMBER_OF_BYTES, Integer.BYTES);
-				record.setRecordID(new RecordID(hashFunction.hashBytes(toHash).asBytes()));
-			} else {
-				baseID = container.getLineage().clone().getId();
-				record.setRecordID(container.getLineage());
-			}
-			output.collect(outputTag, record);
-		}
-
-		@Override
-		public void emitLatencyMarker(LatencyMarker latencyMarker) {
-			output.emitLatencyMarker(latencyMarker);
-		}
-
-		@Override
-		public void collect(StreamRecord<OUT> record) {
-			record.setRecordID(container.getLineage());
-			output.collect(record);
-		}
-
-		@Override
-		public void close() {
-			output.close();
-		}
-
-		public void resetCounter() {
-			this.counter = 0;
-		}
-	}
 
 	/**
 	 * Wrapping {@link Output} that updates metrics on the number of emitted elements.
@@ -877,21 +800,11 @@ public abstract class AbstractStreamOperator<OUT>
 			timeServiceManager.numEventTimeTimers();
 	}
 
-	@Override
-	public void updateLineageWithNewInputRecord(StreamRecord<?> record) {
-		this.output.resetCounter();
-		int key = keyedStateBackend == null ? 0 : keyedStateBackend.getCurrentKey().hashCode();
-		RecordID current = keyToLineage.get(key);
-		if (current == null)
-			keyToLineage.put(key, new RecordID(record.getRecordID().getId()));
-		else
-			RecordID.mergeIntoFirst(current, record.getRecordID());
-
+	public void notifyInputRecord(StreamRecord<?> record) {
+		this.output.notifyInputRecord(record);
 	}
 
-	@Override
-	public RecordID getLineage() {
-		int key = keyedStateBackend == null ? 0 : keyedStateBackend.getCurrentKey().hashCode();
-		return keyToLineage.remove(key);
+	public LineageAttachingOutput<OUT> wrapInLineageAttachingOutput(Output<StreamRecord<OUT>> output) {
+		return new MockLineageAttachingOutput<>(output);
 	}
 }

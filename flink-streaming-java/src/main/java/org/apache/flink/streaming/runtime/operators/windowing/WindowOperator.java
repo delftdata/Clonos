@@ -21,23 +21,7 @@ package org.apache.flink.streaming.runtime.operators.windowing;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.ExecutionConfig;
-import org.apache.flink.api.common.state.AggregatingState;
-import org.apache.flink.api.common.state.AggregatingStateDescriptor;
-import org.apache.flink.api.common.state.AppendingState;
-import org.apache.flink.api.common.state.FoldingState;
-import org.apache.flink.api.common.state.FoldingStateDescriptor;
-import org.apache.flink.api.common.state.KeyedStateStore;
-import org.apache.flink.api.common.state.ListState;
-import org.apache.flink.api.common.state.ListStateDescriptor;
-import org.apache.flink.api.common.state.MapState;
-import org.apache.flink.api.common.state.MapStateDescriptor;
-import org.apache.flink.api.common.state.MergingState;
-import org.apache.flink.api.common.state.ReducingState;
-import org.apache.flink.api.common.state.ReducingStateDescriptor;
-import org.apache.flink.api.common.state.State;
-import org.apache.flink.api.common.state.StateDescriptor;
-import org.apache.flink.api.common.state.ValueState;
-import org.apache.flink.api.common.state.ValueStateDescriptor;
+import org.apache.flink.api.common.state.*;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.java.functions.KeySelector;
@@ -53,13 +37,10 @@ import org.apache.flink.runtime.state.VoidNamespaceSerializer;
 import org.apache.flink.runtime.state.internal.InternalAppendingState;
 import org.apache.flink.runtime.state.internal.InternalListState;
 import org.apache.flink.runtime.state.internal.InternalMergingState;
-import org.apache.flink.streaming.api.operators.AbstractUdfStreamOperator;
-import org.apache.flink.streaming.api.operators.ChainingStrategy;
-import org.apache.flink.streaming.api.operators.InternalTimer;
-import org.apache.flink.streaming.api.operators.InternalTimerService;
-import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
-import org.apache.flink.streaming.api.operators.TimestampedCollector;
-import org.apache.flink.streaming.api.operators.Triggerable;
+import org.apache.flink.streaming.api.operators.*;
+import org.apache.flink.streaming.api.operators.lineage.LineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.NonMergingWindowLineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.WindowLineageAttachingOutput;
 import org.apache.flink.streaming.api.windowing.assigners.BaseAlignedWindowAssigner;
 import org.apache.flink.streaming.api.windowing.assigners.MergingWindowAssigner;
 import org.apache.flink.streaming.api.windowing.assigners.WindowAssigner;
@@ -164,6 +145,7 @@ public class WindowOperator<K, IN, ACC, OUT, W extends Window>
 	 */
 	protected transient TimestampedCollector<OUT> timestampedCollector;
 
+
 	protected transient Context triggerContext = new Context(null, null);
 
 	protected transient WindowContext processContext;
@@ -176,19 +158,22 @@ public class WindowOperator<K, IN, ACC, OUT, W extends Window>
 
 	protected transient InternalTimerService<W> internalTimerService;
 
+	protected transient WindowLineageAttachingOutput<K, W, OUT> windowOutput;
+
+
 	/**
 	 * Creates a new {@code WindowOperator} based on the given policies and user functions.
 	 */
 	public WindowOperator(
-			WindowAssigner<? super IN, W> windowAssigner,
-			TypeSerializer<W> windowSerializer,
-			KeySelector<IN, K> keySelector,
-			TypeSerializer<K> keySerializer,
-			StateDescriptor<? extends AppendingState<IN, ACC>, ?> windowStateDescriptor,
-			InternalWindowFunction<ACC, OUT, K, W> windowFunction,
-			Trigger<? super IN, ? super W> trigger,
-			long allowedLateness,
-			OutputTag<IN> lateDataOutputTag) {
+		WindowAssigner<? super IN, W> windowAssigner,
+		TypeSerializer<W> windowSerializer,
+		KeySelector<IN, K> keySelector,
+		TypeSerializer<K> keySerializer,
+		StateDescriptor<? extends AppendingState<IN, ACC>, ?> windowStateDescriptor,
+		InternalWindowFunction<ACC, OUT, K, W> windowFunction,
+		Trigger<? super IN, ? super W> trigger,
+		long allowedLateness,
+		OutputTag<IN> lateDataOutputTag) {
 
 		super(windowFunction);
 
@@ -291,19 +276,32 @@ public class WindowOperator<K, IN, ACC, OUT, W extends Window>
 	}
 
 	@Override
+	public LineageAttachingOutput<OUT> wrapInLineageAttachingOutput(Output<StreamRecord<OUT>> output) {
+		if (this.windowAssigner instanceof MergingWindowAssigner) {
+			this.windowOutput = new NonMergingWindowLineageAttachingOutput<>(output); //todo update to proper MergingWindowLineageAttachingOutput
+		} else {
+			this.windowOutput = new NonMergingWindowLineageAttachingOutput<>(output);
+		}
+		return this.windowOutput;
+	}
+
+	@Override
 	public void processElement(StreamRecord<IN> element) throws Exception {
 		final Collection<W> elementWindows = windowAssigner.assignWindows(
 			element.getValue(), element.getTimestamp(), windowAssignerContext);
+
+		this.windowOutput.notifyAssignedWindows(elementWindows);
 
 		//if element is handled by none of assigned elementWindows
 		boolean isSkippedElement = true;
 
 		final K key = this.<K>getKeyedStateBackend().getCurrentKey();
+		this.windowOutput.setCurrentKey(key);
 
 		if (windowAssigner instanceof MergingWindowAssigner) {
 			MergingWindowSet<W> mergingWindows = getMergingWindowSet();
 
-			for (W window: elementWindows) {
+			for (W window : elementWindows) {
 
 				// adding the new window might result in a merge, in that case the actualWindow
 				// is the merged window and we work with that. If we don't merge then
@@ -311,8 +309,8 @@ public class WindowOperator<K, IN, ACC, OUT, W extends Window>
 				W actualWindow = mergingWindows.addWindow(window, new MergingWindowSet.MergeFunction<W>() {
 					@Override
 					public void merge(W mergeResult,
-							Collection<W> mergedWindows, W stateWindowResult,
-							Collection<W> mergedStateWindows) throws Exception {
+									  Collection<W> mergedWindows, W stateWindowResult,
+									  Collection<W> mergedStateWindows) throws Exception {
 
 						if ((windowAssigner.isEventTime() && mergeResult.maxTimestamp() + allowedLateness <= internalTimerService.currentWatermark())) {
 							throw new UnsupportedOperationException("The end timestamp of an " +
@@ -380,6 +378,7 @@ public class WindowOperator<K, IN, ACC, OUT, W extends Window>
 			mergingWindows.persist();
 		} else {
 			for (W window: elementWindows) {
+				this.windowOutput.setCurrentWindow(window);
 
 				// drop if the window is already late
 				if (isWindowLate(window)) {
@@ -404,6 +403,7 @@ public class WindowOperator<K, IN, ACC, OUT, W extends Window>
 				}
 
 				if (triggerResult.isPurge()) {
+					this.windowOutput.notifyPurgedWindow();
 					windowState.clear();
 				}
 				registerCleanupTimer(window);
@@ -426,7 +426,9 @@ public class WindowOperator<K, IN, ACC, OUT, W extends Window>
 	@Override
 	public void onEventTime(InternalTimer<K, W> timer) throws Exception {
 		triggerContext.key = timer.getKey();
+		this.windowOutput.setCurrentKey(triggerContext.key);
 		triggerContext.window = timer.getNamespace();
+		this.windowOutput.setCurrentWindow(triggerContext.window);
 
 		MergingWindowSet<W> mergingWindows;
 
@@ -456,6 +458,7 @@ public class WindowOperator<K, IN, ACC, OUT, W extends Window>
 		}
 
 		if (triggerResult.isPurge()) {
+			this.windowOutput.notifyPurgedWindow();
 			windowState.clear();
 		}
 
@@ -472,7 +475,9 @@ public class WindowOperator<K, IN, ACC, OUT, W extends Window>
 	@Override
 	public void onProcessingTime(InternalTimer<K, W> timer) throws Exception {
 		triggerContext.key = timer.getKey();
+		this.windowOutput.setCurrentKey(triggerContext.key);
 		triggerContext.window = timer.getNamespace();
+		this.windowOutput.setCurrentWindow(triggerContext.window);
 
 		MergingWindowSet<W> mergingWindows;
 
@@ -502,6 +507,7 @@ public class WindowOperator<K, IN, ACC, OUT, W extends Window>
 		}
 
 		if (triggerResult.isPurge()) {
+			this.windowOutput.notifyPurgedWindow();
 			windowState.clear();
 		}
 

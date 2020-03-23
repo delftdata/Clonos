@@ -219,10 +219,12 @@ public class StreamInputProcessor<IN> {
 					} else {
 						// now we can do the actual processing
 						StreamRecord<IN> record = recordOrMark.asRecord();
+						// Deduplicate
 						if (!this.inputGate.testRecord(currentChannel, record.getRecordID().hashCode())) {
 							synchronized (lock) {
 								numRecordsIn.inc();
-								streamOperator.updateLineageWithNewInputRecord(record);
+								//Add to lineage
+								streamOperator.notifyInputRecord(record);
 								streamOperator.setKeyContextElement1(record);
 								LOG.debug("{}: Process element no {}: {}.", taskName, numRecordsIn.getCount(), record);
 								streamOperator.processElement(record);

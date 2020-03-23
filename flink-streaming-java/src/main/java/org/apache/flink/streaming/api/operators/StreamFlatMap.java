@@ -19,6 +19,8 @@ package org.apache.flink.streaming.api.operators;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.functions.FlatMapFunction;
+import org.apache.flink.streaming.api.operators.lineage.LineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.OneToNLineageAttachingOutput;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
 /**
@@ -42,6 +44,11 @@ public class StreamFlatMap<IN, OUT>
 	public void open() throws Exception {
 		super.open();
 		collector = new TimestampedCollector<>(output);
+	}
+
+	@Override
+	public LineageAttachingOutput<OUT> wrapInLineageAttachingOutput(Output<StreamRecord<OUT>> output) {
+		return new OneToNLineageAttachingOutput<>(output);
 	}
 
 	@Override
