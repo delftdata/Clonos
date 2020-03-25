@@ -21,6 +21,8 @@ import org.apache.flink.runtime.state.StateSnapshotContext;
 import org.apache.flink.streaming.api.operators.Output;
 import org.apache.flink.streaming.runtime.streamrecord.RecordID;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 /**
@@ -30,6 +32,8 @@ import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
  */
 public class OneToOneLineageAttachingOutput<OUT> extends AbstractLineageAttachingOutput<OUT> {
 
+	private static final Logger LOG = LoggerFactory.getLogger(OneToOneLineageAttachingOutput.class);
+
 	private RecordID toOutput;
 
 	public OneToOneLineageAttachingOutput(Output<StreamRecord<OUT>> outputToWrap) {
@@ -38,6 +42,7 @@ public class OneToOneLineageAttachingOutput<OUT> extends AbstractLineageAttachin
 
 	@Override
 	public void notifyInputRecord(StreamRecord<?> input) {
+		LOG.debug("Received input record with ID: {}", input.getRecordID());
 		//Avoid cloning as it wont be changed. Possibly dont even have to attach it, if the same StreamRecord instance is used.
 		toOutput = input.getRecordID();
 	}

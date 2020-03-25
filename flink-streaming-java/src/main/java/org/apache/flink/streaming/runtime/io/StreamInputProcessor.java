@@ -220,6 +220,7 @@ public class StreamInputProcessor<IN> {
 						// now we can do the actual processing
 						StreamRecord<IN> record = recordOrMark.asRecord();
 						// Deduplicate
+						LOG.debug("Testing record with recordID {}, with hascode {}", record.getRecordID(), record.getRecordID().hashCode());
 						if (!this.inputGate.haveSeenRecordBefore(currentChannel, record.getRecordID().hashCode())) {
 							synchronized (lock) {
 								numRecordsIn.inc();

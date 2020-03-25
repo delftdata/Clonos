@@ -20,6 +20,8 @@ import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.streaming.api.operators.Output;
 import org.apache.flink.streaming.runtime.streamrecord.RecordID;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * @param <K>
@@ -27,6 +29,7 @@ import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
  * @param <OUT>
  */
 public class NonMergingWindowLineageAttachingOutput<K, W, OUT> extends AbstractWindowLineageAttachingOutput<K, W, OUT> {
+
 
 
 	public NonMergingWindowLineageAttachingOutput(Output<StreamRecord<OUT>> outputToWrap) {

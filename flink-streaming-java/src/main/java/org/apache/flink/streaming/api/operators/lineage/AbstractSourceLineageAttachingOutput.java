@@ -66,7 +66,7 @@ public abstract class AbstractSourceLineageAttachingOutput<K, OUT> extends Abstr
 		RecordID toReturn = new RecordID();
 		Integer currentNumRecordsEmitted = this.numRecordsEmitted.get(currentKey);
 		hashFunction.hashInt(this.currentKeyHash + currentNumRecordsEmitted).writeBytesTo(toReturn.getId(), 0, RecordID.NUMBER_OF_BYTES);
-		currentNumRecordsEmitted++;
+		this.numRecordsEmitted.put(currentKey, currentNumRecordsEmitted+1);
 		return toReturn;
 	}
 

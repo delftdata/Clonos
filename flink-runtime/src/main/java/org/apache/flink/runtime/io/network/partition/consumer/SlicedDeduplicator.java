@@ -20,11 +20,16 @@ import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.core.memory.MemorySegmentFactory;
 import org.apache.flink.runtime.operators.util.BloomFilter;
 import org.apache.flink.runtime.state.CheckpointListener;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.SortedMap;
 import java.util.TreeMap;
 
 public class SlicedDeduplicator implements CheckpointListener {
+
+
+	private static final Logger LOG = LoggerFactory.getLogger(SlicedDeduplicator.class);
 
 	private SortedMap<Long, BloomFilter> checkpointIdToFilter;
 	private SortedMap<Long, MemorySegment> checkpointIdToMemorySegment;
@@ -52,11 +57,16 @@ public class SlicedDeduplicator implements CheckpointListener {
 	}
 
 	public boolean testRecord(int hash) {
+		LOG.debug("Testing hash: {}", hash);
 		boolean found = false;
 		for (BloomFilter f : checkpointIdToFilter.values())
 			found |= f.testHash(hash);
-		if (!found)
+		if (!found) {
 			this.checkpointIdToFilter.get(this.currentCheckpoint).addHash(hash);
+			LOG.debug(" Have never seen record before");
+		}else {
+			LOG.debug(" Have seen record before. Deduplicating");
+		}
 		return found;
 	}
 

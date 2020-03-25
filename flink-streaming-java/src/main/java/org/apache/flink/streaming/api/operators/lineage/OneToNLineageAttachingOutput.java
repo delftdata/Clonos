@@ -18,11 +18,15 @@ package org.apache.flink.streaming.api.operators.lineage;
 
 import org.apache.flink.runtime.state.StateInitializationContext;
 import org.apache.flink.runtime.state.StateSnapshotContext;
+import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
 import org.apache.flink.streaming.api.operators.Output;
 import org.apache.flink.streaming.runtime.streamrecord.RecordID;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class OneToNLineageAttachingOutput<OUT> extends AbstractLineageAttachingOutput<OUT> {
+
 
 	private int counter;
 	private RecordID inputBase;

@@ -26,8 +26,12 @@ import org.apache.flink.streaming.runtime.streamrecord.LatencyMarker;
 import org.apache.flink.streaming.runtime.streamrecord.RecordID;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.util.OutputTag;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public abstract class AbstractLineageAttachingOutput<OUT> implements LineageAttachingOutput<OUT> {
+
+	private static final Logger LOG = LoggerFactory.getLogger(OneToOneLineageAttachingOutput.class);
 
 	protected Output<StreamRecord<OUT>> outputToWrap;
 
@@ -54,6 +58,7 @@ public abstract class AbstractLineageAttachingOutput<OUT> implements LineageAtta
 	@Override
 	public <X> void collect(OutputTag<X> outputTag, StreamRecord<X> record) {
 		record.setRecordID(getRecordIDForNextOutputRecord());
+		LOG.debug("Emitting Record with RecordID: {}", record.getRecordID());
 		outputToWrap.collect(outputTag, record);
 	}
 
@@ -61,6 +66,7 @@ public abstract class AbstractLineageAttachingOutput<OUT> implements LineageAtta
 	@Override
 	public void collect(StreamRecord<OUT> record) {
 		record.setRecordID(getRecordIDForNextOutputRecord());
+		LOG.debug("Emitting Record with RecordID: {}", record.getRecordID());
 		outputToWrap.collect(record);
 	}
 
