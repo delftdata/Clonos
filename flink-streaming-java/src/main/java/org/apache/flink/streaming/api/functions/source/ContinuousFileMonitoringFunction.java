@@ -32,6 +32,11 @@ import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.state.FunctionInitializationContext;
 import org.apache.flink.runtime.state.FunctionSnapshotContext;
 import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction;
+import org.apache.flink.streaming.api.operators.Output;
+import org.apache.flink.streaming.api.operators.lineage.LineageWrapperProvidingFunction;
+import org.apache.flink.streaming.api.operators.lineage.DefaultSourceLineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.SourceLineageAttachingOutput;
+import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.util.Preconditions;
 
 import org.slf4j.Logger;
@@ -65,7 +70,7 @@ import java.util.TreeMap;
  */
 @Internal
 public class ContinuousFileMonitoringFunction<OUT>
-	extends RichSourceFunction<TimestampedFileInputSplit> implements CheckpointedFunction {
+	extends RichSourceFunction<TimestampedFileInputSplit> implements CheckpointedFunction, LineageWrapperProvidingFunction<String, TimestampedFileInputSplit> {
 
 	private static final long serialVersionUID = 1L;
 
@@ -365,6 +370,13 @@ public class ContinuousFileMonitoringFunction<OUT>
 			globalModificationTime = Long.MAX_VALUE;
 			isRunning = false;
 		}
+	}
+
+	@Override
+	public SourceLineageAttachingOutput<String,TimestampedFileInputSplit> wrapInSourceLineageAttachingOutput(Output<StreamRecord<TimestampedFileInputSplit>> output) {
+		SourceLineageAttachingOutput<String, TimestampedFileInputSplit> indexBasedSourceLineageAttachingOutput = new DefaultSourceLineageAttachingOutput<>(output);
+		indexBasedSourceLineageAttachingOutput.setKey(path);
+		return indexBasedSourceLineageAttachingOutput;
 	}
 
 	//	---------------------			Checkpointing			--------------------------

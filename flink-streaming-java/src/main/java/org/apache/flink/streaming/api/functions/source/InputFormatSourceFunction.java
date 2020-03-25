@@ -27,7 +27,12 @@ import org.apache.flink.core.io.InputSplit;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.runtime.jobgraph.tasks.InputSplitProvider;
 import org.apache.flink.runtime.jobgraph.tasks.InputSplitProviderException;
+import org.apache.flink.streaming.api.operators.Output;
 import org.apache.flink.streaming.api.operators.StreamingRuntimeContext;
+import org.apache.flink.streaming.api.operators.lineage.LineageWrapperProvidingFunction;
+import org.apache.flink.streaming.api.operators.lineage.DefaultSourceLineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.SourceLineageAttachingOutput;
+import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
 import java.util.Iterator;
 import java.util.NoSuchElementException;
@@ -36,7 +41,7 @@ import java.util.NoSuchElementException;
  * A {@link SourceFunction} that reads data using an {@link InputFormat}.
  */
 @Internal
-public class InputFormatSourceFunction<OUT> extends RichParallelSourceFunction<OUT> {
+public class InputFormatSourceFunction<OUT> extends RichParallelSourceFunction<OUT> implements LineageWrapperProvidingFunction<Integer, OUT> {
 	private static final long serialVersionUID = 1L;
 
 	private TypeInformation<OUT> typeInfo;
@@ -114,6 +119,13 @@ public class InputFormatSourceFunction<OUT> extends RichParallelSourceFunction<O
 	@Override
 	public void cancel() {
 		isRunning = false;
+	}
+
+	@Override
+	public SourceLineageAttachingOutput<Integer, OUT> wrapInSourceLineageAttachingOutput(Output<StreamRecord<OUT>> output) {
+		SourceLineageAttachingOutput<Integer, OUT> indexBasedSourceLineageAttachingOutput = new DefaultSourceLineageAttachingOutput<>(output);
+		indexBasedSourceLineageAttachingOutput.setKey(this.getRuntimeContext().getIndexOfThisSubtask());
+		return indexBasedSourceLineageAttachingOutput;
 	}
 
 	@Override

@@ -92,7 +92,7 @@ public interface InputGate extends CheckpointListener {
 
 	void registerListener(InputGateListener listener);
 
-	boolean testRecord(int channelIndex, int hashcode);
+	boolean haveSeenRecordBefore(int channelIndex, int hashcode);
 
 	void notifyCheckpointBarrier(long checkpointId);
 

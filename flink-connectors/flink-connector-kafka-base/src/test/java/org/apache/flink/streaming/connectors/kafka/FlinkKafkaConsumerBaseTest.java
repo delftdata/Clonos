@@ -19,12 +19,7 @@
 package org.apache.flink.streaming.connectors.kafka;
 
 import org.apache.flink.api.common.ExecutionConfig;
-import org.apache.flink.api.common.state.BroadcastState;
-import org.apache.flink.api.common.state.KeyedStateStore;
-import org.apache.flink.api.common.state.ListState;
-import org.apache.flink.api.common.state.ListStateDescriptor;
-import org.apache.flink.api.common.state.MapStateDescriptor;
-import org.apache.flink.api.common.state.OperatorStateStore;
+import org.apache.flink.api.common.state.*;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.testutils.CheckedThread;
@@ -44,12 +39,9 @@ import org.apache.flink.streaming.api.functions.source.SourceFunction;
 import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
 import org.apache.flink.streaming.api.operators.StreamSource;
 import org.apache.flink.streaming.api.operators.StreamingRuntimeContext;
+import org.apache.flink.streaming.api.operators.lineage.DefaultSourceLineageAttachingOutput;
 import org.apache.flink.streaming.connectors.kafka.config.OffsetCommitMode;
-import org.apache.flink.streaming.connectors.kafka.internals.AbstractFetcher;
-import org.apache.flink.streaming.connectors.kafka.internals.AbstractPartitionDiscoverer;
-import org.apache.flink.streaming.connectors.kafka.internals.KafkaCommitCallback;
-import org.apache.flink.streaming.connectors.kafka.internals.KafkaTopicPartition;
-import org.apache.flink.streaming.connectors.kafka.internals.KafkaTopicsDescriptor;
+import org.apache.flink.streaming.connectors.kafka.internals.*;
 import org.apache.flink.streaming.connectors.kafka.testutils.TestPartitionDiscoverer;
 import org.apache.flink.streaming.connectors.kafka.testutils.TestSourceContext;
 import org.apache.flink.streaming.runtime.tasks.TestProcessingTimeService;
@@ -57,23 +49,12 @@ import org.apache.flink.streaming.util.AbstractStreamOperatorTestHarness;
 import org.apache.flink.streaming.util.serialization.KeyedDeserializationSchema;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.SerializedValue;
-
 import org.junit.Assert;
 import org.junit.Test;
 
 import javax.annotation.Nonnull;
-
 import java.io.Serializable;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 import static org.apache.flink.util.Preconditions.checkState;
 import static org.hamcrest.Matchers.everyItem;
@@ -81,12 +62,7 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.collection.IsIn.isIn;
 import static org.hamcrest.collection.IsMapContaining.hasKey;
 import static org.hamcrest.core.IsNot.not;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static org.junit.Assert.*;
 import static org.mockito.Mockito.mock;
 
 /**
@@ -654,14 +630,14 @@ public class FlinkKafkaConsumerBaseTest {
 		@Override
 		@SuppressWarnings("unchecked")
 		protected AbstractFetcher<T, ?> createFetcher(
-				SourceContext<T> sourceContext,
-				Map<KafkaTopicPartition, Long> thisSubtaskPartitionsWithStartOffsets,
-				SerializedValue<AssignerWithPeriodicWatermarks<T>> watermarksPeriodic,
-				SerializedValue<AssignerWithPunctuatedWatermarks<T>> watermarksPunctuated,
-				StreamingRuntimeContext runtimeContext,
-				OffsetCommitMode offsetCommitMode,
-				MetricGroup consumerMetricGroup,
-				boolean useMetrics) throws Exception {
+			SourceContext<T> sourceContext,
+			Map<KafkaTopicPartition, Long> thisSubtaskPartitionsWithStartOffsets,
+			SerializedValue<AssignerWithPeriodicWatermarks<T>> watermarksPeriodic,
+			SerializedValue<AssignerWithPunctuatedWatermarks<T>> watermarksPunctuated,
+			StreamingRuntimeContext runtimeContext,
+			OffsetCommitMode offsetCommitMode,
+			MetricGroup consumerMetricGroup,
+			boolean useMetrics, DefaultSourceLineageAttachingOutput<KafkaTopicPartition, T> lineageAttachingOutput) throws Exception {
 			return this.testFetcher;
 		}
 
@@ -761,15 +737,15 @@ public class FlinkKafkaConsumerBaseTest {
 		@SafeVarargs
 		private MockFetcher(HashMap<KafkaTopicPartition, Long>... stateSnapshotsToReturn) throws Exception {
 			super(
-					new TestSourceContext<>(),
-					new HashMap<>(),
-					null,
-					null,
-					new TestProcessingTimeService(),
-					0,
-					MockFetcher.class.getClassLoader(),
-					new UnregisteredMetricsGroup(),
-					false);
+				new TestSourceContext<>(),
+				new HashMap<>(),
+				null,
+				null,
+				new TestProcessingTimeService(),
+				0,
+				MockFetcher.class.getClassLoader(),
+				new UnregisteredMetricsGroup(),
+				false, null);
 
 			this.stateSnapshotsToReturn.addAll(Arrays.asList(stateSnapshotsToReturn));
 		}

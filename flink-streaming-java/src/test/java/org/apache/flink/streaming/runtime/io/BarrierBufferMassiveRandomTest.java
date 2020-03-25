@@ -190,8 +190,23 @@ public class BarrierBufferMassiveRandomTest {
 		public void registerListener(InputGateListener listener) {}
 
 		@Override
+		public boolean haveSeenRecordBefore(int channelIndex, int hashcode) {
+			return false;
+		}
+
+		@Override
+		public void notifyCheckpointBarrier(long checkpointId) {
+
+		}
+
+		@Override
 		public int getPageSize() {
 			return PAGE_SIZE;
+		}
+
+		@Override
+		public void notifyCheckpointComplete(long checkpointId) throws Exception {
+
 		}
 	}
 }

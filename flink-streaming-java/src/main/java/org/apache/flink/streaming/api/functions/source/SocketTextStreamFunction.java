@@ -18,6 +18,10 @@
 package org.apache.flink.streaming.api.functions.source;
 
 import org.apache.flink.annotation.PublicEvolving;
+import org.apache.flink.streaming.api.operators.Output;
+import org.apache.flink.streaming.api.operators.lineage.LineageWrapperProvidingFunction;
+import org.apache.flink.streaming.api.operators.lineage.DefaultSourceLineageAttachingOutput;
+import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.util.IOUtils;
 
 import org.slf4j.Logger;
@@ -43,7 +47,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * the server side.
  */
 @PublicEvolving
-public class SocketTextStreamFunction implements SourceFunction<String> {
+public class SocketTextStreamFunction implements SourceFunction<String>, LineageWrapperProvidingFunction<Integer, String> {
 
 	private static final long serialVersionUID = 1L;
 
@@ -145,5 +149,12 @@ public class SocketTextStreamFunction implements SourceFunction<String> {
 		if (theSocket != null) {
 			IOUtils.closeSocket(theSocket);
 		}
+	}
+
+	@Override
+	public DefaultSourceLineageAttachingOutput<Integer, String> wrapInSourceLineageAttachingOutput(Output<StreamRecord<String>> output) {
+		DefaultSourceLineageAttachingOutput<Integer, String> indexBasedSourceLineageAttachingOutput = new DefaultSourceLineageAttachingOutput<>(output);
+		indexBasedSourceLineageAttachingOutput.setKey(port);
+		return indexBasedSourceLineageAttachingOutput;
 	}
 }

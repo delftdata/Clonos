@@ -23,6 +23,8 @@ import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.streaming.api.functions.AssignerWithPeriodicWatermarks;
 import org.apache.flink.streaming.api.functions.AssignerWithPunctuatedWatermarks;
 import org.apache.flink.streaming.api.functions.source.SourceFunction.SourceContext;
+import org.apache.flink.streaming.api.operators.lineage.DefaultSourceLineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.SourceLineageAttachingOutput;
 import org.apache.flink.streaming.connectors.kafka.internals.AbstractFetcher;
 import org.apache.flink.streaming.connectors.kafka.internals.KafkaCommitCallback;
 import org.apache.flink.streaming.connectors.kafka.internals.KafkaTopicPartition;
@@ -30,7 +32,6 @@ import org.apache.flink.streaming.connectors.kafka.internals.KafkaTopicPartition
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeService;
 import org.apache.flink.streaming.util.serialization.KeyedDeserializationSchema;
 import org.apache.flink.util.SerializedValue;
-
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
@@ -39,7 +40,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
-
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -74,30 +74,30 @@ public class Kafka09Fetcher<T> extends AbstractFetcher<T, TopicPartition> {
 	// ------------------------------------------------------------------------
 
 	public Kafka09Fetcher(
-			SourceContext<T> sourceContext,
-			Map<KafkaTopicPartition, Long> assignedPartitionsWithInitialOffsets,
-			SerializedValue<AssignerWithPeriodicWatermarks<T>> watermarksPeriodic,
-			SerializedValue<AssignerWithPunctuatedWatermarks<T>> watermarksPunctuated,
-			ProcessingTimeService processingTimeProvider,
-			long autoWatermarkInterval,
-			ClassLoader userCodeClassLoader,
-			String taskNameWithSubtasks,
-			KeyedDeserializationSchema<T> deserializer,
-			Properties kafkaProperties,
-			long pollTimeout,
-			MetricGroup subtaskMetricGroup,
-			MetricGroup consumerMetricGroup,
-			boolean useMetrics) throws Exception {
+		SourceContext<T> sourceContext,
+		Map<KafkaTopicPartition, Long> assignedPartitionsWithInitialOffsets,
+		SerializedValue<AssignerWithPeriodicWatermarks<T>> watermarksPeriodic,
+		SerializedValue<AssignerWithPunctuatedWatermarks<T>> watermarksPunctuated,
+		ProcessingTimeService processingTimeProvider,
+		long autoWatermarkInterval,
+		ClassLoader userCodeClassLoader,
+		String taskNameWithSubtasks,
+		KeyedDeserializationSchema<T> deserializer,
+		Properties kafkaProperties,
+		long pollTimeout,
+		MetricGroup subtaskMetricGroup,
+		MetricGroup consumerMetricGroup,
+		boolean useMetrics, SourceLineageAttachingOutput<KafkaTopicPartition, T> lineageAttachingOutput) throws Exception {
 		super(
-				sourceContext,
-				assignedPartitionsWithInitialOffsets,
-				watermarksPeriodic,
-				watermarksPunctuated,
-				processingTimeProvider,
-				autoWatermarkInterval,
-				userCodeClassLoader,
-				consumerMetricGroup,
-				useMetrics);
+			sourceContext,
+			assignedPartitionsWithInitialOffsets,
+			watermarksPeriodic,
+			watermarksPunctuated,
+			processingTimeProvider,
+			autoWatermarkInterval,
+			userCodeClassLoader,
+			consumerMetricGroup,
+			useMetrics, lineageAttachingOutput);
 
 		this.deserializer = deserializer;
 		this.handover = new Handover();

@@ -19,6 +19,11 @@ package org.apache.flink.streaming.api.functions.source;
 
 import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.streaming.api.operators.Output;
+import org.apache.flink.streaming.api.operators.lineage.LineageWrapperProvidingFunction;
+import org.apache.flink.streaming.api.operators.lineage.DefaultSourceLineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.SourceLineageAttachingOutput;
+import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.util.SplittableIterator;
 
 import java.util.Iterator;
@@ -27,7 +32,7 @@ import java.util.Iterator;
  * A {@link SourceFunction} that reads elements from an {@link SplittableIterator} and emits them.
  */
 @PublicEvolving
-public class FromSplittableIteratorFunction<T> extends RichParallelSourceFunction<T> {
+public class FromSplittableIteratorFunction<T> extends RichParallelSourceFunction<T> implements LineageWrapperProvidingFunction<Integer, T> {
 
 	private static final long serialVersionUID = 1L;
 
@@ -59,5 +64,12 @@ public class FromSplittableIteratorFunction<T> extends RichParallelSourceFunctio
 	@Override
 	public void cancel() {
 		isRunning = false;
+	}
+
+	@Override
+	public SourceLineageAttachingOutput<Integer, T> wrapInSourceLineageAttachingOutput(Output<StreamRecord<T>> toWrap) {
+		SourceLineageAttachingOutput<Integer, T> indexBasedSourceLineageAttachingOutput = new DefaultSourceLineageAttachingOutput<>(toWrap);
+		indexBasedSourceLineageAttachingOutput.setKey(getRuntimeContext().getIndexOfThisSubtask());
+		return indexBasedSourceLineageAttachingOutput;
 	}
 }

@@ -102,4 +102,18 @@ public class MockInputGate implements InputGate {
 	public void registerListener(InputGateListener listener) {
 	}
 
+	@Override
+	public boolean haveSeenRecordBefore(int channelIndex, int hashcode) {
+		return false;
+	}
+
+	@Override
+	public void notifyCheckpointBarrier(long checkpointId) {
+
+	}
+
+	@Override
+	public void notifyCheckpointComplete(long checkpointId) throws Exception {
+
+	}
 }

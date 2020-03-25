@@ -250,7 +250,7 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 						}
 						else {
 							StreamRecord<IN1> record = recordOrWatermark.asRecord();
-							if (!this.inputGate.testRecord(currentChannel, record.getRecordID().hashCode())) {
+							if (!this.inputGate.haveSeenRecordBefore(currentChannel, record.getRecordID().hashCode())) {
 								synchronized (lock) {
 									numRecordsIn.inc();
 									streamOperator.notifyInputRecord(record);
@@ -281,7 +281,7 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 						}
 						else {
 							StreamRecord<IN2> record = recordOrWatermark.asRecord();
-							if (!this.inputGate.testRecord(currentChannel, record.getRecordID().hashCode())) {
+							if (!this.inputGate.haveSeenRecordBefore(currentChannel, record.getRecordID().hashCode())) {
 								synchronized (lock) {
 									numRecordsIn.inc();
 									streamOperator.notifyInputRecord(record);

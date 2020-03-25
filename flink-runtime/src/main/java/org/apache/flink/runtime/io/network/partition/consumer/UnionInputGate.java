@@ -276,10 +276,10 @@ public class UnionInputGate implements InputGate, InputGateListener {
 	}
 
 	@Override
-	public boolean testRecord(int channelIndex, int hashcode) {
+	public boolean haveSeenRecordBefore(int channelIndex, int hashcode) {
 		InputGate gate = offsetToInputGateMap.get(channelIndex);
 		int startIndex = inputGateToIndexOffsetMap.get(gate);
-		return gate.testRecord(channelIndex - startIndex, hashcode);
+		return gate.haveSeenRecordBefore(channelIndex - startIndex, hashcode);
 	}
 
 	@Override

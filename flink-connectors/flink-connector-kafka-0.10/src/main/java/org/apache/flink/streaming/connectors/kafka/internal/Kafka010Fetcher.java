@@ -23,12 +23,13 @@ import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.streaming.api.functions.AssignerWithPeriodicWatermarks;
 import org.apache.flink.streaming.api.functions.AssignerWithPunctuatedWatermarks;
 import org.apache.flink.streaming.api.functions.source.SourceFunction.SourceContext;
+import org.apache.flink.streaming.api.operators.lineage.DefaultSourceLineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.SourceLineageAttachingOutput;
 import org.apache.flink.streaming.connectors.kafka.internals.KafkaTopicPartition;
 import org.apache.flink.streaming.connectors.kafka.internals.KafkaTopicPartitionState;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeService;
 import org.apache.flink.streaming.util.serialization.KeyedDeserializationSchema;
 import org.apache.flink.util.SerializedValue;
-
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.TopicPartition;
 
@@ -47,35 +48,35 @@ import java.util.Properties;
 public class Kafka010Fetcher<T> extends Kafka09Fetcher<T> {
 
 	public Kafka010Fetcher(
-			SourceContext<T> sourceContext,
-			Map<KafkaTopicPartition, Long> assignedPartitionsWithInitialOffsets,
-			SerializedValue<AssignerWithPeriodicWatermarks<T>> watermarksPeriodic,
-			SerializedValue<AssignerWithPunctuatedWatermarks<T>> watermarksPunctuated,
-			ProcessingTimeService processingTimeProvider,
-			long autoWatermarkInterval,
-			ClassLoader userCodeClassLoader,
-			String taskNameWithSubtasks,
-			KeyedDeserializationSchema<T> deserializer,
-			Properties kafkaProperties,
-			long pollTimeout,
-			MetricGroup subtaskMetricGroup,
-			MetricGroup consumerMetricGroup,
-			boolean useMetrics) throws Exception {
+		SourceContext<T> sourceContext,
+		Map<KafkaTopicPartition, Long> assignedPartitionsWithInitialOffsets,
+		SerializedValue<AssignerWithPeriodicWatermarks<T>> watermarksPeriodic,
+		SerializedValue<AssignerWithPunctuatedWatermarks<T>> watermarksPunctuated,
+		ProcessingTimeService processingTimeProvider,
+		long autoWatermarkInterval,
+		ClassLoader userCodeClassLoader,
+		String taskNameWithSubtasks,
+		KeyedDeserializationSchema<T> deserializer,
+		Properties kafkaProperties,
+		long pollTimeout,
+		MetricGroup subtaskMetricGroup,
+		MetricGroup consumerMetricGroup,
+		boolean useMetrics, SourceLineageAttachingOutput<KafkaTopicPartition, T> lineageAttachingOutput) throws Exception {
 		super(
-				sourceContext,
-				assignedPartitionsWithInitialOffsets,
-				watermarksPeriodic,
-				watermarksPunctuated,
-				processingTimeProvider,
-				autoWatermarkInterval,
-				userCodeClassLoader,
-				taskNameWithSubtasks,
-				deserializer,
-				kafkaProperties,
-				pollTimeout,
-				subtaskMetricGroup,
-				consumerMetricGroup,
-				useMetrics);
+			sourceContext,
+			assignedPartitionsWithInitialOffsets,
+			watermarksPeriodic,
+			watermarksPunctuated,
+			processingTimeProvider,
+			autoWatermarkInterval,
+			userCodeClassLoader,
+			taskNameWithSubtasks,
+			deserializer,
+			kafkaProperties,
+			pollTimeout,
+			subtaskMetricGroup,
+			consumerMetricGroup,
+			useMetrics, lineageAttachingOutput);
 	}
 
 	@Override

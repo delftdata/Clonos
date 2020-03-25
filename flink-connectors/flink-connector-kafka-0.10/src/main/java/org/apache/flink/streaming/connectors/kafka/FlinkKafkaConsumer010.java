@@ -23,6 +23,7 @@ import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.streaming.api.functions.AssignerWithPeriodicWatermarks;
 import org.apache.flink.streaming.api.functions.AssignerWithPunctuatedWatermarks;
 import org.apache.flink.streaming.api.operators.StreamingRuntimeContext;
+import org.apache.flink.streaming.api.operators.lineage.DefaultSourceLineageAttachingOutput;
 import org.apache.flink.streaming.connectors.kafka.config.OffsetCommitMode;
 import org.apache.flink.streaming.connectors.kafka.internal.Kafka010Fetcher;
 import org.apache.flink.streaming.connectors.kafka.internal.Kafka010PartitionDiscoverer;
@@ -33,18 +34,12 @@ import org.apache.flink.streaming.connectors.kafka.internals.KafkaTopicsDescript
 import org.apache.flink.streaming.util.serialization.KeyedDeserializationSchema;
 import org.apache.flink.streaming.util.serialization.KeyedDeserializationSchemaWrapper;
 import org.apache.flink.util.SerializedValue;
-
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.common.TopicPartition;
 
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Properties;
+import java.util.*;
 import java.util.regex.Pattern;
 
 /**
@@ -179,14 +174,14 @@ public class FlinkKafkaConsumer010<T> extends FlinkKafkaConsumer09<T> {
 
 	@Override
 	protected AbstractFetcher<T, ?> createFetcher(
-			SourceContext<T> sourceContext,
-			Map<KafkaTopicPartition, Long> assignedPartitionsWithInitialOffsets,
-			SerializedValue<AssignerWithPeriodicWatermarks<T>> watermarksPeriodic,
-			SerializedValue<AssignerWithPunctuatedWatermarks<T>> watermarksPunctuated,
-			StreamingRuntimeContext runtimeContext,
-			OffsetCommitMode offsetCommitMode,
-			MetricGroup consumerMetricGroup,
-			boolean useMetrics) throws Exception {
+		SourceContext<T> sourceContext,
+		Map<KafkaTopicPartition, Long> assignedPartitionsWithInitialOffsets,
+		SerializedValue<AssignerWithPeriodicWatermarks<T>> watermarksPeriodic,
+		SerializedValue<AssignerWithPunctuatedWatermarks<T>> watermarksPunctuated,
+		StreamingRuntimeContext runtimeContext,
+		OffsetCommitMode offsetCommitMode,
+		MetricGroup consumerMetricGroup,
+		boolean useMetrics, DefaultSourceLineageAttachingOutput<KafkaTopicPartition, T> lineageAttachingOutput) throws Exception {
 
 		// make sure that auto commit is disabled when our offset commit mode is ON_CHECKPOINTS;
 		// this overwrites whatever setting the user configured in the properties
@@ -195,20 +190,20 @@ public class FlinkKafkaConsumer010<T> extends FlinkKafkaConsumer09<T> {
 		}
 
 		return new Kafka010Fetcher<>(
-				sourceContext,
-				assignedPartitionsWithInitialOffsets,
-				watermarksPeriodic,
-				watermarksPunctuated,
-				runtimeContext.getProcessingTimeService(),
-				runtimeContext.getExecutionConfig().getAutoWatermarkInterval(),
-				runtimeContext.getUserCodeClassLoader(),
-				runtimeContext.getTaskNameWithSubtasks(),
-				deserializer,
-				properties,
-				pollTimeout,
-				runtimeContext.getMetricGroup(),
-				consumerMetricGroup,
-				useMetrics);
+			sourceContext,
+			assignedPartitionsWithInitialOffsets,
+			watermarksPeriodic,
+			watermarksPunctuated,
+			runtimeContext.getProcessingTimeService(),
+			runtimeContext.getExecutionConfig().getAutoWatermarkInterval(),
+			runtimeContext.getUserCodeClassLoader(),
+			runtimeContext.getTaskNameWithSubtasks(),
+			deserializer,
+			properties,
+			pollTimeout,
+			runtimeContext.getMetricGroup(),
+			consumerMetricGroup,
+			useMetrics, lineageAttachingOutput);
 	}
 
 	@Override

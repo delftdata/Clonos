@@ -24,6 +24,8 @@ import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.streaming.api.functions.AssignerWithPeriodicWatermarks;
 import org.apache.flink.streaming.api.functions.AssignerWithPunctuatedWatermarks;
 import org.apache.flink.streaming.api.functions.source.SourceFunction.SourceContext;
+import org.apache.flink.streaming.api.operators.lineage.DefaultSourceLineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.SourceLineageAttachingOutput;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.connectors.kafka.config.OffsetCommitMode;
 import org.apache.flink.streaming.connectors.kafka.internals.metrics.KafkaConsumerMetricConstants;
@@ -32,7 +34,6 @@ import org.apache.flink.streaming.runtime.tasks.ProcessingTimeService;
 import org.apache.flink.util.SerializedValue;
 
 import javax.annotation.Nonnull;
-
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
@@ -40,12 +41,7 @@ import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.Collectors;
 
-import static org.apache.flink.streaming.connectors.kafka.internals.metrics.KafkaConsumerMetricConstants.COMMITTED_OFFSETS_METRICS_GAUGE;
-import static org.apache.flink.streaming.connectors.kafka.internals.metrics.KafkaConsumerMetricConstants.CURRENT_OFFSETS_METRICS_GAUGE;
-import static org.apache.flink.streaming.connectors.kafka.internals.metrics.KafkaConsumerMetricConstants.LEGACY_COMMITTED_OFFSETS_METRICS_GROUP;
-import static org.apache.flink.streaming.connectors.kafka.internals.metrics.KafkaConsumerMetricConstants.LEGACY_CURRENT_OFFSETS_METRICS_GROUP;
-import static org.apache.flink.streaming.connectors.kafka.internals.metrics.KafkaConsumerMetricConstants.OFFSETS_BY_PARTITION_METRICS_GROUP;
-import static org.apache.flink.streaming.connectors.kafka.internals.metrics.KafkaConsumerMetricConstants.OFFSETS_BY_TOPIC_METRICS_GROUP;
+import static org.apache.flink.streaming.connectors.kafka.internals.metrics.KafkaConsumerMetricConstants.*;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
@@ -106,10 +102,15 @@ public abstract class AbstractFetcher<T, KPH> {
 	 */
 	private final SerializedValue<AssignerWithPunctuatedWatermarks<T>> watermarksPunctuated;
 
-	/** User class loader used to deserialize watermark assigners. */
+	/**
+	 * User class loader used to deserialize watermark assigners.
+	 */
 	private final ClassLoader userCodeClassLoader;
+	private final SourceLineageAttachingOutput<KafkaTopicPartition, T> lineageAttachingOutput;
 
-	/** Only relevant for punctuated watermarks: The current cross partition watermark. */
+	/**
+	 * Only relevant for punctuated watermarks: The current cross partition watermark.
+	 */
 	private volatile long maxWatermarkSoFar = Long.MIN_VALUE;
 
 	// ------------------------------------------------------------------------
@@ -136,20 +137,21 @@ public abstract class AbstractFetcher<T, KPH> {
 	private final MetricGroup legacyCommittedOffsetsMetricGroup;
 
 	protected AbstractFetcher(
-			SourceContext<T> sourceContext,
-			Map<KafkaTopicPartition, Long> seedPartitionsWithInitialOffsets,
-			SerializedValue<AssignerWithPeriodicWatermarks<T>> watermarksPeriodic,
-			SerializedValue<AssignerWithPunctuatedWatermarks<T>> watermarksPunctuated,
-			ProcessingTimeService processingTimeProvider,
-			long autoWatermarkInterval,
-			ClassLoader userCodeClassLoader,
-			MetricGroup consumerMetricGroup,
-			boolean useMetrics) throws Exception {
+		SourceContext<T> sourceContext,
+		Map<KafkaTopicPartition, Long> seedPartitionsWithInitialOffsets,
+		SerializedValue<AssignerWithPeriodicWatermarks<T>> watermarksPeriodic,
+		SerializedValue<AssignerWithPunctuatedWatermarks<T>> watermarksPunctuated,
+		ProcessingTimeService processingTimeProvider,
+		long autoWatermarkInterval,
+		ClassLoader userCodeClassLoader,
+		MetricGroup consumerMetricGroup,
+		boolean useMetrics, SourceLineageAttachingOutput<KafkaTopicPartition, T> lineageAttachingOutput) throws Exception {
 		this.sourceContext = checkNotNull(sourceContext);
 		this.checkpointLock = sourceContext.getCheckpointLock();
 		this.userCodeClassLoader = checkNotNull(userCodeClassLoader);
 
 		this.useMetrics = useMetrics;
+		this.lineageAttachingOutput = lineageAttachingOutput;
 		this.consumerMetricGroup = checkNotNull(consumerMetricGroup);
 		this.legacyCurrentOffsetsMetricGroup = consumerMetricGroup.addGroup(LEGACY_CURRENT_OFFSETS_METRICS_GROUP);
 		this.legacyCommittedOffsetsMetricGroup = consumerMetricGroup.addGroup(LEGACY_COMMITTED_OFFSETS_METRICS_GROUP);
@@ -352,6 +354,8 @@ public abstract class AbstractFetcher<T, KPH> {
 	 */
 	protected void emitRecord(T record, KafkaTopicPartitionState<KPH> partitionState, long offset) throws Exception {
 
+		this.lineageAttachingOutput.setKey(partitionState.getKafkaTopicPartition());
+
 		if (record != null) {
 			if (timestampWatermarkMode == NO_TIMESTAMPS_WATERMARKS) {
 				// fast path logic, in case there are no watermarks
@@ -381,13 +385,14 @@ public abstract class AbstractFetcher<T, KPH> {
 	 * <p>Implementation Note: This method is kept brief to be JIT inlining friendly.
 	 * That makes the fast path efficient, the extended paths are called as separate methods.
 	 *
-	 * @param record The record to emit
+	 * @param record         The record to emit
 	 * @param partitionState The state of the Kafka partition from which the record was fetched
-	 * @param offset The offset of the record
+	 * @param offset         The offset of the record
 	 */
 	protected void emitRecordWithTimestamp(
-			T record, KafkaTopicPartitionState<KPH> partitionState, long offset, long timestamp) throws Exception {
+		T record, KafkaTopicPartitionState<KPH> partitionState, long offset, long timestamp) throws Exception {
 
+		this.lineageAttachingOutput.setKey(partitionState.getKafkaTopicPartition());
 		if (record != null) {
 			if (timestampWatermarkMode == NO_TIMESTAMPS_WATERMARKS) {
 				// fast path logic, in case there are no watermarks generated in the fetcher
@@ -416,11 +421,11 @@ public abstract class AbstractFetcher<T, KPH> {
 	 * also a periodic watermark generator.
 	 */
 	private void emitRecordWithTimestampAndPeriodicWatermark(
-			T record, KafkaTopicPartitionState<KPH> partitionState, long offset, long kafkaEventTimestamp) {
-		@SuppressWarnings("unchecked")
-		final KafkaTopicPartitionStateWithPeriodicWatermarks<T, KPH> withWatermarksState =
-				(KafkaTopicPartitionStateWithPeriodicWatermarks<T, KPH>) partitionState;
+		T record, KafkaTopicPartitionState<KPH> partitionState, long offset, long kafkaEventTimestamp) {
+		@SuppressWarnings("unchecked") final KafkaTopicPartitionStateWithPeriodicWatermarks<T, KPH> withWatermarksState =
+			(KafkaTopicPartitionStateWithPeriodicWatermarks<T, KPH>) partitionState;
 
+		this.lineageAttachingOutput.setKey(partitionState.getKafkaTopicPartition());
 		// extract timestamp - this accesses/modifies the per-partition state inside the
 		// watermark generator instance, so we need to lock the access on the
 		// partition state. concurrent access can happen from the periodic emitter
@@ -443,11 +448,11 @@ public abstract class AbstractFetcher<T, KPH> {
 	 * also a punctuated watermark generator.
 	 */
 	private void emitRecordWithTimestampAndPunctuatedWatermark(
-			T record, KafkaTopicPartitionState<KPH> partitionState, long offset, long kafkaEventTimestamp) {
-		@SuppressWarnings("unchecked")
-		final KafkaTopicPartitionStateWithPunctuatedWatermarks<T, KPH> withWatermarksState =
-				(KafkaTopicPartitionStateWithPunctuatedWatermarks<T, KPH>) partitionState;
+		T record, KafkaTopicPartitionState<KPH> partitionState, long offset, long kafkaEventTimestamp) {
+		@SuppressWarnings("unchecked") final KafkaTopicPartitionStateWithPunctuatedWatermarks<T, KPH> withWatermarksState =
+			(KafkaTopicPartitionStateWithPunctuatedWatermarks<T, KPH>) partitionState;
 
+		this.lineageAttachingOutput.setKey(partitionState.getKafkaTopicPartition());
 		// only one thread ever works on accessing timestamps and watermarks
 		// from the punctuated extractor
 		final long timestamp = withWatermarksState.getTimestampForRecord(record, kafkaEventTimestamp);

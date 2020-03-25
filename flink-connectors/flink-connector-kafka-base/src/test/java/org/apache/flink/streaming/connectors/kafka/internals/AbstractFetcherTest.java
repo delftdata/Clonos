@@ -21,13 +21,21 @@ package org.apache.flink.streaming.connectors.kafka.internals;
 import org.apache.flink.core.testutils.CheckedThread;
 import org.apache.flink.core.testutils.OneShotLatch;
 import org.apache.flink.metrics.groups.UnregisteredMetricsGroup;
+import org.apache.flink.runtime.state.StateInitializationContext;
+import org.apache.flink.runtime.state.StateSnapshotContext;
 import org.apache.flink.streaming.api.functions.AssignerWithPeriodicWatermarks;
 import org.apache.flink.streaming.api.functions.AssignerWithPunctuatedWatermarks;
 import org.apache.flink.streaming.api.functions.source.SourceFunction.SourceContext;
+import org.apache.flink.streaming.api.operators.Output;
+import org.apache.flink.streaming.api.operators.lineage.DefaultSourceLineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.SourceLineageAttachingOutput;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.connectors.kafka.testutils.TestSourceContext;
+import org.apache.flink.streaming.runtime.streamrecord.LatencyMarker;
+import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeService;
 import org.apache.flink.streaming.runtime.tasks.TestProcessingTimeService;
+import org.apache.flink.util.OutputTag;
 import org.apache.flink.util.SerializedValue;
 
 import org.junit.Test;
@@ -482,7 +490,7 @@ public class AbstractFetcherTest {
 				autoWatermarkInterval,
 				TestFetcher.class.getClassLoader(),
 				new UnregisteredMetricsGroup(),
-				false);
+				false, new MockSourceLineageAttachingOutput<>());
 
 			this.fetchLoopWaitLatch = fetchLoopWaitLatch;
 			this.stateIterationBlockLatch = stateIterationBlockLatch;
@@ -559,5 +567,53 @@ public class AbstractFetcherTest {
 			return extractedTimestamp % 3 == 0 ? new Watermark(extractedTimestamp) : null;
 		}
 
+	}
+
+	private static class MockSourceLineageAttachingOutput<K,OUT> implements SourceLineageAttachingOutput<K,OUT> {
+
+		@Override
+		public void setKey(K key) {
+
+		}
+
+		@Override
+		public void notifyInputRecord(StreamRecord<?> input) {
+
+		}
+
+		@Override
+		public void initializeState(StateInitializationContext context) throws Exception {
+
+		}
+
+		@Override
+		public void snapshotState(StateSnapshotContext context) throws Exception {
+
+		}
+
+		@Override
+		public void emitWatermark(Watermark mark) {
+
+		}
+
+		@Override
+		public <X> void collect(OutputTag<X> outputTag, StreamRecord<X> record) {
+
+		}
+
+		@Override
+		public void emitLatencyMarker(LatencyMarker latencyMarker) {
+
+		}
+
+		@Override
+		public void collect(StreamRecord<OUT> record) {
+
+		}
+
+		@Override
+		public void close() {
+
+		}
 	}
 }

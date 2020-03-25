@@ -1013,7 +1013,7 @@ public class SingleInputGate implements InputGate {
 	}
 
 	@Override
-	public boolean testRecord(int channelIndex, int hashcode) {
+	public boolean haveSeenRecordBefore(int channelIndex, int hashcode) {
 		return deduplicators[channelIndex].testRecord(hashcode);
 	}
 

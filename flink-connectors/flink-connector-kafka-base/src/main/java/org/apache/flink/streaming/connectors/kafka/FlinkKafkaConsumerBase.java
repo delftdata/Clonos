@@ -17,6 +17,7 @@
 
 package org.apache.flink.streaming.connectors.kafka;
 
+import org.apache.commons.collections.map.LinkedMap;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.state.ListState;
@@ -38,36 +39,26 @@ import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction;
 import org.apache.flink.streaming.api.functions.AssignerWithPeriodicWatermarks;
 import org.apache.flink.streaming.api.functions.AssignerWithPunctuatedWatermarks;
 import org.apache.flink.streaming.api.functions.source.RichParallelSourceFunction;
+import org.apache.flink.streaming.api.operators.Output;
 import org.apache.flink.streaming.api.operators.StreamingRuntimeContext;
+import org.apache.flink.streaming.api.operators.lineage.LineageWrapperProvidingFunction;
+import org.apache.flink.streaming.api.operators.lineage.DefaultSourceLineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.SourceLineageAttachingOutput;
 import org.apache.flink.streaming.connectors.kafka.config.OffsetCommitMode;
 import org.apache.flink.streaming.connectors.kafka.config.OffsetCommitModes;
 import org.apache.flink.streaming.connectors.kafka.config.StartupMode;
-import org.apache.flink.streaming.connectors.kafka.internals.AbstractFetcher;
-import org.apache.flink.streaming.connectors.kafka.internals.AbstractPartitionDiscoverer;
-import org.apache.flink.streaming.connectors.kafka.internals.KafkaCommitCallback;
-import org.apache.flink.streaming.connectors.kafka.internals.KafkaTopicPartition;
-import org.apache.flink.streaming.connectors.kafka.internals.KafkaTopicPartitionAssigner;
-import org.apache.flink.streaming.connectors.kafka.internals.KafkaTopicPartitionStateSentinel;
-import org.apache.flink.streaming.connectors.kafka.internals.KafkaTopicsDescriptor;
+import org.apache.flink.streaming.connectors.kafka.internals.*;
+import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.util.serialization.KeyedDeserializationSchema;
 import org.apache.flink.util.SerializedValue;
-
-import org.apache.commons.collections.map.LinkedMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.TreeMap;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 
-import static org.apache.flink.streaming.connectors.kafka.internals.metrics.KafkaConsumerMetricConstants.COMMITS_FAILED_METRICS_COUNTER;
-import static org.apache.flink.streaming.connectors.kafka.internals.metrics.KafkaConsumerMetricConstants.COMMITS_SUCCEEDED_METRICS_COUNTER;
-import static org.apache.flink.streaming.connectors.kafka.internals.metrics.KafkaConsumerMetricConstants.KAFKA_CONSUMER_METRICS_GROUP;
+import static org.apache.flink.streaming.connectors.kafka.internals.metrics.KafkaConsumerMetricConstants.*;
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -75,22 +66,28 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * Base class of all Flink Kafka Consumer data sources.
  * This implements the common behavior across all Kafka versions.
  *
- * <p>The Kafka version specific behavior is defined mainly in the specific subclasses of the
+ * <p>The Kafka version specific behavior is defined mainly in the specific subclasses of th	public SourceLineageAttachingOutput<?, OUT> wrapInSourceLineageAttachingOutput(Output<StreamRecord<OUT>> output){
+ * SourceLineageAttachingOutput<Integer, OUT> indexBasedSourceLineageAttachingOutput = new SourceLineageAttachingOutput<>(output);
+ * indexBasedSourceLineageAttachingOutput.setKey(getRuntimeContext().getIndexOfThisSubtask());
+ * return indexBasedSourceLineageAttachingOutput;
+ * }e
  * {@link AbstractFetcher}.
  *
  * @param <T> The type of records produced by this data source
  */
 @Internal
 public abstract class FlinkKafkaConsumerBase<T> extends RichParallelSourceFunction<T> implements
-		CheckpointListener,
-		ResultTypeQueryable<T>,
-		CheckpointedFunction {
+	CheckpointListener,
+	ResultTypeQueryable<T>,
+	CheckpointedFunction, LineageWrapperProvidingFunction<KafkaTopicPartition, T> {
 
 	private static final long serialVersionUID = -6272159445203409112L;
 
 	protected static final Logger LOG = LoggerFactory.getLogger(FlinkKafkaConsumerBase.class);
 
-	/** The maximum number of pending non-committed checkpoints to track, to avoid memory leaks. */
+	/**
+	 * The maximum number of pending non-committed checkpoints to track, to avoid memory leaks.
+	 */
 	public static final int MAX_NUM_PENDING_CHECKPOINTS = 100;
 
 	/**
@@ -206,19 +203,30 @@ public abstract class FlinkKafkaConsumerBase<T> extends RichParallelSourceFuncti
 	 */
 	private final boolean useMetrics;
 
-	/** Counter for successful Kafka offset commits. */
+	/**
+	 * Counter for successful Kafka offset commits.
+	 */
 	private transient Counter successfulCommits;
 
-	/** Counter for failed Kafka offset commits. */
+	/**
+	 * Counter for failed Kafka offset commits.
+	 */
 	private transient Counter failedCommits;
 
-	/** Callback interface that will be invoked upon async Kafka commit completion.
-	 *  Please be aware that default callback implementation in base class does not
-	 *  provide any guarantees on thread-safety. This is sufficient for now because current
-	 *  supported Kafka connectors guarantee no more than 1 concurrent async pending offset
-	 *  commit.
+	/**
+	 * Callback interface that will be invoked upon async Kafka commit completion.
+	 * Please be aware that default callback implementation in base class does not
+	 * provide any guarantees on thread-safety. This is sufficient for now because current
+	 * supported Kafka connectors guarantee no more than 1 concurrent async pending offset
+	 * commit.
 	 */
 	private transient KafkaCommitCallback offsetCommitCallback;
+
+
+	/**
+	 * The output collector that attaches lineage IDs to records for this function.
+	 */
+	private DefaultSourceLineageAttachingOutput<KafkaTopicPartition, T> lineageAttachingOutput;
 
 	// ------------------------------------------------------------------------
 
@@ -648,14 +656,14 @@ public abstract class FlinkKafkaConsumerBase<T> extends RichParallelSourceFuncti
 		//   - 'notifyCheckpointComplete' will start to do work (i.e. commit offsets to
 		//     Kafka through the fetcher, if configured to do so)
 		this.kafkaFetcher = createFetcher(
-				sourceContext,
-				subscribedPartitionsToStartOffsets,
-				periodicWatermarkAssigner,
-				punctuatedWatermarkAssigner,
-				(StreamingRuntimeContext) getRuntimeContext(),
-				offsetCommitMode,
-				getRuntimeContext().getMetricGroup().addGroup(KAFKA_CONSUMER_METRICS_GROUP),
-				useMetrics);
+			sourceContext,
+			subscribedPartitionsToStartOffsets,
+			periodicWatermarkAssigner,
+			punctuatedWatermarkAssigner,
+			(StreamingRuntimeContext) getRuntimeContext(),
+			offsetCommitMode,
+			getRuntimeContext().getMetricGroup().addGroup(KAFKA_CONSUMER_METRICS_GROUP),
+			useMetrics, this.lineageAttachingOutput);
 
 		if (!running) {
 			return;
@@ -775,6 +783,13 @@ public abstract class FlinkKafkaConsumerBase<T> extends RichParallelSourceFuncti
 		} finally {
 			super.close();
 		}
+	}
+
+
+	@Override
+	public SourceLineageAttachingOutput<KafkaTopicPartition, T> wrapInSourceLineageAttachingOutput(Output<StreamRecord<T>> output) {
+		this.lineageAttachingOutput = new DefaultSourceLineageAttachingOutput<KafkaTopicPartition, T>(output);
+		return this.lineageAttachingOutput;
 	}
 
 	// ------------------------------------------------------------------------
@@ -922,25 +937,24 @@ public abstract class FlinkKafkaConsumerBase<T> extends RichParallelSourceFuncti
 	 * Creates the fetcher that connect to the Kafka brokers, pulls data, deserialized the
 	 * data, and emits it into the data streams.
 	 *
-	 * @param sourceContext The source context to emit data to.
+	 * @param sourceContext                      The source context to emit data to.
 	 * @param subscribedPartitionsToStartOffsets The set of partitions that this subtask should handle, with their start offsets.
-	 * @param watermarksPeriodic Optional, a serialized timestamp extractor / periodic watermark generator.
-	 * @param watermarksPunctuated Optional, a serialized timestamp extractor / punctuated watermark generator.
-	 * @param runtimeContext The task's runtime context.
-	 *
+	 * @param watermarksPeriodic                 Optional, a serialized timestamp extractor / periodic watermark generator.
+	 * @param watermarksPunctuated               Optional, a serialized timestamp extractor / punctuated watermark generator.
+	 * @param runtimeContext                     The task's runtime context.
+	 * @param lineageAttachingOutput
 	 * @return The instantiated fetcher
-	 *
 	 * @throws Exception The method should forward exceptions
 	 */
 	protected abstract AbstractFetcher<T, ?> createFetcher(
-			SourceContext<T> sourceContext,
-			Map<KafkaTopicPartition, Long> subscribedPartitionsToStartOffsets,
-			SerializedValue<AssignerWithPeriodicWatermarks<T>> watermarksPeriodic,
-			SerializedValue<AssignerWithPunctuatedWatermarks<T>> watermarksPunctuated,
-			StreamingRuntimeContext runtimeContext,
-			OffsetCommitMode offsetCommitMode,
-			MetricGroup kafkaMetricGroup,
-			boolean useMetrics) throws Exception;
+		SourceContext<T> sourceContext,
+		Map<KafkaTopicPartition, Long> subscribedPartitionsToStartOffsets,
+		SerializedValue<AssignerWithPeriodicWatermarks<T>> watermarksPeriodic,
+		SerializedValue<AssignerWithPunctuatedWatermarks<T>> watermarksPunctuated,
+		StreamingRuntimeContext runtimeContext,
+		OffsetCommitMode offsetCommitMode,
+		MetricGroup kafkaMetricGroup,
+		boolean useMetrics, DefaultSourceLineageAttachingOutput<KafkaTopicPartition, T> lineageAttachingOutput) throws Exception;
 
 	/**
 	 * Creates the partition discoverer that is used to find new partitions for this subtask.
@@ -970,6 +984,7 @@ public abstract class FlinkKafkaConsumerBase<T> extends RichParallelSourceFuncti
 	public TypeInformation<T> getProducedType() {
 		return deserializer.getProducedType();
 	}
+
 
 	// ------------------------------------------------------------------------
 	//  Test utilities

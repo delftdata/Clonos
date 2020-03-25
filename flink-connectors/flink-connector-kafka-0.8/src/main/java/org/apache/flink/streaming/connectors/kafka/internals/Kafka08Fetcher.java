@@ -18,6 +18,8 @@
 
 package org.apache.flink.streaming.connectors.kafka.internals;
 
+import kafka.api.OffsetRequest;
+import kafka.common.TopicAndPartition;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.functions.RuntimeContext;
 import org.apache.flink.metrics.MetricGroup;
@@ -25,28 +27,20 @@ import org.apache.flink.streaming.api.functions.AssignerWithPeriodicWatermarks;
 import org.apache.flink.streaming.api.functions.AssignerWithPunctuatedWatermarks;
 import org.apache.flink.streaming.api.functions.source.SourceFunction.SourceContext;
 import org.apache.flink.streaming.api.operators.StreamingRuntimeContext;
+import org.apache.flink.streaming.api.operators.lineage.DefaultSourceLineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.SourceLineageAttachingOutput;
 import org.apache.flink.streaming.connectors.kafka.config.StartupMode;
 import org.apache.flink.streaming.util.serialization.KeyedDeserializationSchema;
 import org.apache.flink.util.InstantiationUtil;
 import org.apache.flink.util.SerializedValue;
-
-import kafka.api.OffsetRequest;
-import kafka.common.TopicAndPartition;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.Node;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
-
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Properties;
+import java.util.*;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -89,26 +83,26 @@ public class Kafka08Fetcher<T> extends AbstractFetcher<T, TopicAndPartition> {
 	private volatile boolean running = true;
 
 	public Kafka08Fetcher(
-			SourceContext<T> sourceContext,
-			Map<KafkaTopicPartition, Long> seedPartitionsWithInitialOffsets,
-			SerializedValue<AssignerWithPeriodicWatermarks<T>> watermarksPeriodic,
-			SerializedValue<AssignerWithPunctuatedWatermarks<T>> watermarksPunctuated,
-			StreamingRuntimeContext runtimeContext,
-			KeyedDeserializationSchema<T> deserializer,
-			Properties kafkaProperties,
-			long autoCommitInterval,
-			MetricGroup consumerMetricGroup,
-			boolean useMetrics) throws Exception {
+		SourceContext<T> sourceContext,
+		Map<KafkaTopicPartition, Long> seedPartitionsWithInitialOffsets,
+		SerializedValue<AssignerWithPeriodicWatermarks<T>> watermarksPeriodic,
+		SerializedValue<AssignerWithPunctuatedWatermarks<T>> watermarksPunctuated,
+		StreamingRuntimeContext runtimeContext,
+		KeyedDeserializationSchema<T> deserializer,
+		Properties kafkaProperties,
+		long autoCommitInterval,
+		MetricGroup consumerMetricGroup,
+		boolean useMetrics, SourceLineageAttachingOutput<KafkaTopicPartition, T> lineageAttachingOutput) throws Exception {
 		super(
-				sourceContext,
-				seedPartitionsWithInitialOffsets,
-				watermarksPeriodic,
-				watermarksPunctuated,
-				runtimeContext.getProcessingTimeService(),
-				runtimeContext.getExecutionConfig().getAutoWatermarkInterval(),
-				runtimeContext.getUserCodeClassLoader(),
-				consumerMetricGroup,
-				useMetrics);
+			sourceContext,
+			seedPartitionsWithInitialOffsets,
+			watermarksPeriodic,
+			watermarksPunctuated,
+			runtimeContext.getProcessingTimeService(),
+			runtimeContext.getExecutionConfig().getAutoWatermarkInterval(),
+			runtimeContext.getUserCodeClassLoader(),
+			consumerMetricGroup,
+			useMetrics, lineageAttachingOutput);
 
 		this.deserializer = checkNotNull(deserializer);
 		this.kafkaConfig = checkNotNull(kafkaProperties);

@@ -44,4 +44,6 @@ import org.apache.flink.api.common.functions.AbstractRichFunction;
 public abstract class RichSourceFunction<OUT> extends AbstractRichFunction implements SourceFunction<OUT> {
 
 	private static final long serialVersionUID = 1L;
+
+
 }

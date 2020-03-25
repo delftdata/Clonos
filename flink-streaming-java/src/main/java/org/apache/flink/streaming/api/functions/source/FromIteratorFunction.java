@@ -18,6 +18,11 @@
 package org.apache.flink.streaming.api.functions.source;
 
 import org.apache.flink.annotation.PublicEvolving;
+import org.apache.flink.streaming.api.operators.Output;
+import org.apache.flink.streaming.api.operators.lineage.LineageWrapperProvidingFunction;
+import org.apache.flink.streaming.api.operators.lineage.DefaultSourceLineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.SourceLineageAttachingOutput;
+import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
 import java.util.Iterator;
 
@@ -25,7 +30,7 @@ import java.util.Iterator;
  * A {@link SourceFunction} that reads elements from an {@link Iterator} and emits them.
  */
 @PublicEvolving
-public class FromIteratorFunction<T> implements SourceFunction<T> {
+public class FromIteratorFunction<T> implements SourceFunction<T>, LineageWrapperProvidingFunction<Integer,T> {
 
 	private static final long serialVersionUID = 1L;
 
@@ -47,5 +52,12 @@ public class FromIteratorFunction<T> implements SourceFunction<T> {
 	@Override
 	public void cancel() {
 		isRunning = false;
+	}
+
+	@Override
+	public SourceLineageAttachingOutput<Integer, T> wrapInSourceLineageAttachingOutput(Output<StreamRecord<T>> output) {
+		SourceLineageAttachingOutput<Integer, T> indexBasedSourceLineageAttachingOutput = new DefaultSourceLineageAttachingOutput<>(output);
+		indexBasedSourceLineageAttachingOutput.setKey(0);
+		return indexBasedSourceLineageAttachingOutput;
 	}
 }
