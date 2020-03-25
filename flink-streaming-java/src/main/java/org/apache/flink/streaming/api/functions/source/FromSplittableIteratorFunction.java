@@ -20,8 +20,9 @@ package org.apache.flink.streaming.api.functions.source;
 import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.streaming.api.operators.Output;
+import org.apache.flink.streaming.api.operators.lineage.IntegerKeyedSourceLineageAttachingOutput;
 import org.apache.flink.streaming.api.operators.lineage.LineageWrapperProvidingFunction;
-import org.apache.flink.streaming.api.operators.lineage.DefaultSourceLineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.AbstractSourceLineageAttachingOutput;
 import org.apache.flink.streaming.api.operators.lineage.SourceLineageAttachingOutput;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.util.SplittableIterator;
@@ -68,7 +69,7 @@ public class FromSplittableIteratorFunction<T> extends RichParallelSourceFunctio
 
 	@Override
 	public SourceLineageAttachingOutput<Integer, T> wrapInSourceLineageAttachingOutput(Output<StreamRecord<T>> toWrap) {
-		SourceLineageAttachingOutput<Integer, T> indexBasedSourceLineageAttachingOutput = new DefaultSourceLineageAttachingOutput<>(toWrap);
+		SourceLineageAttachingOutput<Integer, T> indexBasedSourceLineageAttachingOutput = new IntegerKeyedSourceLineageAttachingOutput<>(toWrap);
 		indexBasedSourceLineageAttachingOutput.setKey(getRuntimeContext().getIndexOfThisSubtask());
 		return indexBasedSourceLineageAttachingOutput;
 	}

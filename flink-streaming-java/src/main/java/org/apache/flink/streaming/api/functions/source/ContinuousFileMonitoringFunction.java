@@ -34,8 +34,9 @@ import org.apache.flink.runtime.state.FunctionSnapshotContext;
 import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction;
 import org.apache.flink.streaming.api.operators.Output;
 import org.apache.flink.streaming.api.operators.lineage.LineageWrapperProvidingFunction;
-import org.apache.flink.streaming.api.operators.lineage.DefaultSourceLineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.AbstractSourceLineageAttachingOutput;
 import org.apache.flink.streaming.api.operators.lineage.SourceLineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.StringKeyedSourceLineageAttachingOutput;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.util.Preconditions;
 
@@ -374,7 +375,7 @@ public class ContinuousFileMonitoringFunction<OUT>
 
 	@Override
 	public SourceLineageAttachingOutput<String,TimestampedFileInputSplit> wrapInSourceLineageAttachingOutput(Output<StreamRecord<TimestampedFileInputSplit>> output) {
-		SourceLineageAttachingOutput<String, TimestampedFileInputSplit> indexBasedSourceLineageAttachingOutput = new DefaultSourceLineageAttachingOutput<>(output);
+		SourceLineageAttachingOutput<String, TimestampedFileInputSplit> indexBasedSourceLineageAttachingOutput = new StringKeyedSourceLineageAttachingOutput<>(output);
 		indexBasedSourceLineageAttachingOutput.setKey(path);
 		return indexBasedSourceLineageAttachingOutput;
 	}

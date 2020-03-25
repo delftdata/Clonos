@@ -21,10 +21,7 @@ import org.apache.flink.annotation.Internal;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
-import org.apache.flink.streaming.api.operators.lineage.LineageAttachingOutput;
-import org.apache.flink.streaming.api.operators.lineage.LineageWrapperProvidingFunction;
-import org.apache.flink.streaming.api.operators.lineage.DefaultSourceLineageAttachingOutput;
-import org.apache.flink.streaming.api.operators.lineage.SourceLineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.*;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamrecord.LatencyMarker;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
@@ -175,7 +172,7 @@ public class StreamSource<OUT, SRC extends SourceFunction<OUT>>
 		if (this.userFunction instanceof LineageWrapperProvidingFunction) {
 			return ((LineageWrapperProvidingFunction<?, OUT>) this.userFunction).wrapInSourceLineageAttachingOutput(output);
 		}
-		SourceLineageAttachingOutput<Integer, OUT> indexBasedSourceLineageAttachingOutput = new DefaultSourceLineageAttachingOutput<>(output);
+		SourceLineageAttachingOutput<Integer, OUT> indexBasedSourceLineageAttachingOutput = new IntegerKeyedSourceLineageAttachingOutput<>(output);
 		indexBasedSourceLineageAttachingOutput.setKey(getRuntimeContext().getIndexOfThisSubtask());
 		return indexBasedSourceLineageAttachingOutput;
 	}

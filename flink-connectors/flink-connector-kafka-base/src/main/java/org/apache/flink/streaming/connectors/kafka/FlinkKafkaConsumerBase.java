@@ -42,7 +42,7 @@ import org.apache.flink.streaming.api.functions.source.RichParallelSourceFunctio
 import org.apache.flink.streaming.api.operators.Output;
 import org.apache.flink.streaming.api.operators.StreamingRuntimeContext;
 import org.apache.flink.streaming.api.operators.lineage.LineageWrapperProvidingFunction;
-import org.apache.flink.streaming.api.operators.lineage.DefaultSourceLineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.AbstractSourceLineageAttachingOutput;
 import org.apache.flink.streaming.api.operators.lineage.SourceLineageAttachingOutput;
 import org.apache.flink.streaming.connectors.kafka.config.OffsetCommitMode;
 import org.apache.flink.streaming.connectors.kafka.config.OffsetCommitModes;
@@ -226,7 +226,7 @@ public abstract class FlinkKafkaConsumerBase<T> extends RichParallelSourceFuncti
 	/**
 	 * The output collector that attaches lineage IDs to records for this function.
 	 */
-	private DefaultSourceLineageAttachingOutput<KafkaTopicPartition, T> lineageAttachingOutput;
+	private AbstractSourceLineageAttachingOutput<KafkaTopicPartition, T> lineageAttachingOutput;
 
 	// ------------------------------------------------------------------------
 
@@ -788,8 +788,21 @@ public abstract class FlinkKafkaConsumerBase<T> extends RichParallelSourceFuncti
 
 	@Override
 	public SourceLineageAttachingOutput<KafkaTopicPartition, T> wrapInSourceLineageAttachingOutput(Output<StreamRecord<T>> output) {
-		this.lineageAttachingOutput = new DefaultSourceLineageAttachingOutput<KafkaTopicPartition, T>(output);
+		this.lineageAttachingOutput = new KafkaSourceLineageAttachingOutput<T>(output);
 		return this.lineageAttachingOutput;
+	}
+
+	protected class KafkaSourceLineageAttachingOutput<T> extends AbstractSourceLineageAttachingOutput<KafkaTopicPartition, T> {
+
+		public KafkaSourceLineageAttachingOutput(Output<StreamRecord<T>> outputToWrap) {
+			super(outputToWrap);
+		}
+
+		@Override
+		public TypeInformation getTypeInformation() {
+			return TypeInformation.of(new TypeHint<Tuple2<KafkaTopicPartition,Integer>>() {
+			});
+		}
 	}
 
 	// ------------------------------------------------------------------------
@@ -954,7 +967,7 @@ public abstract class FlinkKafkaConsumerBase<T> extends RichParallelSourceFuncti
 		StreamingRuntimeContext runtimeContext,
 		OffsetCommitMode offsetCommitMode,
 		MetricGroup kafkaMetricGroup,
-		boolean useMetrics, DefaultSourceLineageAttachingOutput<KafkaTopicPartition, T> lineageAttachingOutput) throws Exception;
+		boolean useMetrics, AbstractSourceLineageAttachingOutput<KafkaTopicPartition, T> lineageAttachingOutput) throws Exception;
 
 	/**
 	 * Creates the partition discoverer that is used to find new partitions for this subtask.

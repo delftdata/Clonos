@@ -29,8 +29,9 @@ import org.apache.flink.runtime.jobgraph.tasks.InputSplitProvider;
 import org.apache.flink.runtime.jobgraph.tasks.InputSplitProviderException;
 import org.apache.flink.streaming.api.operators.Output;
 import org.apache.flink.streaming.api.operators.StreamingRuntimeContext;
+import org.apache.flink.streaming.api.operators.lineage.IntegerKeyedSourceLineageAttachingOutput;
 import org.apache.flink.streaming.api.operators.lineage.LineageWrapperProvidingFunction;
-import org.apache.flink.streaming.api.operators.lineage.DefaultSourceLineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.AbstractSourceLineageAttachingOutput;
 import org.apache.flink.streaming.api.operators.lineage.SourceLineageAttachingOutput;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
@@ -123,7 +124,7 @@ public class InputFormatSourceFunction<OUT> extends RichParallelSourceFunction<O
 
 	@Override
 	public SourceLineageAttachingOutput<Integer, OUT> wrapInSourceLineageAttachingOutput(Output<StreamRecord<OUT>> output) {
-		SourceLineageAttachingOutput<Integer, OUT> indexBasedSourceLineageAttachingOutput = new DefaultSourceLineageAttachingOutput<>(output);
+		SourceLineageAttachingOutput<Integer, OUT> indexBasedSourceLineageAttachingOutput = new IntegerKeyedSourceLineageAttachingOutput<>(output);
 		indexBasedSourceLineageAttachingOutput.setKey(this.getRuntimeContext().getIndexOfThisSubtask());
 		return indexBasedSourceLineageAttachingOutput;
 	}

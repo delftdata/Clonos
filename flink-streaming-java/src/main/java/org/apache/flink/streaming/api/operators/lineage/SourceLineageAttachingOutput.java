@@ -17,6 +17,11 @@
  */
 package org.apache.flink.streaming.api.operators.lineage;
 
+import org.apache.flink.api.common.typeinfo.TypeInformation;
+
 public interface SourceLineageAttachingOutput<K, OUT> extends LineageAttachingOutput<OUT> {
     void setKey(K key);
+
+    TypeInformation getTypeInformation();
+
 }

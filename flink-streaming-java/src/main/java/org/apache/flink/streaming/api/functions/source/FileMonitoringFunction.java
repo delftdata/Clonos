@@ -25,8 +25,9 @@ import org.apache.flink.core.fs.Path;
 
 import org.apache.flink.streaming.api.operators.Output;
 import org.apache.flink.streaming.api.operators.lineage.LineageWrapperProvidingFunction;
-import org.apache.flink.streaming.api.operators.lineage.DefaultSourceLineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.AbstractSourceLineageAttachingOutput;
 import org.apache.flink.streaming.api.operators.lineage.SourceLineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.StringKeyedSourceLineageAttachingOutput;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -149,7 +150,7 @@ public class FileMonitoringFunction implements SourceFunction<Tuple3<String, Lon
 
 	@Override
 	public SourceLineageAttachingOutput<String, Tuple3<String, Long, Long>> wrapInSourceLineageAttachingOutput(Output<StreamRecord<Tuple3<String, Long, Long>>> output) {
-		SourceLineageAttachingOutput<String, Tuple3<String, Long, Long>> indexBasedSourceLineageAttachingOutput = new DefaultSourceLineageAttachingOutput<>(output);
+		SourceLineageAttachingOutput<String, Tuple3<String, Long, Long>> indexBasedSourceLineageAttachingOutput = new StringKeyedSourceLineageAttachingOutput<>(output);
 		indexBasedSourceLineageAttachingOutput.setKey(path);
 		return indexBasedSourceLineageAttachingOutput;
 	}

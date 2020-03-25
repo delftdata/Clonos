@@ -30,7 +30,7 @@ import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import java.util.HashMap;
 import java.util.Map;
 
-public class DefaultSourceLineageAttachingOutput<K, OUT> extends AbstractLineageAttachingOutput<OUT> implements SourceLineageAttachingOutput<K, OUT> {
+public abstract class AbstractSourceLineageAttachingOutput<K, OUT> extends AbstractLineageAttachingOutput<OUT> implements SourceLineageAttachingOutput<K, OUT> {
 
 
 	private ListState<Tuple2<K, Integer>> managedNumRecordsEmitted;
@@ -40,7 +40,7 @@ public class DefaultSourceLineageAttachingOutput<K, OUT> extends AbstractLineage
 	private Integer currentKeyHash;
 	private Map<K, Integer> hashCodeCache;
 
-	public DefaultSourceLineageAttachingOutput(Output<StreamRecord<OUT>> outputToWrap) {
+	public AbstractSourceLineageAttachingOutput(Output<StreamRecord<OUT>> outputToWrap) {
 		super(outputToWrap);
 		this.numRecordsEmitted = new HashMap<>();
 		this.hashCodeCache = new HashMap<>();
@@ -53,6 +53,7 @@ public class DefaultSourceLineageAttachingOutput<K, OUT> extends AbstractLineage
 		if (this.currentKeyHash == null) {
 			this.currentKeyHash = currentKey.hashCode();
 			hashCodeCache.put(currentKey, currentKeyHash);
+			this.numRecordsEmitted.put(key, 0);
 		}
 
 	}
@@ -71,8 +72,7 @@ public class DefaultSourceLineageAttachingOutput<K, OUT> extends AbstractLineage
 
 	@Override
 	public void initializeState(StateInitializationContext context) throws Exception {
-		this.managedNumRecordsEmitted = context.getOperatorStateStore().getListState(new ListStateDescriptor<>(LINEAGE_INFO_NAME, TypeInformation.of(new TypeHint<Tuple2<K, Integer>>() {
-		})));
+		this.managedNumRecordsEmitted = context.getOperatorStateStore().getListState(new ListStateDescriptor<>(LINEAGE_INFO_NAME, getTypeInformation()));
 
 		if (context.isRestored())
 			for (Tuple2<K, Integer> pair : managedNumRecordsEmitted.get())
@@ -93,3 +93,4 @@ public class DefaultSourceLineageAttachingOutput<K, OUT> extends AbstractLineage
 		//skip, its a source, no input records
 	}
 }
+

@@ -163,7 +163,7 @@ public abstract class AbstractStreamOperator<OUT>
 		Output<StreamRecord<OUT>> outputToWrap;
 		try {
 			OperatorMetricGroup operatorMetricGroup = environment.getMetricGroup().addOperator(config.getOperatorID(), config.getOperatorName());
-			outputToWrap = new CountingOutput(output, operatorMetricGroup.getIOMetricGroup().getNumRecordsOutCounter());
+			outputToWrap = new CountingOutput<>(output, operatorMetricGroup.getIOMetricGroup().getNumRecordsOutCounter());
 
 			if (config.isChainStart()) {
 				operatorMetricGroup.getIOMetricGroup().reuseInputMetricsForTask();
@@ -177,7 +177,6 @@ public abstract class AbstractStreamOperator<OUT>
 			this.metrics = UnregisteredMetricGroups.createUnregisteredOperatorMetricGroup();
 			outputToWrap = output;
 		}
-		this.output = wrapInLineageAttachingOutput(outputToWrap);
 
 		try {
 			Configuration taskManagerConfig = environment.getTaskManagerInfo().getConfiguration();
@@ -194,6 +193,7 @@ public abstract class AbstractStreamOperator<OUT>
 		}
 
 		this.runtimeContext = new StreamingRuntimeContext(this, environment, container.getAccumulatorMap());
+		this.output = wrapInLineageAttachingOutput(outputToWrap);
 
 		stateKeySelector1 = config.getStatePartitioner(0, getUserCodeClassloader());
 		stateKeySelector2 = config.getStatePartitioner(1, getUserCodeClassloader());

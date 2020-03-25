@@ -18,6 +18,7 @@
 
 package org.apache.flink.streaming.connectors.kafka.internals;
 
+import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.core.testutils.CheckedThread;
 import org.apache.flink.core.testutils.OneShotLatch;
 import org.apache.flink.metrics.groups.UnregisteredMetricsGroup;
@@ -26,8 +27,6 @@ import org.apache.flink.runtime.state.StateSnapshotContext;
 import org.apache.flink.streaming.api.functions.AssignerWithPeriodicWatermarks;
 import org.apache.flink.streaming.api.functions.AssignerWithPunctuatedWatermarks;
 import org.apache.flink.streaming.api.functions.source.SourceFunction.SourceContext;
-import org.apache.flink.streaming.api.operators.Output;
-import org.apache.flink.streaming.api.operators.lineage.DefaultSourceLineageAttachingOutput;
 import org.apache.flink.streaming.api.operators.lineage.SourceLineageAttachingOutput;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.connectors.kafka.testutils.TestSourceContext;
@@ -569,11 +568,16 @@ public class AbstractFetcherTest {
 
 	}
 
-	private static class MockSourceLineageAttachingOutput<K,OUT> implements SourceLineageAttachingOutput<K,OUT> {
+	public static class MockSourceLineageAttachingOutput<K,OUT> implements SourceLineageAttachingOutput<K,OUT> {
 
 		@Override
 		public void setKey(K key) {
 
+		}
+
+		@Override
+		public TypeInformation getTypeInformation() {
+			return null;
 		}
 
 		@Override

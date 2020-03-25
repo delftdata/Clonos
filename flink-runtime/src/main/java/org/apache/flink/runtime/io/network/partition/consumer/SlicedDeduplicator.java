@@ -16,6 +16,8 @@
  */
 package org.apache.flink.runtime.io.network.partition.consumer;
 
+import org.apache.flink.core.memory.MemorySegment;
+import org.apache.flink.core.memory.MemorySegmentFactory;
 import org.apache.flink.runtime.operators.util.BloomFilter;
 import org.apache.flink.runtime.state.CheckpointListener;
 
@@ -25,13 +27,28 @@ import java.util.TreeMap;
 public class SlicedDeduplicator implements CheckpointListener {
 
 	private SortedMap<Long, BloomFilter> checkpointIdToFilter;
+	private SortedMap<Long, MemorySegment> checkpointIdToMemorySegment;
 	private long currentCheckpoint;
+
+	private static final float ACCEPTABLE_FALSE_POSITIVE_PROBABILITY = 0.0001f;
+	private static final int EXPECTED_NUM_ENTRIES = 750000;
 
 
 	public SlicedDeduplicator() {
 		checkpointIdToFilter = new TreeMap<>();
-		currentCheckpoint = 0l;
-		checkpointIdToFilter.put(currentCheckpoint, new BloomFilter(750000, 1000));
+		checkpointIdToMemorySegment = new TreeMap<>();
+		createBloomFilter(0l);
+	}
+
+	private void createBloomFilter(long checkpointId){
+		int bitsSize = BloomFilter.optimalNumOfBits(EXPECTED_NUM_ENTRIES,ACCEPTABLE_FALSE_POSITIVE_PROBABILITY);
+		bitsSize = bitsSize + (Long.SIZE - (bitsSize % Long.SIZE));
+		int byteSize = bitsSize >>> 3;
+		MemorySegment memorySegment = MemorySegmentFactory.allocateUnpooledSegment(byteSize);
+		BloomFilter toUse = new BloomFilter(EXPECTED_NUM_ENTRIES, byteSize);
+		toUse.setBitsLocation(memorySegment,0);
+		checkpointIdToFilter.put(checkpointId, toUse);
+		checkpointIdToMemorySegment.put(checkpointId, memorySegment);
 	}
 
 	public boolean testRecord(int hash) {
@@ -48,7 +65,7 @@ public class SlicedDeduplicator implements CheckpointListener {
 		if (checkpointId < this.currentCheckpoint)
 			return;
 		this.currentCheckpoint = checkpointId;
-		checkpointIdToFilter.put(this.currentCheckpoint, new BloomFilter(750000, 1000));
+		createBloomFilter(currentCheckpoint);
 
 	}
 
@@ -58,6 +75,7 @@ public class SlicedDeduplicator implements CheckpointListener {
 			if (l >= checkpointId)
 				break;
 			checkpointIdToFilter.remove(l);
+			checkpointIdToMemorySegment.remove(l).free();
 		}
 	}
 

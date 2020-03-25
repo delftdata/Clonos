@@ -20,7 +20,8 @@ package org.apache.flink.streaming.api.functions.source;
 import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.streaming.api.operators.Output;
 import org.apache.flink.streaming.api.operators.lineage.LineageWrapperProvidingFunction;
-import org.apache.flink.streaming.api.operators.lineage.DefaultSourceLineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.AbstractSourceLineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.IntegerKeyedSourceLineageAttachingOutput;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.util.IOUtils;
 
@@ -152,8 +153,8 @@ public class SocketTextStreamFunction implements SourceFunction<String>, Lineage
 	}
 
 	@Override
-	public DefaultSourceLineageAttachingOutput<Integer, String> wrapInSourceLineageAttachingOutput(Output<StreamRecord<String>> output) {
-		DefaultSourceLineageAttachingOutput<Integer, String> indexBasedSourceLineageAttachingOutput = new DefaultSourceLineageAttachingOutput<>(output);
+	public AbstractSourceLineageAttachingOutput<Integer, String> wrapInSourceLineageAttachingOutput(Output<StreamRecord<String>> output) {
+		AbstractSourceLineageAttachingOutput<Integer, String> indexBasedSourceLineageAttachingOutput = new IntegerKeyedSourceLineageAttachingOutput<>(output);
 		indexBasedSourceLineageAttachingOutput.setKey(port);
 		return indexBasedSourceLineageAttachingOutput;
 	}
