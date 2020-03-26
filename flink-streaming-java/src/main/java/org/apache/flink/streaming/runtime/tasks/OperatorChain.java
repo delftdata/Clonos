@@ -483,6 +483,7 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 				@SuppressWarnings("unchecked")
 				StreamRecord<T> castRecord = (StreamRecord<T>) record;
 
+				operator.notifyInputRecord(record);
 				numRecordsIn.inc();
 				operator.setKeyContextElement1(castRecord);
 				operator.processElement(castRecord);
@@ -575,6 +576,7 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 
 				numRecordsIn.inc();
 				StreamRecord<T> copy = castRecord.copy(serializer.copy(castRecord.getValue()));
+				operator.notifyInputRecord(copy);
 				operator.setKeyContextElement1(copy);
 				operator.processElement(copy);
 			} catch (ClassCastException e) {
