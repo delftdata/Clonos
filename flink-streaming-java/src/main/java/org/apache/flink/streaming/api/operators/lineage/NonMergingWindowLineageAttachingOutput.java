@@ -50,9 +50,9 @@ public class NonMergingWindowLineageAttachingOutput<K, W, OUT> extends AbstractW
 
 		RecordID toReturn = new RecordID();
 		if(current == null)//No record has been assigned to window.
-			hashFunction.hashInt(currentContext.f1.hashCode() + currentContext.f1.hashCode()).writeBytesTo(toReturn.getId(), 0, RecordID.NUMBER_OF_BYTES);
+			hashFunction.hashInt(currentContext.hashCode()).writeBytesTo(toReturn.getId(), 0, RecordID.NUMBER_OF_BYTES);
 		else {
-			hashFunction.hashInt(currentContext.f1.hashCode() + currentContext.f1.hashCode() + current.f0.hashCode() + current.f1).writeBytesTo(toReturn.getId(), 0, RecordID.NUMBER_OF_BYTES);
+			hashFunction.hashInt(currentContext.hashCode() + current.f0.hashCode() + current.f1).writeBytesTo(toReturn.getId(), 0, RecordID.NUMBER_OF_BYTES);
 			current.f1++; //Increase the counter.
 		}
 		return toReturn;
