@@ -177,6 +177,8 @@ public class WindowOperator<K, IN, ACC, OUT, W extends Window>
 
 		super(windowFunction);
 
+		LOG.debug("Using a MergingWindowAssigner? {}", windowAssigner instanceof MergingWindowAssigner);
+
 		checkArgument(!(windowAssigner instanceof BaseAlignedWindowAssigner),
 			"The " + windowAssigner.getClass().getSimpleName() + " cannot be used with a WindowOperator. " +
 				"This assigner is only used with the AccumulatingProcessingTimeWindowOperator and " +
@@ -255,6 +257,7 @@ public class WindowOperator<K, IN, ACC, OUT, W extends Window>
 					getOrCreateKeyedState(VoidNamespaceSerializer.INSTANCE, mergingSetsStateDescriptor);
 			mergingSetsState.setCurrentNamespace(VoidNamespace.INSTANCE);
 		}
+		LOG.debug("Using a MergingWindowAssigner? {}", windowAssigner instanceof MergingWindowAssigner);
 	}
 
 	@Override
@@ -287,6 +290,7 @@ public class WindowOperator<K, IN, ACC, OUT, W extends Window>
 
 	@Override
 	public void processElement(StreamRecord<IN> element) throws Exception {
+		LOG.debug("Call to Window Process Element");
 		final Collection<W> elementWindows = windowAssigner.assignWindows(
 			element.getValue(), element.getTimestamp(), windowAssignerContext);
 

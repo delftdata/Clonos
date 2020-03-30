@@ -31,6 +31,7 @@ import org.slf4j.LoggerFactory;
 public class NonMergingWindowLineageAttachingOutput<K, W, OUT> extends AbstractWindowLineageAttachingOutput<K, W, OUT> {
 
 
+	private static final Logger LOG = LoggerFactory.getLogger(NonMergingWindowLineageAttachingOutput.class);
 
 	public NonMergingWindowLineageAttachingOutput(Output<StreamRecord<OUT>> outputToWrap) {
 		super(outputToWrap);
@@ -46,9 +47,14 @@ public class NonMergingWindowLineageAttachingOutput<K, W, OUT> extends AbstractW
 	@Override
 	protected RecordID getRecordIDForNextOutputRecord() {
 		Tuple2<RecordID, Integer> current = this.paneToRecordIDReduction.get(currentContext);
+
 		RecordID toReturn = new RecordID();
-		hashFunction.hashInt(current.f0.hashCode() + current.f1).writeBytesTo(toReturn.getId(), 0, RecordID.NUMBER_OF_BYTES);
-		current.f1++; //Increase the counter.
+		if(current == null)//No record has been assigned to window.
+			hashFunction.hashInt(currentContext.f1.hashCode() + currentContext.f1.hashCode()).writeBytesTo(toReturn.getId(), 0, RecordID.NUMBER_OF_BYTES);
+		else {
+			hashFunction.hashInt(currentContext.f1.hashCode() + currentContext.f1.hashCode() + current.f0.hashCode() + current.f1).writeBytesTo(toReturn.getId(), 0, RecordID.NUMBER_OF_BYTES);
+			current.f1++; //Increase the counter.
+		}
 		return toReturn;
 	}
 

@@ -103,10 +103,13 @@ public class EvictingWindowOperator<K, IN, OUT, W extends Window>
 		final Collection<W> elementWindows = windowAssigner.assignWindows(
 				element.getValue(), element.getTimestamp(), windowAssignerContext);
 
+		this.windowOutput.notifyAssignedWindows(elementWindows);
+
 		//if element is handled by none of assigned elementWindows
 		boolean isSkippedElement = true;
 
 		final K key = this.<K>getKeyedStateBackend().getCurrentKey();
+		this.windowOutput.setCurrentKey(key);
 
 		if (windowAssigner instanceof MergingWindowAssigner) {
 			MergingWindowSet<W> mergingWindows = getMergingWindowSet();

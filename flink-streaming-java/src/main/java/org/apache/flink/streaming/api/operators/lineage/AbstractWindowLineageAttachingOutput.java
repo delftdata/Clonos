@@ -27,6 +27,8 @@ import org.apache.flink.streaming.api.operators.Output;
 import org.apache.flink.streaming.runtime.streamrecord.RecordID;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.util.OutputTag;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Collection;
 import java.util.HashMap;
@@ -34,11 +36,12 @@ import java.util.Map;
 
 public abstract class AbstractWindowLineageAttachingOutput<K, W, OUT> extends AbstractLineageAttachingOutput<OUT> implements WindowLineageAttachingOutput<K, W, OUT> {
 
+	private static final Logger LOG = LoggerFactory.getLogger(AbstractWindowLineageAttachingOutput.class);
 
 	/**
 	 * Maps a pane identifier (Stream Key + Window) to an under construction RecordID and a counter for how many times it has been output.
 	 */
-	protected ListState<Tuple2<Tuple2<K, W>, Tuple2<RecordID, Integer>>> paneToRecordIDReductionManaged;
+	protected ListState<Tuple2<Tuple2<Object, Object>, Tuple2<RecordID, Integer>>> paneToRecordIDReductionManaged;
 
 	protected Map<Tuple2<K, W>, Tuple2<RecordID, Integer>> paneToRecordIDReduction;
 
@@ -56,17 +59,25 @@ public abstract class AbstractWindowLineageAttachingOutput<K, W, OUT> extends Ab
 	@Override
 	public void setCurrentKey(K key) {
 		this.currentContext.f0 = key;
+		LOG.debug("Set lineage key to: {}", key);
 	}
 
 	@Override
 	public void notifyAssignedWindows(Collection<W> windows) {
+		LOG.debug("Notify assigned windows");
 		for (W window : windows) {
+			LOG.debug("Added to window: {}", window);
 			Tuple2<RecordID, Integer> current = paneToRecordIDReduction.get(currentContext);
 			if (current != null) {
+				LOG.debug("Merging with current id for window: {}", window);
+				LOG.debug("Before ID: {}, latest recordID: {}", current.f0, this.latestInserted);
 				RecordID.mergeIntoFirst(current.f0, this.latestInserted);
+				LOG.debug("After ID: {}", current.f0);
 				current.f1 = 0; // Pane has been updated. Reset counter of outputed with current state.
-			} else
-				paneToRecordIDReduction.put(currentContext.copy(), new Tuple2<>(this.latestInserted, 0)); //todo check if need clone here
+			} else {
+				LOG.debug("Creating new id for window: {}, with the id of latestInserted: {}", window, this.latestInserted);
+				paneToRecordIDReduction.put(currentContext.copy(), new Tuple2<>(this.latestInserted.clone(), 0)); //todo check if need clone here
+			}
 		}
 	}
 
@@ -88,18 +99,18 @@ public abstract class AbstractWindowLineageAttachingOutput<K, W, OUT> extends Ab
 
 	@Override
 	public void initializeState(StateInitializationContext context) throws Exception {
-		this.paneToRecordIDReductionManaged = context.getOperatorStateStore().getListState(new ListStateDescriptor<>(LINEAGE_INFO_NAME, TypeInformation.of(new TypeHint<Tuple2<Tuple2<K, W>, Tuple2<RecordID, Integer>>>() {
+		this.paneToRecordIDReductionManaged = context.getOperatorStateStore().getListState(new ListStateDescriptor<>(LINEAGE_INFO_NAME, TypeInformation.of(new TypeHint<Tuple2<Tuple2<Object, Object>, Tuple2<RecordID, Integer>>>() {
 		})));
 		if (context.isRestored())
-			for (Tuple2<Tuple2<K, W>, Tuple2<RecordID, Integer>> mapping : paneToRecordIDReductionManaged.get())
-				this.paneToRecordIDReduction.put(mapping.f0, mapping.f1);
+			for (Tuple2<Tuple2<Object, Object>, Tuple2<RecordID, Integer>> mapping : paneToRecordIDReductionManaged.get())
+				this.paneToRecordIDReduction.put((Tuple2<K, W>) mapping.f0, mapping.f1);
 	}
 
 	@Override
 	public void snapshotState(StateSnapshotContext context) throws Exception {
 		this.paneToRecordIDReductionManaged.clear();
 		for (Map.Entry<Tuple2<K, W>, Tuple2<RecordID, Integer>> mapping : paneToRecordIDReduction.entrySet())
-			this.paneToRecordIDReductionManaged.add(new Tuple2<>(mapping.getKey(), mapping.getValue()));
+			this.paneToRecordIDReductionManaged.add(new Tuple2<>((Tuple2<Object,Object>)mapping.getKey(), mapping.getValue()));
 	}
 
 }
