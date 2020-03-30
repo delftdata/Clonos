@@ -23,6 +23,8 @@ import org.apache.flink.runtime.state.CheckpointListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.LinkedList;
+import java.util.List;
 import java.util.SortedMap;
 import java.util.TreeMap;
 
@@ -81,9 +83,13 @@ public class SlicedDeduplicator implements CheckpointListener {
 
 	@Override
 	public void notifyCheckpointComplete(long checkpointId) {
+		List<Long> checkpointsToRemove = new LinkedList<>();
 		for (Long l : checkpointIdToFilter.keySet()) {
 			if (l >= checkpointId)
 				break;
+			checkpointsToRemove.add(l);
+		}
+		for (Long l : checkpointsToRemove){
 			checkpointIdToFilter.remove(l);
 			checkpointIdToMemorySegment.remove(l).free();
 		}
