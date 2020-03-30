@@ -57,7 +57,7 @@ public class OneToNLineageAttachingOutput<OUT> extends AbstractLineageAttachingO
 
 	@Override
 	protected RecordID getRecordIDForNextOutputRecord() {
-		hashFunction.hashInt(inputBase.hashCode() + counter).writeBytesTo(outputResult.getId(), 0, RecordID.NUMBER_OF_BYTES);
+		hashFunction.hashInt(inputBase.hashCode() + counter++).writeBytesTo(outputResult.getId(), 0, RecordID.NUMBER_OF_BYTES);
 		return outputResult;
 	}
 }
