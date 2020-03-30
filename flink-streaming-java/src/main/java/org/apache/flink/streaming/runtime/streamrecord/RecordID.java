@@ -33,7 +33,7 @@ public class RecordID implements Comparable<RecordID>, Serializable, Cloneable {
 	private static final RecordIDMergingOperation merger = new XORRecordIDMergingOperation();
 
 	private byte[] id;
-	private String toString;
+	private transient String toString;
 
 	/*
 		Copies the first NUMBER_OF_BYTES bytes from the parameter id.
