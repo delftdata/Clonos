@@ -22,6 +22,8 @@ import org.apache.flink.api.common.functions.ReduceFunction;
 import org.apache.flink.api.common.state.ValueState;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
+import org.apache.flink.streaming.api.operators.lineage.LineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.OneToOneLineageAttachingOutput;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
 /**
@@ -66,5 +68,11 @@ public class StreamGroupedReduce<IN> extends AbstractUdfStreamOperator<IN, Reduc
 			values.update(value);
 			output.collect(element.replace(value));
 		}
+	}
+
+	@Override
+	public LineageAttachingOutput<IN> wrapInLineageAttachingOutput(Output<StreamRecord<IN>> output) {
+		//I dont see the need to reduce the Ids together. In fact, during replay, doing it this way will ensure better deduplication
+		return new OneToOneLineageAttachingOutput<>(output);
 	}
 }
