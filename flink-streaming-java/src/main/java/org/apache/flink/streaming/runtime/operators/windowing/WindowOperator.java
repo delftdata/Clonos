@@ -39,8 +39,8 @@ import org.apache.flink.runtime.state.internal.InternalListState;
 import org.apache.flink.runtime.state.internal.InternalMergingState;
 import org.apache.flink.streaming.api.operators.*;
 import org.apache.flink.streaming.api.operators.lineage.LineageAttachingOutput;
-import org.apache.flink.streaming.api.operators.lineage.NonMergingWindowLineageAttachingOutput;
-import org.apache.flink.streaming.api.operators.lineage.WindowLineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.oneinput.window.NonMergingWindowLineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.oneinput.window.WindowLineageAttachingOutput;
 import org.apache.flink.streaming.api.windowing.assigners.BaseAlignedWindowAssigner;
 import org.apache.flink.streaming.api.windowing.assigners.MergingWindowAssigner;
 import org.apache.flink.streaming.api.windowing.assigners.WindowAssigner;
@@ -300,7 +300,7 @@ public class WindowOperator<K, IN, ACC, OUT, W extends Window>
 		boolean isSkippedElement = true;
 
 		final K key = this.<K>getKeyedStateBackend().getCurrentKey();
-		this.windowOutput.setCurrentKey(key);
+		this.windowOutput.setKey(key);
 
 		if (windowAssigner instanceof MergingWindowAssigner) {
 			MergingWindowSet<W> mergingWindows = getMergingWindowSet();
@@ -430,7 +430,7 @@ public class WindowOperator<K, IN, ACC, OUT, W extends Window>
 	@Override
 	public void onEventTime(InternalTimer<K, W> timer) throws Exception {
 		triggerContext.key = timer.getKey();
-		this.windowOutput.setCurrentKey(triggerContext.key);
+		this.windowOutput.setKey(triggerContext.key);
 		triggerContext.window = timer.getNamespace();
 		this.windowOutput.setCurrentWindow(triggerContext.window);
 
@@ -479,7 +479,7 @@ public class WindowOperator<K, IN, ACC, OUT, W extends Window>
 	@Override
 	public void onProcessingTime(InternalTimer<K, W> timer) throws Exception {
 		triggerContext.key = timer.getKey();
-		this.windowOutput.setCurrentKey(triggerContext.key);
+		this.windowOutput.setKey(triggerContext.key);
 		triggerContext.window = timer.getNamespace();
 		this.windowOutput.setCurrentWindow(triggerContext.window);
 

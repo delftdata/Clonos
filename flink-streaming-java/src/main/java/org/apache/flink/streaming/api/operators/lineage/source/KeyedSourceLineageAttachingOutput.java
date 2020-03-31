@@ -14,7 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.flink.streaming.api.operators.lineage;
+package org.apache.flink.streaming.api.operators.lineage.source;
 
 import org.apache.flink.api.common.state.ListState;
 import org.apache.flink.api.common.state.ListStateDescriptor;
@@ -24,23 +24,26 @@ import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.runtime.state.StateInitializationContext;
 import org.apache.flink.runtime.state.StateSnapshotContext;
 import org.apache.flink.streaming.api.operators.Output;
+import org.apache.flink.streaming.api.operators.lineage.AbstractLineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.KeyedLineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.MissingLineageContextException;
 import org.apache.flink.streaming.runtime.streamrecord.RecordID;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
 import java.util.HashMap;
 import java.util.Map;
 
-public abstract class AbstractSourceLineageAttachingOutput<K, OUT> extends AbstractLineageAttachingOutput<OUT> implements SourceLineageAttachingOutput<K, OUT> {
+public class KeyedSourceLineageAttachingOutput<K, OUT> extends AbstractLineageAttachingOutput<OUT> implements SourceLineageAttachingOutput<K, OUT> {
 
 
-	private ListState<Tuple2<K, Integer>> managedNumRecordsEmitted;
+	private ListState<Tuple2<Object, Integer>> managedNumRecordsEmitted;
 	protected Map<K, Integer> numRecordsEmitted;
 
 	private K currentKey;
 	private Integer currentKeyHash;
 	private Map<K, Integer> hashCodeCache;
 
-	public AbstractSourceLineageAttachingOutput(Output<StreamRecord<OUT>> outputToWrap) {
+	public KeyedSourceLineageAttachingOutput(Output<StreamRecord<OUT>> outputToWrap) {
 		super(outputToWrap);
 		this.numRecordsEmitted = new HashMap<>();
 		this.hashCodeCache = new HashMap<>();
@@ -55,7 +58,6 @@ public abstract class AbstractSourceLineageAttachingOutput<K, OUT> extends Abstr
 			hashCodeCache.put(currentKey, currentKeyHash);
 			this.numRecordsEmitted.put(key, 0);
 		}
-
 	}
 
 
@@ -72,11 +74,11 @@ public abstract class AbstractSourceLineageAttachingOutput<K, OUT> extends Abstr
 
 	@Override
 	public void initializeState(StateInitializationContext context) throws Exception {
-		this.managedNumRecordsEmitted = context.getOperatorStateStore().getListState(new ListStateDescriptor<>(LINEAGE_INFO_NAME, getTypeInformation()));
+		this.managedNumRecordsEmitted = context.getOperatorStateStore().getListState(new ListStateDescriptor<>(LINEAGE_INFO_NAME, TypeInformation.of(new TypeHint<Tuple2<Object,Integer>>() {})));
 
 		if (context.isRestored())
-			for (Tuple2<K, Integer> pair : managedNumRecordsEmitted.get())
-				this.numRecordsEmitted.put(pair.f0, pair.f1);
+			for (Tuple2<Object, Integer> pair : managedNumRecordsEmitted.get())
+				this.numRecordsEmitted.put((K) pair.f0, pair.f1);
 
 	}
 
@@ -88,9 +90,5 @@ public abstract class AbstractSourceLineageAttachingOutput<K, OUT> extends Abstr
 
 	}
 
-	@Override
-	public void notifyInputRecord(StreamRecord<?> input) {
-		//skip, its a source, no input records
-	}
 }
 

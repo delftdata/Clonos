@@ -19,10 +19,9 @@ package org.apache.flink.streaming.api.functions.source;
 
 import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.streaming.api.operators.Output;
-import org.apache.flink.streaming.api.operators.lineage.IntegerKeyedSourceLineageAttachingOutput;
-import org.apache.flink.streaming.api.operators.lineage.LineageWrapperProvidingFunction;
-import org.apache.flink.streaming.api.operators.lineage.AbstractSourceLineageAttachingOutput;
-import org.apache.flink.streaming.api.operators.lineage.SourceLineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.source.KeyedSourceLineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.source.LineageWrapperProvidingSourceFunction;
+import org.apache.flink.streaming.api.operators.lineage.source.SourceLineageAttachingOutput;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
 import java.util.Iterator;
@@ -31,7 +30,7 @@ import java.util.Iterator;
  * A {@link SourceFunction} that reads elements from an {@link Iterator} and emits them.
  */
 @PublicEvolving
-public class FromIteratorFunction<T> implements SourceFunction<T>, LineageWrapperProvidingFunction<Integer,T> {
+public class FromIteratorFunction<T> implements SourceFunction<T>, LineageWrapperProvidingSourceFunction<Integer,T> {
 
 	private static final long serialVersionUID = 1L;
 
@@ -57,7 +56,7 @@ public class FromIteratorFunction<T> implements SourceFunction<T>, LineageWrappe
 
 	@Override
 	public SourceLineageAttachingOutput<Integer, T> wrapInSourceLineageAttachingOutput(Output<StreamRecord<T>> output) {
-		SourceLineageAttachingOutput<Integer, T> indexBasedSourceLineageAttachingOutput = new IntegerKeyedSourceLineageAttachingOutput<>(output);
+		SourceLineageAttachingOutput<Integer, T> indexBasedSourceLineageAttachingOutput = new KeyedSourceLineageAttachingOutput<>(output);
 		indexBasedSourceLineageAttachingOutput.setKey(0);
 		return indexBasedSourceLineageAttachingOutput;
 	}

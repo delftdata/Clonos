@@ -23,7 +23,7 @@ import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.streaming.api.functions.AssignerWithPeriodicWatermarks;
 import org.apache.flink.streaming.api.functions.AssignerWithPunctuatedWatermarks;
 import org.apache.flink.streaming.api.operators.StreamingRuntimeContext;
-import org.apache.flink.streaming.api.operators.lineage.AbstractSourceLineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.source.KeyedSourceLineageAttachingOutput;
 import org.apache.flink.streaming.connectors.kafka.config.OffsetCommitMode;
 import org.apache.flink.streaming.connectors.kafka.internals.*;
 import org.apache.flink.streaming.util.serialization.KeyedDeserializationSchema;
@@ -232,7 +232,7 @@ public class FlinkKafkaConsumer08<T> extends FlinkKafkaConsumerBase<T> {
 		StreamingRuntimeContext runtimeContext,
 		OffsetCommitMode offsetCommitMode,
 		MetricGroup consumerMetricGroup,
-		boolean useMetrics, AbstractSourceLineageAttachingOutput<KafkaTopicPartition, T> lineageAttachingOutput) throws Exception {
+		boolean useMetrics, KeyedSourceLineageAttachingOutput<KafkaTopicPartition, T> lineageAttachingOutput) throws Exception {
 
 		long autoCommitInterval = (offsetCommitMode == OffsetCommitMode.KAFKA_PERIODIC)
 			? PropertiesUtil.getLong(kafkaProperties, "auto.commit.interval.ms", 60000)

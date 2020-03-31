@@ -14,50 +14,48 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.flink.streaming.api.operators.lineage;
+package org.apache.flink.streaming.api.operators.lineage.oneinput.window;
 
-import org.apache.flink.runtime.state.StateInitializationContext;
-import org.apache.flink.runtime.state.StateSnapshotContext;
-import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
+import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.streaming.api.operators.Output;
 import org.apache.flink.streaming.runtime.streamrecord.RecordID;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class OneToNLineageAttachingOutput<OUT> extends AbstractLineageAttachingOutput<OUT> {
+/**
+ * @param <K>
+ * @param <W>
+ * @param <OUT>
+ */
+public class NonMergingWindowLineageAttachingOutput<K, W, OUT> extends AbstractWindowLineageAttachingOutput<K, W, OUT>  {
 
 
-	private int counter;
-	private RecordID inputBase;
-	private RecordID outputResult;
+	private static final Logger LOG = LoggerFactory.getLogger(NonMergingWindowLineageAttachingOutput.class);
 
-
-	public OneToNLineageAttachingOutput(Output<StreamRecord<OUT>> outputToWrap) {
+	public NonMergingWindowLineageAttachingOutput(Output<StreamRecord<OUT>> outputToWrap) {
 		super(outputToWrap);
-		this.counter = 0;
-		this.outputResult = new RecordID();
 	}
+
 
 	@Override
 	public void notifyInputRecord(StreamRecord<?> input) {
-		counter = 0;
-		this.inputBase = input.getRecordID();
+		latestInserted = input.getRecordID();
 	}
 
-	@Override
-	public void initializeState(StateInitializationContext context) throws Exception {
-		//skip
-	}
-
-	@Override
-	public void snapshotState(StateSnapshotContext context) throws Exception {
-		//skip
-	}
 
 	@Override
 	protected RecordID getRecordIDForNextOutputRecord() {
-		hashFunction.hashInt(inputBase.hashCode() + counter++).writeBytesTo(outputResult.getId(), 0, RecordID.NUMBER_OF_BYTES);
-		return outputResult;
+		Tuple2<RecordID, Integer> current = this.paneToRecordIDReduction.get(currentContext);
+
+		RecordID toReturn = new RecordID();
+		if(current == null)//No record has been assigned to window.
+			hashFunction.hashInt(currentContext.hashCode()).writeBytesTo(toReturn.getId(), 0, RecordID.NUMBER_OF_BYTES);
+		else {
+			hashFunction.hashInt(currentContext.hashCode() + current.f0.hashCode() + current.f1).writeBytesTo(toReturn.getId(), 0, RecordID.NUMBER_OF_BYTES);
+			current.f1++; //Increase the counter.
+		}
+		return toReturn;
 	}
+
 }

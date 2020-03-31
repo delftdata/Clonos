@@ -40,6 +40,7 @@ import org.apache.flink.runtime.plugable.DeserializationDelegate;
 import org.apache.flink.runtime.plugable.NonReusingDeserializationDelegate;
 import org.apache.flink.streaming.api.CheckpointingMode;
 import org.apache.flink.streaming.api.operators.TwoInputStreamOperator;
+import org.apache.flink.streaming.api.operators.lineage.twoinput.TwoInputLineageAttachingOutput;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.metrics.WatermarkGauge;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
@@ -131,6 +132,8 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 
 	private boolean isFinished;
 
+	private final TwoInputLineageAttachingOutput lineageAttachingOutput;
+
 	@SuppressWarnings("unchecked")
 	public StreamTwoInputProcessor(
 			Collection<InputGate> inputGates1,
@@ -201,6 +204,8 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 		this.input1WatermarkGauge = input1WatermarkGauge;
 		this.input2WatermarkGauge = input2WatermarkGauge;
 		metrics.gauge("checkpointAlignmentTime", barrierHandler::getAlignmentDurationNanos);
+
+		this.lineageAttachingOutput = (TwoInputLineageAttachingOutput) this.streamOperator.getLineageAttachingOutput();
 	}
 
 	public boolean processInput() throws Exception {
@@ -253,7 +258,7 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 							if (!this.inputGate.haveSeenRecordBefore(currentChannel, record.getRecordID().hashCode())) {
 								synchronized (lock) {
 									numRecordsIn.inc();
-									streamOperator.notifyInputRecord(record);
+									lineageAttachingOutput.notifyInputRecord1(record);
 									streamOperator.setKeyContextElement1(record);
 									LOG.debug("{}: Process element no {}: {}.", taskName, numRecordsIn.getCount(), record);
 									streamOperator.processElement1(record);
@@ -284,7 +289,7 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 							if (!this.inputGate.haveSeenRecordBefore(currentChannel, record.getRecordID().hashCode())) {
 								synchronized (lock) {
 									numRecordsIn.inc();
-									streamOperator.notifyInputRecord(record);
+									lineageAttachingOutput.notifyInputRecord2(record);
 									streamOperator.setKeyContextElement2(record);
 									LOG.debug("{}: Process element no {}: {}.", taskName, numRecordsIn.getCount(), record);
 									streamOperator.processElement2(record);

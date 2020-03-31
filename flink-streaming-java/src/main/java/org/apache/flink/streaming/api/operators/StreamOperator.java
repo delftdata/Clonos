@@ -149,9 +149,8 @@ public interface StreamOperator<OUT> extends CheckpointListener, KeyContext, Dis
 
 	OperatorID getOperatorID();
 
-	void notifyInputRecord(StreamRecord<?> record);
-
 	LineageAttachingOutput<OUT> wrapInLineageAttachingOutput(Output<StreamRecord<OUT>> output);
 
+	LineageAttachingOutput<OUT> getLineageAttachingOutput();
 
 }

@@ -15,13 +15,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.flink.streaming.api.operators.lineage;
+package org.apache.flink.streaming.api.operators.lineage.source;
 
 import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.streaming.api.operators.lineage.KeyedLineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.LineageAttachingOutput;
 
-public interface SourceLineageAttachingOutput<K, OUT> extends LineageAttachingOutput<OUT> {
-    void setKey(K key);
-
-    TypeInformation getTypeInformation();
+public interface SourceLineageAttachingOutput<K, OUT> extends LineageAttachingOutput<OUT>, KeyedLineageAttachingOutput<K,OUT> {
 
 }

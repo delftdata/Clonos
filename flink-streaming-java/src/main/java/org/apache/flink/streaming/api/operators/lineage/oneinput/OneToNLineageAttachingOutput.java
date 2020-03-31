@@ -14,37 +14,38 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.flink.streaming.api.operators.lineage;
+package org.apache.flink.streaming.api.operators.lineage.oneinput;
 
 import org.apache.flink.runtime.state.StateInitializationContext;
 import org.apache.flink.runtime.state.StateSnapshotContext;
 import org.apache.flink.streaming.api.operators.Output;
+import org.apache.flink.streaming.api.operators.lineage.AbstractLineageAttachingOutput;
 import org.apache.flink.streaming.runtime.streamrecord.RecordID;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+
+public class OneToNLineageAttachingOutput<OUT> extends AbstractLineageAttachingOutput<OUT> implements OneInputLineageAttachingOutput {
 
 
-/**
- * One to one operators (Map, Filter, ...) may simply store the input record's {@link RecordID} and forward it.
- *
- * @param <OUT>
- */
-public class OneToOneLineageAttachingOutput<OUT> extends AbstractLineageAttachingOutput<OUT> {
+	private int counter;
+	private RecordID inputBase;
+	private RecordID outputResult;
 
-	private static final Logger LOG = LoggerFactory.getLogger(OneToOneLineageAttachingOutput.class);
 
-	private RecordID toOutput;
-
-	public OneToOneLineageAttachingOutput(Output<StreamRecord<OUT>> outputToWrap) {
+	public OneToNLineageAttachingOutput(Output<StreamRecord<OUT>> outputToWrap) {
 		super(outputToWrap);
+		this.counter = 0;
+		this.outputResult = new RecordID();
 	}
 
 	@Override
 	public void notifyInputRecord(StreamRecord<?> input) {
-		LOG.debug("Received input record with ID: {}", input.getRecordID());
-		//Avoid cloning as it wont be changed. Possibly dont even have to attach it, if the same StreamRecord instance is used.
-		toOutput = input.getRecordID();
+		counter = 0;
+		this.inputBase = input.getRecordID();
+	}
+
+	@Override
+	public void setKey(Object key) {
+		//skip
 	}
 
 	@Override
@@ -59,6 +60,7 @@ public class OneToOneLineageAttachingOutput<OUT> extends AbstractLineageAttachin
 
 	@Override
 	protected RecordID getRecordIDForNextOutputRecord() {
-		return toOutput;
+		hashFunction.hashInt(inputBase.hashCode() + counter++).writeBytesTo(outputResult.getId(), 0, RecordID.NUMBER_OF_BYTES);
+		return outputResult;
 	}
 }

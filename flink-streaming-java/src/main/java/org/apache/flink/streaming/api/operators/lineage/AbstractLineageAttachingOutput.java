@@ -21,6 +21,7 @@ import org.apache.curator.shaded.com.google.common.hash.Hashing;
 import org.apache.flink.runtime.state.StateInitializationContext;
 import org.apache.flink.runtime.state.StateSnapshotContext;
 import org.apache.flink.streaming.api.operators.Output;
+import org.apache.flink.streaming.api.operators.lineage.oneinput.OneToOneLineageAttachingOutput;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamrecord.LatencyMarker;
 import org.apache.flink.streaming.runtime.streamrecord.RecordID;
@@ -44,8 +45,6 @@ public abstract class AbstractLineageAttachingOutput<OUT> implements LineageAtta
 		this.hashFunction = Hashing.goodFastHash(RecordID.NUMBER_OF_BYTES * 8);
 	}
 
-	@Override
-	public abstract void notifyInputRecord(StreamRecord<?> input);
 
 	@Override
 	public abstract void initializeState(StateInitializationContext context) throws Exception;

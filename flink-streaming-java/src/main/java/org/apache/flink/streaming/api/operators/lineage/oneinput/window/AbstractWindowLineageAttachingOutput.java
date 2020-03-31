@@ -14,7 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.flink.streaming.api.operators.lineage;
+package org.apache.flink.streaming.api.operators.lineage.oneinput.window;
 
 import org.apache.flink.api.common.state.ListState;
 import org.apache.flink.api.common.state.ListStateDescriptor;
@@ -24,6 +24,7 @@ import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.runtime.state.StateInitializationContext;
 import org.apache.flink.runtime.state.StateSnapshotContext;
 import org.apache.flink.streaming.api.operators.Output;
+import org.apache.flink.streaming.api.operators.lineage.AbstractLineageAttachingOutput;
 import org.apache.flink.streaming.runtime.streamrecord.RecordID;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.util.OutputTag;
@@ -34,6 +35,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 
+//Todo is it worth it to keep K as a type parameter??
 public abstract class AbstractWindowLineageAttachingOutput<K, W, OUT> extends AbstractLineageAttachingOutput<OUT> implements WindowLineageAttachingOutput<K, W, OUT> {
 
 	private static final Logger LOG = LoggerFactory.getLogger(AbstractWindowLineageAttachingOutput.class);
@@ -57,7 +59,7 @@ public abstract class AbstractWindowLineageAttachingOutput<K, W, OUT> extends Ab
 
 
 	@Override
-	public void setCurrentKey(K key) {
+	public void setKey(K key) {
 		this.currentContext.f0 = key;
 		LOG.debug("Set lineage key to: {}", key);
 	}

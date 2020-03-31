@@ -20,7 +20,7 @@ package org.apache.flink.streaming.api.operators;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.functions.FilterFunction;
 import org.apache.flink.streaming.api.operators.lineage.LineageAttachingOutput;
-import org.apache.flink.streaming.api.operators.lineage.OneToOneLineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.oneinput.OneToOneLineageAttachingOutput;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
 /**

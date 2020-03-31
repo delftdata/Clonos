@@ -14,23 +14,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.flink.streaming.api.operators.lineage;
+package org.apache.flink.streaming.api.operators.lineage.oneinput.window;
 
-import org.apache.flink.api.common.typeinfo.TypeHint;
-import org.apache.flink.api.common.typeinfo.TypeInfo;
-import org.apache.flink.api.common.typeinfo.TypeInformation;
-import org.apache.flink.api.java.tuple.Tuple2;
-import org.apache.flink.streaming.api.operators.Output;
-import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
+import org.apache.flink.streaming.api.operators.lineage.KeyedLineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.LineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.oneinput.OneInputLineageAttachingOutput;
 
-public class StringKeyedSourceLineageAttachingOutput<T> extends AbstractSourceLineageAttachingOutput<String,T>{
+import java.util.Collection;
 
-	public StringKeyedSourceLineageAttachingOutput(Output<StreamRecord<T>> outputToWrap) {
-		super(outputToWrap);
-	}
+public interface WindowLineageAttachingOutput<K, W, OUT> extends LineageAttachingOutput<OUT>, OneInputLineageAttachingOutput, KeyedLineageAttachingOutput<K, OUT> {
 
-	@Override
-	public TypeInformation getTypeInformation() {
-		return TypeInformation.of(new TypeHint<Tuple2<String,Integer>>(){});
-	}
+
+	void notifyAssignedWindows(Collection<W> windows);
+
+	void setCurrentWindow(W window);
+
+	void notifyPurgedWindow();
 }

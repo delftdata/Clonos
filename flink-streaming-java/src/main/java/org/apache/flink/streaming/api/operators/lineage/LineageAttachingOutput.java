@@ -30,11 +30,6 @@ import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 public interface LineageAttachingOutput<OUT> extends Output<StreamRecord<OUT>> {
 
 	/**
-	 * Inform the LineageAttachingOutput that the operator has started processing a new input record.
-	 */
-	void notifyInputRecord(StreamRecord<?> input);
-
-	/**
 	 * Initialize the state of this LineageAttachingOutput. If recovering loads the previous state.
 	 *
 	 * @param context
@@ -49,6 +44,5 @@ public interface LineageAttachingOutput<OUT> extends Output<StreamRecord<OUT>> {
 	 * @throws Exception
 	 */
 	void snapshotState(StateSnapshotContext context) throws Exception;
-
 
 }

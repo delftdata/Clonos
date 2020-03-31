@@ -27,7 +27,7 @@ import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.core.memory.DataInputViewStreamWrapper;
 import org.apache.flink.core.memory.DataOutputViewStreamWrapper;
 import org.apache.flink.streaming.api.operators.lineage.LineageAttachingOutput;
-import org.apache.flink.streaming.api.operators.lineage.OneToOneLineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.oneinput.OneToOneLineageAttachingOutput;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
 import java.io.ByteArrayInputStream;

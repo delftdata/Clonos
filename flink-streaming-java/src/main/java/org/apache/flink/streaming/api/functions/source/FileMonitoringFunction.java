@@ -24,10 +24,9 @@ import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.fs.Path;
 
 import org.apache.flink.streaming.api.operators.Output;
-import org.apache.flink.streaming.api.operators.lineage.LineageWrapperProvidingFunction;
-import org.apache.flink.streaming.api.operators.lineage.AbstractSourceLineageAttachingOutput;
-import org.apache.flink.streaming.api.operators.lineage.SourceLineageAttachingOutput;
-import org.apache.flink.streaming.api.operators.lineage.StringKeyedSourceLineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.source.KeyedSourceLineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.source.LineageWrapperProvidingSourceFunction;
+import org.apache.flink.streaming.api.operators.lineage.source.SourceLineageAttachingOutput;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,7 +46,7 @@ import java.util.Map;
  */
 @Internal
 @Deprecated
-public class FileMonitoringFunction implements SourceFunction<Tuple3<String, Long, Long>>, LineageWrapperProvidingFunction<String, Tuple3<String, Long, Long>> {
+public class FileMonitoringFunction implements SourceFunction<Tuple3<String, Long, Long>>, LineageWrapperProvidingSourceFunction<String, Tuple3<String, Long, Long>> {
 	private static final long serialVersionUID = 1L;
 
 	private static final Logger LOG = LoggerFactory.getLogger(FileMonitoringFunction.class);
@@ -150,7 +149,7 @@ public class FileMonitoringFunction implements SourceFunction<Tuple3<String, Lon
 
 	@Override
 	public SourceLineageAttachingOutput<String, Tuple3<String, Long, Long>> wrapInSourceLineageAttachingOutput(Output<StreamRecord<Tuple3<String, Long, Long>>> output) {
-		SourceLineageAttachingOutput<String, Tuple3<String, Long, Long>> indexBasedSourceLineageAttachingOutput = new StringKeyedSourceLineageAttachingOutput<>(output);
+		SourceLineageAttachingOutput<String, Tuple3<String, Long, Long>> indexBasedSourceLineageAttachingOutput = new KeyedSourceLineageAttachingOutput<>(output);
 		indexBasedSourceLineageAttachingOutput.setKey(path);
 		return indexBasedSourceLineageAttachingOutput;
 	}

@@ -19,9 +19,8 @@ package org.apache.flink.streaming.api.functions.source;
 
 import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.streaming.api.operators.Output;
-import org.apache.flink.streaming.api.operators.lineage.LineageWrapperProvidingFunction;
-import org.apache.flink.streaming.api.operators.lineage.AbstractSourceLineageAttachingOutput;
-import org.apache.flink.streaming.api.operators.lineage.IntegerKeyedSourceLineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.source.LineageWrapperProvidingSourceFunction;
+import org.apache.flink.streaming.api.operators.lineage.source.KeyedSourceLineageAttachingOutput;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.util.IOUtils;
 
@@ -48,7 +47,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * the server side.
  */
 @PublicEvolving
-public class SocketTextStreamFunction implements SourceFunction<String>, LineageWrapperProvidingFunction<Integer, String> {
+public class SocketTextStreamFunction implements SourceFunction<String>, LineageWrapperProvidingSourceFunction<Integer, String> {
 
 	private static final long serialVersionUID = 1L;
 
@@ -153,8 +152,8 @@ public class SocketTextStreamFunction implements SourceFunction<String>, Lineage
 	}
 
 	@Override
-	public AbstractSourceLineageAttachingOutput<Integer, String> wrapInSourceLineageAttachingOutput(Output<StreamRecord<String>> output) {
-		AbstractSourceLineageAttachingOutput<Integer, String> indexBasedSourceLineageAttachingOutput = new IntegerKeyedSourceLineageAttachingOutput<>(output);
+	public KeyedSourceLineageAttachingOutput<Integer, String> wrapInSourceLineageAttachingOutput(Output<StreamRecord<String>> output) {
+		KeyedSourceLineageAttachingOutput<Integer, String> indexBasedSourceLineageAttachingOutput = new KeyedSourceLineageAttachingOutput<>(output);
 		indexBasedSourceLineageAttachingOutput.setKey(port);
 		return indexBasedSourceLineageAttachingOutput;
 	}

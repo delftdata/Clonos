@@ -40,6 +40,7 @@ import org.apache.flink.runtime.plugable.DeserializationDelegate;
 import org.apache.flink.runtime.plugable.NonReusingDeserializationDelegate;
 import org.apache.flink.streaming.api.CheckpointingMode;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
+import org.apache.flink.streaming.api.operators.lineage.oneinput.OneInputLineageAttachingOutput;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.metrics.WatermarkGauge;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
@@ -120,6 +121,8 @@ public class StreamInputProcessor<IN> {
 
 	private boolean isFinished;
 
+	private final OneInputLineageAttachingOutput lineageAttachingOutput;
+
 	@SuppressWarnings("unchecked")
 	public StreamInputProcessor(
 		InputGate[] inputGates,
@@ -174,6 +177,8 @@ public class StreamInputProcessor<IN> {
 
 		this.watermarkGauge = watermarkGauge;
 		metrics.gauge("checkpointAlignmentTime", barrierHandler::getAlignmentDurationNanos);
+
+		this.lineageAttachingOutput = (OneInputLineageAttachingOutput) this.streamOperator.getLineageAttachingOutput();
 	}
 
 	public boolean processInput() throws Exception {
@@ -225,7 +230,7 @@ public class StreamInputProcessor<IN> {
 							synchronized (lock) {
 								numRecordsIn.inc();
 								//Add to lineage
-								streamOperator.notifyInputRecord(record);
+								lineageAttachingOutput.notifyInputRecord(record);
 								streamOperator.setKeyContextElement1(record);
 								LOG.debug("{}: Process element no {}: {}.", taskName, numRecordsIn.getCount(), record);
 								streamOperator.processElement(record);

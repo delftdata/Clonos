@@ -14,12 +14,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.flink.streaming.api.operators.lineage;
+package org.apache.flink.streaming.api.operators.lineage.source;
 
 import org.apache.flink.streaming.api.operators.Output;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
-public interface LineageWrapperProvidingFunction<KEY, OUT> {
+/**
+ * Certain source functions need to provide more specific implementations of {@link org.apache.flink.streaming.api.operators.lineage.LineageAttachingOutput}.
+ * @param <KEY>
+ * @param <OUT>
+ */
+public interface LineageWrapperProvidingSourceFunction<KEY, OUT> {
 
 	SourceLineageAttachingOutput<KEY, OUT> wrapInSourceLineageAttachingOutput(Output<StreamRecord<OUT>> toWrap);
 

@@ -29,10 +29,9 @@ import org.apache.flink.runtime.jobgraph.tasks.InputSplitProvider;
 import org.apache.flink.runtime.jobgraph.tasks.InputSplitProviderException;
 import org.apache.flink.streaming.api.operators.Output;
 import org.apache.flink.streaming.api.operators.StreamingRuntimeContext;
-import org.apache.flink.streaming.api.operators.lineage.IntegerKeyedSourceLineageAttachingOutput;
-import org.apache.flink.streaming.api.operators.lineage.LineageWrapperProvidingFunction;
-import org.apache.flink.streaming.api.operators.lineage.AbstractSourceLineageAttachingOutput;
-import org.apache.flink.streaming.api.operators.lineage.SourceLineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.source.KeyedSourceLineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.source.LineageWrapperProvidingSourceFunction;
+import org.apache.flink.streaming.api.operators.lineage.source.SourceLineageAttachingOutput;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
 import java.util.Iterator;
@@ -42,7 +41,7 @@ import java.util.NoSuchElementException;
  * A {@link SourceFunction} that reads data using an {@link InputFormat}.
  */
 @Internal
-public class InputFormatSourceFunction<OUT> extends RichParallelSourceFunction<OUT> implements LineageWrapperProvidingFunction<Integer, OUT> {
+public class InputFormatSourceFunction<OUT> extends RichParallelSourceFunction<OUT> implements LineageWrapperProvidingSourceFunction<Integer, OUT> {
 	private static final long serialVersionUID = 1L;
 
 	private TypeInformation<OUT> typeInfo;
@@ -124,7 +123,7 @@ public class InputFormatSourceFunction<OUT> extends RichParallelSourceFunction<O
 
 	@Override
 	public SourceLineageAttachingOutput<Integer, OUT> wrapInSourceLineageAttachingOutput(Output<StreamRecord<OUT>> output) {
-		SourceLineageAttachingOutput<Integer, OUT> indexBasedSourceLineageAttachingOutput = new IntegerKeyedSourceLineageAttachingOutput<>(output);
+		SourceLineageAttachingOutput<Integer, OUT> indexBasedSourceLineageAttachingOutput = new KeyedSourceLineageAttachingOutput<>(output);
 		indexBasedSourceLineageAttachingOutput.setKey(this.getRuntimeContext().getIndexOfThisSubtask());
 		return indexBasedSourceLineageAttachingOutput;
 	}

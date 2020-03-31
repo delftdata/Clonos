@@ -33,10 +33,9 @@ import org.apache.flink.runtime.state.FunctionInitializationContext;
 import org.apache.flink.runtime.state.FunctionSnapshotContext;
 import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction;
 import org.apache.flink.streaming.api.operators.Output;
-import org.apache.flink.streaming.api.operators.lineage.LineageWrapperProvidingFunction;
-import org.apache.flink.streaming.api.operators.lineage.AbstractSourceLineageAttachingOutput;
-import org.apache.flink.streaming.api.operators.lineage.SourceLineageAttachingOutput;
-import org.apache.flink.streaming.api.operators.lineage.StringKeyedSourceLineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.source.KeyedSourceLineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.source.LineageWrapperProvidingSourceFunction;
+import org.apache.flink.streaming.api.operators.lineage.source.SourceLineageAttachingOutput;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.util.Preconditions;
 
@@ -71,7 +70,7 @@ import java.util.TreeMap;
  */
 @Internal
 public class ContinuousFileMonitoringFunction<OUT>
-	extends RichSourceFunction<TimestampedFileInputSplit> implements CheckpointedFunction, LineageWrapperProvidingFunction<String, TimestampedFileInputSplit> {
+	extends RichSourceFunction<TimestampedFileInputSplit> implements CheckpointedFunction, LineageWrapperProvidingSourceFunction<String, TimestampedFileInputSplit> {
 
 	private static final long serialVersionUID = 1L;
 
@@ -375,7 +374,7 @@ public class ContinuousFileMonitoringFunction<OUT>
 
 	@Override
 	public SourceLineageAttachingOutput<String,TimestampedFileInputSplit> wrapInSourceLineageAttachingOutput(Output<StreamRecord<TimestampedFileInputSplit>> output) {
-		SourceLineageAttachingOutput<String, TimestampedFileInputSplit> indexBasedSourceLineageAttachingOutput = new StringKeyedSourceLineageAttachingOutput<>(output);
+		SourceLineageAttachingOutput<String, TimestampedFileInputSplit> indexBasedSourceLineageAttachingOutput = new KeyedSourceLineageAttachingOutput<>(output);
 		indexBasedSourceLineageAttachingOutput.setKey(path);
 		return indexBasedSourceLineageAttachingOutput;
 	}

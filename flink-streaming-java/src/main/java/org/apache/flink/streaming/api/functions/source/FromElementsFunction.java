@@ -29,10 +29,9 @@ import org.apache.flink.runtime.state.FunctionInitializationContext;
 import org.apache.flink.runtime.state.FunctionSnapshotContext;
 import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction;
 import org.apache.flink.streaming.api.operators.Output;
-import org.apache.flink.streaming.api.operators.lineage.IntegerKeyedSourceLineageAttachingOutput;
-import org.apache.flink.streaming.api.operators.lineage.LineageWrapperProvidingFunction;
-import org.apache.flink.streaming.api.operators.lineage.AbstractSourceLineageAttachingOutput;
-import org.apache.flink.streaming.api.operators.lineage.SourceLineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.source.KeyedSourceLineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.source.LineageWrapperProvidingSourceFunction;
+import org.apache.flink.streaming.api.operators.lineage.source.SourceLineageAttachingOutput;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.util.Preconditions;
 
@@ -56,7 +55,7 @@ import java.util.List;
  * @param <T> The type of elements returned by this function.
  */
 @PublicEvolving
-public class FromElementsFunction<T> implements SourceFunction<T>, CheckpointedFunction, LineageWrapperProvidingFunction<Integer, T> {
+public class FromElementsFunction<T> implements SourceFunction<T>, CheckpointedFunction, LineageWrapperProvidingSourceFunction<Integer, T> {
 
 	private static final long serialVersionUID = 1L;
 
@@ -180,7 +179,7 @@ public class FromElementsFunction<T> implements SourceFunction<T>, CheckpointedF
 
 	@Override
 	public SourceLineageAttachingOutput<Integer, T> wrapInSourceLineageAttachingOutput(Output<StreamRecord<T>> output) {
-		SourceLineageAttachingOutput<Integer, T> indexBasedSourceLineageAttachingOutput = new IntegerKeyedSourceLineageAttachingOutput<>(output);
+		SourceLineageAttachingOutput<Integer, T> indexBasedSourceLineageAttachingOutput = new KeyedSourceLineageAttachingOutput<>(output);
 		indexBasedSourceLineageAttachingOutput.setKey(0);
 		return indexBasedSourceLineageAttachingOutput;
 	}

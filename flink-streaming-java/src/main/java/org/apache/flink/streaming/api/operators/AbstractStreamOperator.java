@@ -40,8 +40,10 @@ import org.apache.flink.runtime.metrics.groups.TaskManagerJobMetricGroup;
 import org.apache.flink.runtime.metrics.groups.UnregisteredMetricGroups;
 import org.apache.flink.runtime.state.*;
 import org.apache.flink.streaming.api.graph.StreamConfig;
+import org.apache.flink.streaming.api.operators.lineage.KeyedLineageAttachingOutput;
 import org.apache.flink.streaming.api.operators.lineage.LineageAttachingOutput;
 import org.apache.flink.streaming.api.operators.lineage.MockLineageAttachingOutput;
+import org.apache.flink.streaming.api.operators.lineage.oneinput.OneInputLineageAttachingOutput;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamrecord.LatencyMarker;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
@@ -606,6 +608,8 @@ public abstract class AbstractStreamOperator<OUT>
 				AbstractKeyedStateBackend rawBackend = (AbstractKeyedStateBackend) keyedStateBackend;
 
 				rawBackend.setCurrentKey(key);
+				if(this.output instanceof KeyedLineageAttachingOutput)
+					((KeyedLineageAttachingOutput) this.output).setKey(key);
 			} catch (Exception e) {
 				throw new RuntimeException("Exception occurred while setting the current key context.", e);
 			}
@@ -800,11 +804,13 @@ public abstract class AbstractStreamOperator<OUT>
 			timeServiceManager.numEventTimeTimers();
 	}
 
-	public void notifyInputRecord(StreamRecord<?> record) {
-		this.output.notifyInputRecord(record);
-	}
-
+	@Override
 	public LineageAttachingOutput<OUT> wrapInLineageAttachingOutput(Output<StreamRecord<OUT>> output) {
 		return new MockLineageAttachingOutput<>(output);
+	}
+
+	@Override
+	public LineageAttachingOutput<OUT> getLineageAttachingOutput(){
+		return this.output;
 	}
 }
