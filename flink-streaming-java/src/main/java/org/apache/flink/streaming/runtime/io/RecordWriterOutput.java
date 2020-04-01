@@ -177,9 +177,4 @@ public class RecordWriterOutput<OUT> implements OperatorChain.WatermarkGaugeExpo
 		return watermarkGauge;
 	}
 
-	public void checkReplayInFlightLog() throws Exception {
-		LOG.debug("Check in-flight log for replay.");
-		recordWriter.checkReplayInFlightLog();
-	}
-
 }
