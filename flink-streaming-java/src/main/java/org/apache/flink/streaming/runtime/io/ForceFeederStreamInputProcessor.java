@@ -48,6 +48,8 @@ public class ForceFeederStreamInputProcessor<IN> extends AbstractStreamInputProc
 
 	@Override
 	public boolean inputLoop() throws Exception {
+		if(!causalLoggingManager.hasRecoveryDeterminant())
+			return false;
 		//Set current record deserializer according to causal log
 		Determinant maybeOrderDeterminant = causalLoggingManager.getNextRecoveryDeterminant();
 		if (!maybeOrderDeterminant.isOrderDeterminant())

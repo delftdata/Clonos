@@ -62,13 +62,13 @@ public class OneInputStreamTask<IN, OUT> extends StreamTask<OUT, OneInputStreamO
 	 * null is passes for the time provider) a {@link SystemProcessingTimeService DefaultTimerService}
 	 * will be used.
 	 *
-	 * @param env The task environment for this task.
+	 * @param env          The task environment for this task.
 	 * @param timeProvider Optionally, a specific time provider to use.
 	 */
 	@VisibleForTesting
 	public OneInputStreamTask(
-			Environment env,
-			@Nullable ProcessingTimeService timeProvider) {
+		Environment env,
+		@Nullable ProcessingTimeService timeProvider) {
 		super(env, timeProvider);
 	}
 
@@ -119,24 +119,27 @@ public class OneInputStreamTask<IN, OUT> extends StreamTask<OUT, OneInputStreamO
 
 	@Override
 	protected void run() throws Exception {
-		if (isCausal() && isStandby()) {
-			CausalLoggingManager causalLoggingManager = getCausalLoggingManager();
-			causalLoggingManager.silenceAll();
-			while (causalLoggingManager.hasRecoveryDeterminant()) {
+		recoverIfCausal();
 
-				final ForceFeederStreamInputProcessor<IN> forceFeeder = this.forceFeeder;
-
-				while (running && forceFeeder.processInput()) {
-					// all the work happens in the "processInput" method
-				}
-			}
-			causalLoggingManager.unsilenceAll();
-		}
 		// cache processor reference on the stack, to make the code more JIT friendly
 		final StreamInputProcessor<IN> inputProcessor = this.inputProcessor;
 
 		while (running && inputProcessor.processInput()) {
 			// all the work happens in the "processInput" method
+		}
+	}
+
+	private void recoverIfCausal() throws Exception {
+		if (isCausal() && isStandby()) {
+			CausalLoggingManager causalLoggingManager = getCausalLoggingManager();
+			causalLoggingManager.silenceAll();
+
+			final ForceFeederStreamInputProcessor<IN> forceFeeder = this.forceFeeder;
+
+			while (running && forceFeeder.processInput()) {
+				// all the work happens in the "processInput" method
+			}
+			causalLoggingManager.unsilenceAll();
 		}
 	}
 

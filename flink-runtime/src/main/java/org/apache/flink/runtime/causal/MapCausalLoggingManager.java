@@ -124,6 +124,12 @@ public class MapCausalLoggingManager implements CausalLoggingManager {
 	}
 
 	@Override
+	public void setRecoveryDeterminants(List<Determinant> determinants) {
+		this.recoveryDeterminants = (Queue<Determinant>) determinants;
+	}
+
+
+	@Override
 	public Determinant getNextRecoveryDeterminant() {
 		return recoveryDeterminants.remove();
 	}

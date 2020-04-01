@@ -62,6 +62,7 @@ public interface CausalLoggingManager extends CheckpointListener {
 
 	void unsilenceAll();
 
+	void setRecoveryDeterminants(List<Determinant> determinants);
 
 	Determinant getNextRecoveryDeterminant();
 
