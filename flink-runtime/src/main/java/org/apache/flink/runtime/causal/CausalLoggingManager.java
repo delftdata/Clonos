@@ -67,5 +67,5 @@ public interface CausalLoggingManager extends CheckpointListener {
 
 	boolean hasRecoveryDeterminant();
 
-	void enrichWithDeltas(Object record, int targetChannel);
+	<T> void enrichWithDeltas(T record, int targetChannel);
 }

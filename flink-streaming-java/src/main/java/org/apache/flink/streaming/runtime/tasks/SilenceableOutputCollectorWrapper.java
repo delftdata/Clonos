@@ -15,9 +15,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.flink.runtime.causal;
+package org.apache.flink.streaming.runtime.tasks;
 
 import org.apache.flink.metrics.Gauge;
+import org.apache.flink.runtime.causal.Silenceable;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamrecord.LatencyMarker;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;

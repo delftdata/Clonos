@@ -50,6 +50,7 @@ import org.apache.flink.runtime.event.InFlightLogRequestEventListener;
 import org.apache.flink.runtime.execution.CancelTaskException;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.execution.ExecutionState;
+import org.apache.flink.runtime.execution.librarycache.BlobLibraryCacheManager;
 import org.apache.flink.runtime.execution.librarycache.LibraryCacheManager;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.JobInformation;
@@ -335,7 +336,6 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		TaskInformation taskInformation,
 		ExecutionAttemptID executionAttemptID,
 		AllocationID slotAllocationId,
-		VertexId subvertexId,
 		int subtaskIndex,
 		int attemptNumber,
 		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
@@ -358,7 +358,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		PartitionProducerStateChecker partitionProducerStateChecker,
 		Executor executor) {
 
-		this(jobInformation, taskInformation, executionAttemptID, slotAllocationId, subvertexId,
+		this(jobInformation, taskInformation, executionAttemptID, slotAllocationId, null,
 			subtaskIndex, attemptNumber, resultPartitionDeploymentDescriptors,
 			inputGateDeploymentDescriptors, targetSlotNumber, memManager,
 			ioManager, networkEnvironment, bcVarManager, taskStateManager,
@@ -366,6 +366,43 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 			blobService, libraryCache, fileCache, taskManagerConfig,
 			metricGroup, resultPartitionConsumableNotifier,
 			partitionProducerStateChecker, executor, false, null);
+	}
+
+	public Task(
+		JobInformation jobInformation,
+		TaskInformation taskInformation,
+		ExecutionAttemptID executionAttemptID,
+		AllocationID slotAllocationId,
+		int subtaskIndex,
+		int attemptNumber,
+		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
+		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors,
+		int targetSlotNumber,
+		MemoryManager memManager,
+		IOManager ioManager,
+		NetworkEnvironment networkEnvironment,
+		BroadcastVariableManager bcVarManager,
+		TaskStateManager taskStateManager,
+		TaskManagerActions taskManagerActions,
+		InputSplitProvider inputSplitProvider,
+		CheckpointResponder checkpointResponder,
+		BlobCacheService blobService,
+		LibraryCacheManager libraryCache,
+		FileCache fileCache,
+		TaskManagerRuntimeInfo taskManagerConfig,
+		@Nonnull TaskMetricGroup metricGroup,
+		ResultPartitionConsumableNotifier resultPartitionConsumableNotifier,
+		PartitionProducerStateChecker partitionProducerStateChecker,
+		Executor executor, boolean isStandby) {
+
+		this(jobInformation, taskInformation, executionAttemptID, slotAllocationId, null,
+			subtaskIndex, attemptNumber, resultPartitionDeploymentDescriptors,
+			inputGateDeploymentDescriptors, targetSlotNumber, memManager,
+			ioManager, networkEnvironment, bcVarManager, taskStateManager,
+			taskManagerActions, inputSplitProvider, checkpointResponder,
+			blobService, libraryCache, fileCache, taskManagerConfig,
+			metricGroup, resultPartitionConsumableNotifier,
+			partitionProducerStateChecker, executor, isStandby, null);
 	}
 
 	public Task(
@@ -518,6 +555,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		// finally, create the executing thread, but do not start it
 		executingThread = new Thread(TASK_THREADS_GROUP, this, taskNameWithSubtask);
 	}
+
 
 	// ------------------------------------------------------------------------
 	//  Accessors

@@ -21,7 +21,6 @@ import org.apache.flink.runtime.causal.determinant.Determinant;
 import org.apache.flink.runtime.causal.determinant.DeterminantEncodingStrategy;
 import org.apache.flink.runtime.causal.determinant.SimpleDeterminantEncodingStrategy;
 import org.apache.flink.runtime.plugable.SerializationDelegate;
-import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
 
 import java.util.*;
 
@@ -135,8 +134,8 @@ public class MapCausalLoggingManager implements CausalLoggingManager {
 	}
 
 	@Override
-	public void enrichWithDeltas(Object record, int targetChannel) {
-		SerializationDelegate<StreamElement> r = (SerializationDelegate<StreamElement>) record;
+	public <T> void enrichWithDeltas(T record, int targetChannel) {
+		SerializationDelegate<LogDeltaCarryingStreamElement> r = (SerializationDelegate<LogDeltaCarryingStreamElement>) record;
 		r.getInstance().setLogDeltas(this.getNextDeterminantsForDownstream(targetChannel));
 	}
 

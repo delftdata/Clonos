@@ -108,14 +108,13 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 	@VisibleForTesting
 	ExecutionVertex(
 		ExecutionJobVertex jobVertex,
-		VertexId vertexId,
 		int subTaskIndex,
 		IntermediateResult[] producedDataSets,
 		Time timeout) {
 
 		this(
 			jobVertex,
-			vertexId,
+			null,
 			subTaskIndex,
 			producedDataSets,
 			timeout,
@@ -193,6 +192,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 
 		this.lastKillAttemptNumber = -1;
 	}
+
 
 
 	// --------------------------------------------------------------------------------------------

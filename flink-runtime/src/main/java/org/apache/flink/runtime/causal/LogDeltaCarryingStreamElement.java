@@ -15,21 +15,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.apache.flink.runtime.causal;
 
-import org.apache.flink.streaming.runtime.tasks.AsyncExceptionHandler;
-import org.apache.flink.streaming.runtime.tasks.SystemProcessingTimeService;
+import java.util.List;
 
-import java.util.concurrent.ThreadFactory;
+public interface LogDeltaCarryingStreamElement {
+	void setLogDeltas(List<VertexCausalLogDelta> deltas);
 
-public class CausalSystemProcessingTimeService extends SystemProcessingTimeService {
-
-	private final CausalLoggingManager causalLoggingManager;
-
-	public CausalSystemProcessingTimeService(AsyncExceptionHandler task, Object checkpointLock, ThreadFactory threadFactory, CausalLoggingManager causalLoggingManager) {
-		super(task, checkpointLock, threadFactory);
-		this.causalLoggingManager = causalLoggingManager;
-	}
-
-
+	List<VertexCausalLogDelta> getLogDeltas();
 }
