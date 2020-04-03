@@ -65,6 +65,8 @@ public abstract class AbstractStreamInputProcessor<IN> {
 	protected final StreamStatusMaintainer streamStatusMaintainer;
 	protected final OneInputStreamOperator<IN, ?> streamOperator;
 	protected final WatermarkGauge watermarkGauge;
+	protected final InputGate inputGate;
+
 	/**
 	 * Valve that controls how watermarks and stream statuses are forwarded.
 	 */
@@ -97,7 +99,7 @@ public abstract class AbstractStreamInputProcessor<IN> {
 		this.causalLoggingManager = checkpointedTask.getCausalLoggingManager();
 		this.watermarkGauge = watermarkGauge;
 
-		InputGate inputGate = InputGateUtil.createInputGate(inputGates);
+		inputGate = InputGateUtil.createInputGate(inputGates);
 
 		if (inputGate instanceof SingleInputGate) {
 			this.taskName = ((SingleInputGate) inputGate).getTaskName();

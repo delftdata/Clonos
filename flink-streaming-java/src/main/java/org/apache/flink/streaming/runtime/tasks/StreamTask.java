@@ -33,6 +33,7 @@ import org.apache.flink.runtime.execution.CancelTaskException;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.inflightlogging.InFlightLogger;
 import org.apache.flink.runtime.io.network.api.CancelCheckpointMarker;
+import org.apache.flink.runtime.io.network.api.DeterminantRequestEvent;
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
@@ -175,6 +176,11 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	private volatile CompletableFuture<Void> inputChannelConnectionsFuture;
 
 	/**
+	 * Future for standby tasks that completes when they are required to run
+	 */
+	private volatile CompletableFuture<Void> outputChannelConnectionsFuture;
+
+	/**
 	 * Thread pool for async snapshot workers.
 	 */
 	private ExecutorService asyncOperationsThreadPool;
@@ -191,7 +197,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 	private final List<StreamRecordWriter<SerializationDelegate<StreamRecord<OUT>>>> streamRecordWriters;
 
-	private final VertexId vertexId;
+	protected final VertexId vertexId;
 
 
 	// ------------------------------------------------------------------------
@@ -232,10 +238,14 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		if (isStandby()) {
 			this.standbyFuture = new CompletableFuture<>();
 			this.inputChannelConnectionsFuture = new CompletableFuture<>();
+
+			this.outputChannelConnectionsFuture = new CompletableFuture<>();
+			this.getCausalLoggingManager().getRecoveryManager().setOutputChannelConnectionsFuture(this.outputChannelConnectionsFuture);
 		}
 		else {
 			this.standbyFuture = null;
 			this.inputChannelConnectionsFuture = null;
+			this.outputChannelConnectionsFuture = null;
 		}
 
 	}
@@ -324,6 +334,13 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			if (isStandby()) {
 				LOG.debug("Task {} reached standbyFuture {}, inputChannelConnectionsFuture {}.", getName(), standbyFuture, inputChannelConnectionsFuture);
 				standbyFuture.get();
+				if(isCausal()) {
+					//send DeterminantRequestEvent
+					DeterminantRequestEvent requestEvent = new DeterminantRequestEvent(this.vertexId);
+					for(StreamRecordWriter streamRecordWriter : streamRecordWriters)
+						streamRecordWriter.broadcastEvent(requestEvent);
+					outputChannelConnectionsFuture.get(); //Wait for determinants to arrive
+				}
 				LOG.debug("Task {} reached inputChannelConnectionsFuture {}.", getName(), inputChannelConnectionsFuture);
 				inputChannelConnectionsFuture.get();
 				LOG.debug("Task {} starts execution after inputChannelConnectionsFuture {}.", getName(), inputChannelConnectionsFuture);
@@ -334,6 +351,9 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			synchronized (lock) {
 				openAllOperators();
 			}
+
+
+
 
 			// final check to exit early before starting to run
 			if (canceled) {

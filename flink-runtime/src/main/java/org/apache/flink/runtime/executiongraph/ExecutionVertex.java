@@ -691,6 +691,16 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 		currentExecution.runStandbyExecution();
 
 		boolean updateConsumersOnFailover = true;
+
+		//Tell consumers of failed operator to reconfigure connections
+		LOG.debug("Update the to-run standby task's " + currentExecution + " consumer vertices (if any).");
+		for (IntermediateResultPartition partition : resultPartitions.values()) {
+			checkPartition(partition);
+			currentExecution.scheduleOrUpdateConsumers(partition.getConsumers(),
+				updateConsumersOnFailover);
+		}
+
+		//Tell producers for failed operator to reconfigure connections
 		for (ExecutionEdge[] edges : inputEdges) {
 			for (ExecutionEdge edge : edges) {
 				List<List<ExecutionEdge>> currentConsumerEdge = new ArrayList<List<ExecutionEdge>>(0);
@@ -707,12 +717,6 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			}
 		}
 
-		LOG.debug("Update the to-run standby task's " + currentExecution + " consumer vertices (if any).");
-		for (IntermediateResultPartition partition : resultPartitions.values()) {
-			checkPartition(partition);
-			currentExecution.scheduleOrUpdateConsumers(partition.getConsumers(),
-					updateConsumersOnFailover);
-		}
 	}
 
 	/**

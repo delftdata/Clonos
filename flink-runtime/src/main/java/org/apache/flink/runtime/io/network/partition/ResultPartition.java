@@ -20,10 +20,8 @@ package org.apache.flink.runtime.io.network.partition;
 
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.core.memory.MemorySegment;
-import org.apache.flink.runtime.event.InFlightLogRequestEvent;
-import org.apache.flink.runtime.event.InFlightLogPrepareEvent;
-import org.apache.flink.runtime.event.InFlightLogRequestEventListener;
-import org.apache.flink.runtime.event.InFlightLogPrepareEventListener;
+import org.apache.flink.runtime.causal.VertexCausalLogDelta;
+import org.apache.flink.runtime.event.*;
 import org.apache.flink.runtime.executiongraph.IntermediateResultPartition;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
@@ -109,6 +107,8 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 	private InFlightLogRequestEventListener inFlightLogRequestEventListener;
 
 	private InFlightLogPrepareEventListener inFlightLogPrepareEventListener;
+
+	private DeterminantResponseEventListener determinantResponseEventListener;
 
 	private final AtomicBoolean downstreamFailed = new AtomicBoolean();
 
@@ -223,8 +223,6 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 	/**
 	 * Assign the exclusive buffers to ResultPartition directly for credit-based mode. The exclusive buffers will be used and maintained by the InFlightLogger.
 	 *
-	 * @param networkBufferPool The global pool to request and recycle exclusive buffers
-	 * @param networkBuffersPerChannel The number of exclusive buffers for each channel
 	 */
 	public List<MemorySegment> assignExclusiveSegments(int numSegments) {
 		checkState(this.networkBufferPool != null, "Bug in ResultPartition: global buffer pool has" +
@@ -566,4 +564,9 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 		LOG.info("Ack inFlightLogPrepareRequest for subpartition {} of {}", subpartitionIndex, this);
 		partitionConsumableNotifier.ackInFlightLogPrepareRequest(partitionId, subpartitionIndex, taskActions);
 	}
+
+	public void setDeterminantResponseEventListener(DeterminantResponseEventListener edel) {
+		this.determinantResponseEventListener = edel;
+	}
+
 }

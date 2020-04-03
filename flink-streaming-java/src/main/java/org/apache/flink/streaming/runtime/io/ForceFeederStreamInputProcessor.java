@@ -19,6 +19,7 @@ package org.apache.flink.streaming.runtime.io;
 
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.runtime.causal.RecoveryManager;
 import org.apache.flink.runtime.causal.VertexCausalLogDelta;
 import org.apache.flink.runtime.causal.determinant.Determinant;
 import org.apache.flink.runtime.causal.determinant.OrderDeterminant;
@@ -42,19 +43,20 @@ public class ForceFeederStreamInputProcessor<IN> extends AbstractStreamInputProc
 
 	private static final Logger LOG = LoggerFactory.getLogger(ForceFeederStreamInputProcessor.class);
 
+	RecoveryManager recoveryManager;
+
 	public ForceFeederStreamInputProcessor(InputGate[] inputGates, TypeSerializer<IN> inputSerializer, StreamTask<?, ?> checkpointedTask, CheckpointingMode checkpointMode, Object lock, IOManager ioManager, Configuration taskManagerConfig, StreamStatusMaintainer streamStatusMaintainer, OneInputStreamOperator<IN, ?> streamOperator, TaskIOMetricGroup metrics, WatermarkGauge watermarkGauge, RecordWriterOutput<?>[] recordWriterOutputs) throws IOException {
 		super(inputGates, inputSerializer, checkpointedTask, checkpointMode, lock, ioManager, taskManagerConfig, streamStatusMaintainer, streamOperator, metrics, watermarkGauge, recordWriterOutputs);
+		recoveryManager = checkpointedTask.getCausalLoggingManager().getRecoveryManager();
 	}
 
 	@Override
 	public boolean inputLoop() throws Exception {
-		if(!causalLoggingManager.hasRecoveryDeterminant())
-			return false;
 		//Set current record deserializer according to causal log
-		Determinant maybeOrderDeterminant = causalLoggingManager.getNextRecoveryDeterminant();
+		Determinant maybeOrderDeterminant = recoveryManager.peekNext();
 		if (!maybeOrderDeterminant.isOrderDeterminant())
 			throw new RuntimeException("Non-order determinant found in inputLoop.");
-		OrderDeterminant o = maybeOrderDeterminant.asOrderDeterminant();
+		OrderDeterminant o = (OrderDeterminant) recoveryManager.popNext();
 		this.currentChannel = o.getChannel();
 		this.currentRecordDeserializer = recordDeserializers[this.currentChannel];
 
@@ -101,4 +103,5 @@ public class ForceFeederStreamInputProcessor<IN> extends AbstractStreamInputProc
 			}
 		}
 	}
+
 }

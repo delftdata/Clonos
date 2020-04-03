@@ -136,7 +136,7 @@ public class OneInputStreamTask<IN, OUT> extends StreamTask<OUT, OneInputStreamO
 
 			final ForceFeederStreamInputProcessor<IN> forceFeeder = this.forceFeeder;
 
-			while (running && forceFeeder.processInput()) {
+			while (running && causalLoggingManager.getRecoveryManager().isRecovering() && forceFeeder.processInput()) {
 				// all the work happens in the "processInput" method
 			}
 			causalLoggingManager.unsilenceAll();

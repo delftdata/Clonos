@@ -278,6 +278,20 @@ public class UnionInputGate implements InputGate, InputGateListener {
 	}
 
 	@Override
+	public InputChannel getInputChannel(int i) {
+		InputChannel result = null;
+		for(InputGate gate : inputGates){
+			if(gate.getNumberOfInputChannels() <= i)
+				i -= gate.getNumberOfInputChannels();
+			else {
+				result = gate.getInputChannel(i);
+				break;
+			}
+		}
+		return result;
+	}
+
+	@Override
 	public void notifyInputGateNonEmpty(InputGate inputGate) {
 		queueInputGate(checkNotNull(inputGate));
 	}

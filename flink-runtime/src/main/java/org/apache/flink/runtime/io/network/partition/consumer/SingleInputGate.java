@@ -41,7 +41,6 @@ import org.apache.flink.runtime.io.network.buffer.BufferProvider;
 import org.apache.flink.runtime.io.network.buffer.NetworkBufferPool;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionType;
-import org.apache.flink.runtime.io.network.partition.PartitionNotFoundException;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannel.BufferAndAvailability;
 import org.apache.flink.runtime.jobgraph.DistributionPattern;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
@@ -49,8 +48,6 @@ import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
 import org.apache.flink.runtime.taskmanager.TaskActions;
 import org.apache.flink.runtime.taskmanager.Task;
-
-import org.apache.flink.runtime.concurrent.FutureUtils;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -66,7 +63,6 @@ import java.util.Optional;
 import java.util.Timer;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -212,6 +208,7 @@ public class SingleInputGate implements InputGate {
 	 * Futures for acking in-flight log prepare request per channel by upstream.
 	 */
 	private final Map<ResultPartitionID, CompletableFuture<Acknowledge>> ackChannelFutures;
+	private InputChannel[] inputChannelArray;
 
 	public SingleInputGate(
 		String owningTaskName,
@@ -237,6 +234,7 @@ public class SingleInputGate implements InputGate {
 		this.numberOfInputChannels = numberOfInputChannels;
 
 		this.inputChannels = new HashMap<>(numberOfInputChannels);
+		this.inputChannelArray = new InputChannel[numberOfInputChannels];
 		this.channelsWithEndOfPartitionEvents = new BitSet(numberOfInputChannels);
 		this.enqueuedInputChannelsWithData = new BitSet(numberOfInputChannels);
 
@@ -291,6 +289,11 @@ public class SingleInputGate implements InputGate {
 		else {
 			throw new IllegalStateException("Input gate has not been initialized with buffers.");
 		}
+	}
+
+	@Override
+	public InputChannel getInputChannel(int i) {
+		return inputChannelArray[i];
 	}
 
 	public int getNumberOfQueuedBuffers() {
@@ -402,8 +405,6 @@ public class SingleInputGate implements InputGate {
 	 * This function will be called at runtime to setup a new remote input channel for a standby task that prepares for running.
 	 * Thus, the input gate will already be setup.
 	 *
-	 * @param networkBufferPool The global pool to request and recycle exclusive buffers
-	 * @param networkBuffersPerChannel The number of exclusive buffers for each channel
 	 */
 	public void assignExclusiveSegments(InputChannel inputChannel) throws IOException {
 		checkState(this.isCreditBased, "Bug in input gate setup logic: exclusive buffers only exist with credit-based flow control.");
@@ -426,6 +427,7 @@ public class SingleInputGate implements InputGate {
 		synchronized (requestLock) {
 			if (inputChannels.put(checkNotNull(partitionId), checkNotNull(inputChannel)) == null
 					&& inputChannel instanceof UnknownInputChannel) {
+				inputChannelArray[inputChannel.getChannelIndex()] = inputChannel;
 
 				numberOfUninitializedChannels++;
 			}
@@ -474,6 +476,7 @@ public class SingleInputGate implements InputGate {
 				LOG.debug("Updated unknown input channel to {}.", newChannel);
 
 				inputChannels.put(partitionId, newChannel);
+				inputChannelArray[newChannel.getChannelIndex()] = newChannel;
 
 				if (requestedPartitionsFlag.get()) {
 					newChannel.requestSubpartition(consumedSubpartitionIndex);
@@ -559,6 +562,7 @@ public class SingleInputGate implements InputGate {
 				LOG.debug("{}: Input channel {} has been updated to {}.", owningTaskName, current, newChannel);
 
 				inputChannels.put(partitionId, newChannel);
+				inputChannelArray[newChannel.getChannelIndex()] = newChannel;
 				newChannel.isAfterUpstreamFailure();
 
 				try {

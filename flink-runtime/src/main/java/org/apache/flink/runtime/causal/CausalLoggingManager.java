@@ -21,6 +21,7 @@ import org.apache.flink.runtime.causal.determinant.Determinant;
 import org.apache.flink.runtime.state.CheckpointListener;
 
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * A CausalLog contains the determinant logs of all upstream operators and itself.
@@ -54,7 +55,7 @@ public interface CausalLoggingManager extends CheckpointListener {
 
 	void notifyDownstreamFailure(int channel);
 
-	byte[] getDeterminantsOfUpstream(VertexId vertexId);
+	byte[] getDeterminantsOfVertex(VertexId vertexId);
 
 	void registerSilenceable(Silenceable silenceable);
 
@@ -62,11 +63,7 @@ public interface CausalLoggingManager extends CheckpointListener {
 
 	void unsilenceAll();
 
-	void setRecoveryDeterminants(List<Determinant> determinants);
-
-	Determinant getNextRecoveryDeterminant();
-
-	boolean hasRecoveryDeterminant();
-
 	<T> void enrichWithDeltas(T record, int targetChannel);
+
+	RecoveryManager getRecoveryManager();
 }

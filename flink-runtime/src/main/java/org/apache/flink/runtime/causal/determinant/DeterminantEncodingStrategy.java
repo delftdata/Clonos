@@ -18,6 +18,7 @@
 package org.apache.flink.runtime.causal.determinant;
 
 
+import java.nio.ByteBuffer;
 import java.util.List;
 
 /**
@@ -29,5 +30,8 @@ public interface DeterminantEncodingStrategy {
 	byte[] encode(Determinant determinant);
 
 	List<Determinant> decode(byte[] determinant);
+
+
+	Determinant decodeNext(ByteBuffer buffer);
 
 }

@@ -29,10 +29,8 @@ public class SimpleDeterminantEncodingStrategy implements DeterminantEncodingStr
 	@Override
 	public byte[] encode(Determinant determinant) {
 		if (determinant.isOrderDeterminant()) return encodeOrderDeterminant(determinant.asOrderDeterminant());
-		if (determinant.isRandomEmitDeterminant())
-			return encodeRandomEmitDeterminant(determinant.asRandomEmitDeterminant());
-		if (determinant.isTimestampDeterminant())
-			return encodeTimestampDeterminant(determinant.asTimestampDeterminant());
+		if (determinant.isRandomEmitDeterminant()) return encodeRandomEmitDeterminant(determinant.asRandomEmitDeterminant());
+		if (determinant.isTimestampDeterminant()) return encodeTimestampDeterminant(determinant.asTimestampDeterminant());
 		if (determinant.isRNGDeterminant()) return encodeRNGDeterminant(determinant.asRNGDeterminant());
 		throw new UnknownDeterminantTypeException();
 	}
@@ -43,14 +41,21 @@ public class SimpleDeterminantEncodingStrategy implements DeterminantEncodingStr
 		ByteBuffer b = ByteBuffer.wrap(determinants);
 
 		while (b.hasRemaining()) {
-			byte tag = b.get();
-			if (tag == Determinant.ORDER_DETERMINANT_TAG) result.add(decodeOrderDeterminant(b));
-			if (tag == Determinant.RANDOMEMIT_DETERMINANT_TAG) result.add(decodeRandomEmitDeterminant(b));
-			if (tag == Determinant.TIMESTAMP_DETERMINANT_TAG) result.add(decodeTimestampDeterminant(b));
-			if (tag == Determinant.RNG_DETERMINANT_TAG) result.add(decodeRNGDeterminant(b));
-			throw new CorruptDeterminantArrayException();
+			result.add(decodeNext(b));
 		}
 		return result;
+	}
+
+	@Override
+	public Determinant decodeNext(ByteBuffer b) {
+		if(!b.hasRemaining())
+			return null;
+		byte tag = b.get();
+		if (tag == Determinant.ORDER_DETERMINANT_TAG) return decodeOrderDeterminant(b);
+		if (tag == Determinant.RANDOMEMIT_DETERMINANT_TAG) return decodeRandomEmitDeterminant(b);
+		if (tag == Determinant.TIMESTAMP_DETERMINANT_TAG) return decodeTimestampDeterminant(b);
+		if (tag == Determinant.RNG_DETERMINANT_TAG) return decodeRNGDeterminant(b);
+		throw new CorruptDeterminantArrayException();
 	}
 
 	private Determinant decodeOrderDeterminant(ByteBuffer b) {

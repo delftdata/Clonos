@@ -92,4 +92,6 @@ public interface InputGate {
 	void registerListener(InputGateListener listener);
 
 	int getPageSize();
+
+	InputChannel getInputChannel(int i);
 }

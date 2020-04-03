@@ -23,6 +23,7 @@ import org.apache.flink.runtime.causal.determinant.SimpleDeterminantEncodingStra
 import org.apache.flink.runtime.plugable.SerializationDelegate;
 
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 
 /*
 Causal log for this operator. Contains Vertex Specific Causal logs for itself and all upstream operators.
@@ -32,8 +33,8 @@ public class MapCausalLoggingManager implements CausalLoggingManager {
 	private VertexId myVertexId;
 	private DeterminantEncodingStrategy determinantEncodingStrategy;
 	private List<Silenceable> registeredSilenceables;
+	private RecoveryManager recoveryManager;
 
-	private Queue<Determinant> recoveryDeterminants;
 
 	public MapCausalLoggingManager(VertexId myVertexId, Collection<VertexId> upstreamVertexIds, int numDownstreamChannels) {
 		this.determinantLogs = new HashMap<>();
@@ -43,6 +44,8 @@ public class MapCausalLoggingManager implements CausalLoggingManager {
 		this.determinantLogs.put(this.myVertexId, new CircularVertexCausalLog(numDownstreamChannels));
 		this.determinantEncodingStrategy = new SimpleDeterminantEncodingStrategy();
 		this.registeredSilenceables = new ArrayList<Silenceable>(10);
+
+		recoveryManager = new RecoveryManager(numDownstreamChannels, determinantEncodingStrategy);
 	}
 
 	@Override
@@ -100,7 +103,7 @@ public class MapCausalLoggingManager implements CausalLoggingManager {
 	}
 
 	@Override
-	public byte[] getDeterminantsOfUpstream(VertexId vertexId) {
+	public byte[] getDeterminantsOfVertex(VertexId vertexId) {
 		return determinantLogs.get(vertexId).getDeterminants();
 	}
 
@@ -124,22 +127,6 @@ public class MapCausalLoggingManager implements CausalLoggingManager {
 	}
 
 	@Override
-	public void setRecoveryDeterminants(List<Determinant> determinants) {
-		this.recoveryDeterminants = (Queue<Determinant>) determinants;
-	}
-
-
-	@Override
-	public Determinant getNextRecoveryDeterminant() {
-		return recoveryDeterminants.remove();
-	}
-
-	@Override
-	public boolean hasRecoveryDeterminant() {
-		return !recoveryDeterminants.isEmpty();
-	}
-
-	@Override
 	public <T> void enrichWithDeltas(T record, int targetChannel) {
 		SerializationDelegate<LogDeltaCarryingStreamElement> r = (SerializationDelegate<LogDeltaCarryingStreamElement>) record;
 		r.getInstance().setLogDeltas(this.getNextDeterminantsForDownstream(targetChannel));
@@ -150,4 +137,10 @@ public class MapCausalLoggingManager implements CausalLoggingManager {
 		for (VertexCausalLog log : determinantLogs.values())
 			log.notifyCheckpointComplete(checkpointId);
 	}
+
+	@Override
+	public RecoveryManager getRecoveryManager() {
+		return recoveryManager;
+	}
+
 }

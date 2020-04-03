@@ -34,6 +34,7 @@ import org.apache.flink.runtime.blob.BlobCacheService;
 import org.apache.flink.runtime.blob.PermanentBlobKey;
 import org.apache.flink.runtime.broadcast.BroadcastVariableManager;
 import org.apache.flink.runtime.causal.CausalLoggingManager;
+import org.apache.flink.runtime.causal.DeterminantResponseEvent;
 import org.apache.flink.runtime.causal.MapCausalLoggingManager;
 import org.apache.flink.runtime.causal.VertexId;
 import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
@@ -43,14 +44,10 @@ import org.apache.flink.runtime.checkpoint.decline.CheckpointDeclineTaskNotReady
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.deployment.InputGateDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.ResultPartitionDeploymentDescriptor;
-import org.apache.flink.runtime.event.InFlightLogPrepareEvent;
-import org.apache.flink.runtime.event.InFlightLogPrepareEventListener;
-import org.apache.flink.runtime.event.InFlightLogRequestEvent;
-import org.apache.flink.runtime.event.InFlightLogRequestEventListener;
+import org.apache.flink.runtime.event.*;
 import org.apache.flink.runtime.execution.CancelTaskException;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.execution.ExecutionState;
-import org.apache.flink.runtime.execution.librarycache.BlobLibraryCacheManager;
 import org.apache.flink.runtime.execution.librarycache.LibraryCacheManager;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.JobInformation;
@@ -884,6 +881,12 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 						iflpel, InFlightLogPrepareEvent.class);
 				LOG.info("Set inFlightLogPrepareEventListener {} for resultPartition {}.", iflpel, partition);
 				partition.setInFlightLogPrepareEventListener(iflpel);
+
+				if(this.isCausal()){
+					DeterminantResponseEventListener edel = new DeterminantResponseEventListener(userCodeClassLoader, causalLoggingManager);
+					network.getTaskEventDispatcher().subscribeToEvent(partition.getPartitionId(), edel, DeterminantResponseEvent.class);
+					partition.setDeterminantResponseEventListener(edel);
+				}
 			}
 
 			// make sure the user code classloader is accessible thread-locally
