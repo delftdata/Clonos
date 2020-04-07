@@ -32,19 +32,12 @@ public interface CausalLoggingManager extends CheckpointListener {
 	List<VertexCausalLogDelta> getDeterminants();
 
 	/*
-	Forwards the request to the Vertex specific causal log
-	 */
-	void appendDeterminantsToVertexLog(VertexId vertexId, byte[] determinants);
-
-	/*
-	Appends determinants to this tasks log.
-	 */
-	void addDeterminant(byte[] determinants);
-
-	/*
 	Encodes and appends to this tasks log
 	 */
-	void addDeterminant(Determinant determinant);
+	void appendDeterminant(Determinant determinant);
+
+
+	void processUpstreamCausalLogDelta(VertexCausalLogDelta d);
 
 	/*
 	Returns a list of deltas containing the updates that have since been obtained for all upstream vertexes or this vertex.
@@ -66,4 +59,5 @@ public interface CausalLoggingManager extends CheckpointListener {
 	<T> void enrichWithDeltas(T record, int targetChannel);
 
 	RecoveryManager getRecoveryManager();
+
 }

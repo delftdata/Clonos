@@ -38,6 +38,6 @@ public class DeterminantResponseEvent extends TaskEvent {
 		int logDeltaLength = in.readInt();
 		byte[] logDelta = new byte[logDeltaLength];
 		in.read(logDelta, 0, logDeltaLength);
-		this.vertexCausalLogDelta = new VertexCausalLogDelta(new VertexId(id), logDelta);
+		this.vertexCausalLogDelta = new VertexCausalLogDelta(new VertexId(id), logDelta, 0);
 	}
 }

@@ -35,19 +35,23 @@ public class CircularVertexCausalLog implements VertexCausalLog {
 	private int size;
 
 	private Queue<CheckpointOffset> offsets;
+	CheckpointOffset latestNonCompletedCheckpoint;
 	private int[] channelOffsets;
 
+	private VertexId vertexBeingLogged;
 
-	public CircularVertexCausalLog(int numDownstreamChannels) {
-		this(DEFAULT_START_SIZE, numDownstreamChannels);
+	public CircularVertexCausalLog(int numDownstreamChannels, VertexId vertexBeingLogged) {
+		this(DEFAULT_START_SIZE, numDownstreamChannels, vertexBeingLogged);
 	}
 
-	public CircularVertexCausalLog(int startSize, int numDownstreamChannels) {
+	public CircularVertexCausalLog(int startSize, int numDownstreamChannels, VertexId vertexBeingLogged) {
 		array = new byte[startSize];
 		offsets = new LinkedList<>();
 		start = 0;
 		end = 0;
 		size = 0;
+
+		this.vertexBeingLogged = vertexBeingLogged;
 
 		//initialized to 0s
 		channelOffsets = new int[numDownstreamChannels];
@@ -57,37 +61,37 @@ public class CircularVertexCausalLog implements VertexCausalLog {
 	@Override
 	public byte[] getDeterminants() {
 		byte[] copy = new byte[size];
-		circularArrayCopy(array, start, end, array.length, copy);
+		circularArrayCopyOutOfLog(array, start, end - start, copy);
 		return copy;
 	}
 
 	@Override
 	public void appendDeterminants(byte[] determinants) {
-		if (!hasSpaceFor(determinants.length)) {
+		while (!hasSpaceFor(determinants.length))
 			grow();
-			appendDeterminants(determinants);
-		} else {
-			if (end >= start) {
-				int bytesTillLoop = array.length - end;
-				if (determinants.length > bytesTillLoop) {
-					System.arraycopy(determinants, 0, array, end, bytesTillLoop);
-					System.arraycopy(determinants, bytesTillLoop, array, 0, determinants.length - bytesTillLoop);
 
-				} else {
-					System.arraycopy(determinants, 0, array, end, determinants.length);
-				}
-			} else {
-				System.arraycopy(determinants, 0, array, end, determinants.length);
-			}
-			end = (end + determinants.length) % array.length;
-			size += determinants.length;
-		}
+		circularCopyIntoLog(determinants, 0);
+	}
+
+	@Override
+	public void processUpstreamVertexCausalLogDelta(VertexCausalLogDelta vertexCausalLogDelta) {
+		int numDeterminantsSinceLastMarker = end - (latestNonCompletedCheckpoint == null ? start : latestNonCompletedCheckpoint.offset);
+		int newDeterminantsLength = vertexCausalLogDelta.offsetFromLastMarker - numDeterminantsSinceLastMarker;
+
+		while (!hasSpaceFor(newDeterminantsLength))
+			grow();
+
+
+		if(newDeterminantsLength > 0)
+			circularCopyIntoLog(vertexCausalLogDelta.logDelta, numDeterminantsSinceLastMarker);
+
 	}
 
 
 	@Override
 	public void notifyCheckpointBarrier(long checkpointId) {
-		offsets.add(new CheckpointOffset(checkpointId, end));
+		latestNonCompletedCheckpoint = new CheckpointOffset(checkpointId, end);
+		offsets.add(latestNonCompletedCheckpoint);
 		//record current position, as all records pertaining to this checkpoint are going to be between end
 		// and next offsets end
 	}
@@ -96,6 +100,7 @@ public class CircularVertexCausalLog implements VertexCausalLog {
 	public void notifyDownstreamFailure(int channel) {
 		channelOffsets[channel] = start;
 	}
+
 
 	@Override
 	public void notifyCheckpointComplete(long checkpointId) throws Exception {
@@ -115,45 +120,87 @@ public class CircularVertexCausalLog implements VertexCausalLog {
 
 		}
 
+		if(latestNonCompletedCheckpoint.id == checkpointId)
+			latestNonCompletedCheckpoint = null;
 	}
 
 
 	@Override
-	public byte[] getNextDeterminantsForDownstream(int channel) {
+	public VertexCausalLogDelta getNextDeterminantsForDownstream(int channel) {
 		byte[] toReturn = new byte[circularDistance(channelOffsets[channel], end, array.length)];
-		circularArrayCopy(array, channelOffsets[channel], end, array.length, toReturn);
-		channelOffsets[channel] = end;
-		return toReturn;
+		circularArrayCopyOutOfLog(array, channelOffsets[channel], end - channelOffsets[channel], toReturn);
+
+		//offset has to be logical. It is the distance to the latest non completed marker.
+		int offset = channelOffsets[channel] - (latestNonCompletedCheckpoint != null ? latestNonCompletedCheckpoint.offset : start);
+
+		channelOffsets[channel] = end; //channel has all the latest determinants
+
+		return new VertexCausalLogDelta(vertexBeingLogged, toReturn, offset);
 	}
 
 
-	private int circularDistance(int from, int to, int totalSize) {
-		if (to >= from) {
-			return to - from;
-		} else {
-			return (totalSize - from) + to;
+	private static int circularDistance(int from, int to, int totalSize) {
+		return (to - from) % totalSize;
+	}
+
+	private void circularArrayCopyOutOfLog(byte[] from, int start, int numBytesToCopy, byte[] to) {
+		if (start + numBytesToCopy <= from.length) {
+			System.arraycopy(from, start, to, 0, numBytesToCopy);
+		} else { //Goes around the circle
+			int numBytesToCopyBeforeCompleteCircle = from.length - start;
+			System.arraycopy(from, start, to, 0, numBytesToCopyBeforeCompleteCircle);
+			System.arraycopy(from, start, to, numBytesToCopyBeforeCompleteCircle, numBytesToCopy - numBytesToCopyBeforeCompleteCircle);
 		}
 	}
 
-	private void circularArrayCopy(byte[] src, int start, int end, int size, byte[] to) {
-		if (end >= start) {
-			System.arraycopy(src, start, to, 0, end - start);
-		} else {
-			System.arraycopy(src, start, to, 0, size - start);
-			System.arraycopy(src, start, to, size - start, end);
-		}
-	}
-
+	/**
+	 * Grows the array and moves everything to position 0
+	 */
 	private void grow() {
 		byte[] newArray = new byte[array.length * GROWTH_FACTOR];
-		System.arraycopy(array, 0, newArray, 0, array.length);
+
+		circularArrayCopyOutOfLog(array, start, size, newArray);
+		int move = -start;
+		start = 0;
+		end = size;
+
+		// Since we reset to 0, we need to move the offsets as well.
+		for(CheckpointOffset offset : offsets) {
+			offset.offset = (offset.offset + move) % array.length;
+		}
+
+		for(int channelIndex = 0 ; channelIndex < channelOffsets.length; channelIndex++){
+			channelOffsets[channelIndex] = (channelOffsets[channelIndex] + move) % array.length;
+		}
+
 		array = newArray;
 	}
 
 	private boolean hasSpaceFor(int toAdd) {
-		return array.length - size > toAdd;
+		return array.length - size >= toAdd;
 	}
 
+	/**
+	 * PRECONDITION: has enough space!
+	 * @param determinants
+	 * @param offset
+	 */
+	private void circularCopyIntoLog(byte[] determinants, int offset) {
+		if (end >= start) {
+			int bytesTillLoop = array.length - end;
+			if (determinants.length - offset > bytesTillLoop) {
+				System.arraycopy(determinants, offset, array, end, bytesTillLoop);
+				System.arraycopy(determinants, offset + bytesTillLoop, array, 0, determinants.length - offset - bytesTillLoop);
+
+			} else {
+				System.arraycopy(determinants, offset, array, end, determinants.length-offset);
+			}
+		} else {
+			System.arraycopy(determinants, offset, array, end, determinants.length - offset);
+		}
+		end = (end + determinants.length - offset) % array.length;
+		size += determinants.length - offset;
+	}
 
 	private class CheckpointOffset {
 		private long id;
@@ -180,6 +227,5 @@ public class CircularVertexCausalLog implements VertexCausalLog {
 			this.offset = offset;
 		}
 	}
-
 
 }

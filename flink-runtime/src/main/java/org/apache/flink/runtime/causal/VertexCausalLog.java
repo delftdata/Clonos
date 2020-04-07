@@ -31,9 +31,19 @@ public interface VertexCausalLog extends CheckpointListener {
 
 	void appendDeterminants(byte[] determinants);
 
-	byte[] getNextDeterminantsForDownstream(int channel);
+	/**
+	 * This may be used both for transmitting actual deltas as for providing a bootstrap of lost determinants for a recovering operator.
+	 * The latter has the issue that we wont know how may grow() operations to apply. Is this an issue? As more appends
+	 * are made in the upstream, it may write over the downstreams limit, or circle around. The downstream will be making those writes as well, to the offsets given.
+	 * If the offsets are above the size, we know we must grow and inplace copy? If they wrap around to zero
+	 * @param vertexCausalLogDelta
+	 */
+	void processUpstreamVertexCausalLogDelta(VertexCausalLogDelta vertexCausalLogDelta);
+
+	VertexCausalLogDelta getNextDeterminantsForDownstream(int channel);
 
 	void notifyCheckpointBarrier(long checkpointId);
 
 	void notifyDownstreamFailure(int channel);
+
 }

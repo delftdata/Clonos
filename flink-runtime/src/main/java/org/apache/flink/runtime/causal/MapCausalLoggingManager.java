@@ -23,7 +23,6 @@ import org.apache.flink.runtime.causal.determinant.SimpleDeterminantEncodingStra
 import org.apache.flink.runtime.plugable.SerializationDelegate;
 
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
 
 /*
 Causal log for this operator. Contains Vertex Specific Causal logs for itself and all upstream operators.
@@ -40,8 +39,8 @@ public class MapCausalLoggingManager implements CausalLoggingManager {
 		this.determinantLogs = new HashMap<>();
 		this.myVertexId = myVertexId;
 		for (VertexId u : upstreamVertexIds)
-			determinantLogs.put(u, new CircularVertexCausalLog(numDownstreamChannels));
-		this.determinantLogs.put(this.myVertexId, new CircularVertexCausalLog(numDownstreamChannels));
+			determinantLogs.put(u, new CircularVertexCausalLog(numDownstreamChannels, u));
+		this.determinantLogs.put(this.myVertexId, new CircularVertexCausalLog(numDownstreamChannels, this.myVertexId));
 		this.determinantEncodingStrategy = new SimpleDeterminantEncodingStrategy();
 		this.registeredSilenceables = new ArrayList<Silenceable>(10);
 
@@ -52,41 +51,37 @@ public class MapCausalLoggingManager implements CausalLoggingManager {
 	public List<VertexCausalLogDelta> getDeterminants() {
 		List<VertexCausalLogDelta> results = new LinkedList<>();
 		for (VertexId key : this.determinantLogs.keySet()) {
-			results.add(new VertexCausalLogDelta(key, determinantLogs.get(key).getDeterminants()));
+			results.add(new VertexCausalLogDelta(key, determinantLogs.get(key).getDeterminants(), 0));
 		}
-		results.add(new VertexCausalLogDelta(this.myVertexId, determinantLogs.get(this.myVertexId).getDeterminants()));
+		results.add(new VertexCausalLogDelta(this.myVertexId, determinantLogs.get(this.myVertexId).getDeterminants(), 0));
 		return results;
 	}
 
-	@Override
-	public void appendDeterminantsToVertexLog(VertexId vertexId, byte[] determinants) {
-		this.determinantLogs.get(vertexId).appendDeterminants(determinants);
-	}
 
 	@Override
-	public void addDeterminant(byte[] determinants) {
-		this.determinantLogs.get(this.myVertexId).appendDeterminants(determinants);
-	}
-
-	@Override
-	public void addDeterminant(Determinant determinant) {
+	public void appendDeterminant(Determinant determinant) {
 		this.determinantLogs.get(this.myVertexId).appendDeterminants(
 			this.determinantEncodingStrategy.encode(determinant)
 		);
 	}
 
 	@Override
+	public void processUpstreamCausalLogDelta(VertexCausalLogDelta d) {
+		this.determinantLogs.get(d.vertexId).processUpstreamVertexCausalLogDelta(d);
+	}
+
+	@Override
 	public List<VertexCausalLogDelta> getNextDeterminantsForDownstream(int channel) {
 		List<VertexCausalLogDelta> results = new LinkedList<>();
 		for (VertexId key : this.determinantLogs.keySet()) {
-			byte[] newDet = determinantLogs.get(key).getNextDeterminantsForDownstream(channel);
-			if (newDet.length != 0)
-				results.add(new VertexCausalLogDelta(key, newDet));
+			VertexCausalLogDelta vertexCausalLogDelta = determinantLogs.get(key).getNextDeterminantsForDownstream(channel);
+			if (vertexCausalLogDelta.logDelta.length != 0)
+				results.add(vertexCausalLogDelta);
 		}
 
-		byte[] newDet = determinantLogs.get(this.myVertexId).getNextDeterminantsForDownstream(channel);
-		if (newDet.length != 0)
-			results.add(new VertexCausalLogDelta(this.myVertexId, newDet));
+		VertexCausalLogDelta vertexCausalLogDelta = determinantLogs.get(this.myVertexId).getNextDeterminantsForDownstream(channel);
+		if (vertexCausalLogDelta.logDelta.length != 0)
+			results.add(vertexCausalLogDelta);
 		return results;
 	}
 
@@ -142,5 +137,6 @@ public class MapCausalLoggingManager implements CausalLoggingManager {
 	public RecoveryManager getRecoveryManager() {
 		return recoveryManager;
 	}
+
 
 }

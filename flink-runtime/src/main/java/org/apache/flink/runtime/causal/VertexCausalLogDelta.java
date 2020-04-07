@@ -20,10 +20,12 @@ package org.apache.flink.runtime.causal;
 public class VertexCausalLogDelta {
 	VertexId vertexId;
 	byte[] logDelta;
+	int offsetFromLastMarker;
 
-	public VertexCausalLogDelta(VertexId vertexId, byte[] logDelta) {
+	public VertexCausalLogDelta(VertexId vertexId, byte[] logDelta, int offsetFromLastMarker) {
 		this.logDelta = logDelta;
 		this.vertexId = vertexId;
+		this.offsetFromLastMarker = offsetFromLastMarker;
 	}
 
 	public VertexId getVertexId() {
@@ -40,5 +42,13 @@ public class VertexCausalLogDelta {
 
 	public void setLogDelta(byte[] logDelta) {
 		this.logDelta = logDelta;
+	}
+
+	public int getOffsetFromLastMarker() {
+		return offsetFromLastMarker;
+	}
+
+	public void setOffsetFromLastMarker(int offsetFromLastMarker) {
+		this.offsetFromLastMarker = offsetFromLastMarker;
 	}
 }
