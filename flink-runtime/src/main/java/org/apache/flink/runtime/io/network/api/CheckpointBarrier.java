@@ -20,10 +20,13 @@ package org.apache.flink.runtime.io.network.api;
 
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataOutputView;
+import org.apache.flink.runtime.causal.VertexCausalLog;
+import org.apache.flink.runtime.causal.VertexCausalLogDelta;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.event.RuntimeEvent;
 
 import java.io.IOException;
+import java.util.List;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -48,10 +51,16 @@ public class CheckpointBarrier extends RuntimeEvent {
 	private final long timestamp;
 	private final CheckpointOptions checkpointOptions;
 
+	private List<VertexCausalLogDelta> vertexCausalLogDeltas;
+
 	public CheckpointBarrier(long id, long timestamp, CheckpointOptions checkpointOptions) {
 		this.id = id;
 		this.timestamp = timestamp;
 		this.checkpointOptions = checkNotNull(checkpointOptions);
+	}
+	public CheckpointBarrier(long id, long timestamp, CheckpointOptions checkpointOptions, List<VertexCausalLogDelta> vertexCausalLogDeltas) {
+		this(id, timestamp,checkpointOptions);
+		this.vertexCausalLogDeltas = vertexCausalLogDeltas;
 	}
 
 	public long getId() {
@@ -64,6 +73,12 @@ public class CheckpointBarrier extends RuntimeEvent {
 
 	public CheckpointOptions getCheckpointOptions() {
 		return checkpointOptions;
+	}
+
+	public List<VertexCausalLogDelta> getVertexCausalLogDeltas() {return vertexCausalLogDeltas;}
+
+	public void setVertexCausalLogDeltas(List<VertexCausalLogDelta> deltas) {
+		this.vertexCausalLogDeltas = deltas;
 	}
 
 	// ------------------------------------------------------------------------

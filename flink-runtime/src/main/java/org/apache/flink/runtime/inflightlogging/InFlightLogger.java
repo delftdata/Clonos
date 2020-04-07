@@ -19,13 +19,10 @@
 package org.apache.flink.runtime.inflightlogging;
 
 import org.apache.flink.core.memory.MemorySegment;
-import org.apache.flink.runtime.plugable.SerializationDelegate;
 import org.apache.flink.runtime.io.network.api.CheckpointBarrier;
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
-import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferBuilder;
 import org.apache.flink.runtime.io.network.buffer.BufferRecycler;
-import org.apache.flink.runtime.io.network.buffer.NetworkBuffer;
 import org.apache.flink.runtime.io.network.partition.ResultPartition;
 
 import java.io.IOException;
@@ -230,16 +227,14 @@ public class InFlightLogger implements BufferRecycler {
 		return String.format("InFlightLogger [task: %s, replaying: %s, channels: %s, current checkpoint id: %d, totalSegments: %d, available segments: %d]", targetPartition.getTaskName(), replaying, numOutgoingChannels, currentCheckpointId, numTotalSegments, segments);
 	}
 
-	public void logCheckpointBarrier(CheckpointBarrier checkpointBarrier) {
+	public void logCheckpointBarrier(int targetChannel, CheckpointBarrier checkpointBarrier) {
 		try {
-			LOG.info("Log {}.", checkpointBarrier);
-			for (int channelIndex = 0; channelIndex < this.numOutgoingChannels; channelIndex++) {
-				slicedLog.get(checkpointBarrier.getId())[channelIndex].setCheckpointBarrier(checkpointBarrier);
-			}
+			LOG.info("Log {} for target channel {}.", checkpointBarrier, targetChannel);
+				slicedLog.get(checkpointBarrier.getId())[targetChannel].setCheckpointBarrier(checkpointBarrier);
 		} catch (NullPointerException e) {
 			LOG.warn("No in-flight log to store {}. This means that no records appeared in that epoch. Create the missing slices and store it.", checkpointBarrier);
 			createSlices(checkpointBarrier.getId() - 1);
-			logCheckpointBarrier(checkpointBarrier);
+			logCheckpointBarrier(targetChannel, checkpointBarrier);
 		}
 	}
 

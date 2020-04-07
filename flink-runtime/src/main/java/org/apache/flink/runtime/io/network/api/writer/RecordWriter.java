@@ -23,6 +23,8 @@ import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.SimpleCounter;
 import org.apache.flink.runtime.causal.CausalLoggingManager;
 import org.apache.flink.runtime.causal.Silenceable;
+import org.apache.flink.runtime.causal.VertexCausalLog;
+import org.apache.flink.runtime.causal.VertexCausalLogDelta;
 import org.apache.flink.runtime.causal.determinant.RNGDeterminant;
 import org.apache.flink.runtime.event.AbstractEvent;
 import org.apache.flink.runtime.event.InFlightLogPrepareEvent;
@@ -167,7 +169,7 @@ public class RecordWriter<T extends IOReadableWritable> implements Silenceable {
 	 */
 	public void randomEmit(T record) throws IOException, InterruptedException {
 		int channel_chosen = rng.nextInt(numChannels);
-		causalLoggingManager.addDeterminant(new RNGDeterminant(channel_chosen));
+		causalLoggingManager.appendDeterminant(new RNGDeterminant(channel_chosen));
 		sendToTarget(record, channel_chosen);
 	}
 
@@ -212,15 +214,20 @@ public class RecordWriter<T extends IOReadableWritable> implements Silenceable {
 	public void broadcastEvent(AbstractEvent event) throws IOException, InterruptedException {
 		LOG.debug("{}: RecordWriter broadcast event {}.", targetPartition.getTaskName(), event);
 
-		if (event instanceof CheckpointBarrier) {
-			inFlightLogger.logCheckpointBarrier((CheckpointBarrier) event);
-		}
 
 		if (!silenced) {
 			//todo figure out what to do about these events
 
-			try (BufferConsumer eventBufferConsumer = EventSerializer.toBufferConsumer(event)) {
-				for (int targetChannel = 0; targetChannel < numChannels; targetChannel++) {
+			for (int targetChannel = 0; targetChannel < numChannels; targetChannel++) {
+				if (event instanceof CheckpointBarrier) {
+					//If the event is a Checkpoint barrier, create new events for each channel and provide determinants
+					CheckpointBarrier barrier = (CheckpointBarrier) event;
+					List<VertexCausalLogDelta> deltas = causalLoggingManager.getNextDeterminantsForDownstream(targetChannel);
+					event = new CheckpointBarrier(barrier.getId(),barrier.getTimestamp(),barrier.getCheckpointOptions(),deltas); //
+
+					inFlightLogger.logCheckpointBarrier(targetChannel, (CheckpointBarrier) event);
+				}
+				try (BufferConsumer eventBufferConsumer = EventSerializer.toBufferConsumer(event)) {
 					RecordSerializer<T> serializer = serializers[targetChannel];
 
 					tryFinishCurrentBufferBuilder(targetChannel, serializer);
