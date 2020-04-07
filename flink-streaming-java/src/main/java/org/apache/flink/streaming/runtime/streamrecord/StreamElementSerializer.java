@@ -170,7 +170,8 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 		target.writeShort(logDeltas.size());
 		for (VertexCausalLogDelta d : logDeltas) {
 			target.writeShort(d.getVertexId().getVertexId());
-			target.writeShort(d.getLogDelta().length);
+			target.writeInt(d.getOffsetFromLastMarker());
+			target.writeInt(d.getLogDelta().length);
 			target.write(d.getLogDelta());
 		}
 
@@ -211,10 +212,11 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 		List<VertexCausalLogDelta> logDeltas = new LinkedList<>();
 		for (int i = 0; i < numDeltas; i++) {
 			short taskID = source.readShort();
-			short deltaLength = source.readShort();
+			int offset = source.readInt();
+			int deltaLength = source.readInt();
 			byte[] bytes = new byte[deltaLength];
 			source.read(bytes);
-			logDeltas.add(new VertexCausalLogDelta(new VertexId(taskID), bytes));
+			logDeltas.add(new VertexCausalLogDelta(new VertexId(taskID), bytes,offset));
 		}
 		return logDeltas;
 	}

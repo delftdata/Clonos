@@ -114,8 +114,8 @@ public class StreamInputProcessor<IN> extends AbstractStreamInputProcessor<IN> {
 					StreamElement recordOrMark = deserializationDelegate.getInstance();
 
 					for (VertexCausalLogDelta d : recordOrMark.getLogDeltas())
-						this.causalLoggingManager.appendDeterminantsToVertexLog(d.getVertexId(), d.getLogDelta());
-					this.causalLoggingManager.addDeterminant(new OrderDeterminant((byte) currentChannel));
+						this.causalLoggingManager.processUpstreamCausalLogDelta(d);
+					this.causalLoggingManager.appendDeterminant(new OrderDeterminant((byte) currentChannel));
 
 					if (recordOrMark.isWatermark()) {
 						// handle watermark
@@ -160,7 +160,7 @@ public class StreamInputProcessor<IN> extends AbstractStreamInputProcessor<IN> {
 						VertexId failedVertex = ((DeterminantRequestEvent)event).getFailedVertex();
 						byte[] determinants = this.causalLoggingManager.getDeterminantsOfVertex(failedVertex);
 						//todo if dont have locally, recurr request and make future.
-						toRespondTo.sendTaskEvent(new DeterminantResponseEvent(new VertexCausalLogDelta(failedVertex, determinants)));
+						toRespondTo.sendTaskEvent(new DeterminantResponseEvent(new VertexCausalLogDelta(failedVertex, determinants,0)));
 					}
 					else if (event.getClass() != EndOfPartitionEvent.class) {
 						throw new IOException("Unexpected event: " + event);

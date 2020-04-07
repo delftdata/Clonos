@@ -18,6 +18,8 @@
 package org.apache.flink.streaming.runtime.io;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.runtime.causal.CausalLoggingManager;
+import org.apache.flink.runtime.causal.VertexCausalLogDelta;
 import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
 import org.apache.flink.runtime.checkpoint.decline.AlignmentLimitExceededException;
@@ -78,6 +80,7 @@ public class BarrierBuffer implements CheckpointBarrierHandler {
 	 * unlimited.
 	 */
 	private final long maxBufferedBytes;
+	private CausalLoggingManager causalLoggingManager;
 
 	/**
 	 * The sequence of buffers/events that has been unblocked and must now be consumed before
@@ -124,6 +127,7 @@ public class BarrierBuffer implements CheckpointBarrierHandler {
 	 */
 	public BarrierBuffer(InputGate inputGate, BufferBlocker bufferBlocker) throws IOException {
 		this (inputGate, bufferBlocker, -1);
+		causalLoggingManager = null;
 	}
 
 	/**
@@ -150,7 +154,15 @@ public class BarrierBuffer implements CheckpointBarrierHandler {
 
 		this.bufferBlocker = checkNotNull(bufferBlocker);
 		this.queuedBuffered = new ArrayDeque<BufferOrEventSequence>();
+		causalLoggingManager = null;
 	}
+
+	public BarrierBuffer(InputGate inputGate, BufferBlocker bufferBlocker, long maxAlign, CausalLoggingManager causalLoggingManager) throws IOException {
+		this(inputGate, bufferBlocker, maxAlign);
+		this.causalLoggingManager = causalLoggingManager;
+
+	}
+
 
 	// ------------------------------------------------------------------------
 	//  Buffer and barrier handling
@@ -228,6 +240,9 @@ public class BarrierBuffer implements CheckpointBarrierHandler {
 	}
 
 	private void processBarrier(CheckpointBarrier receivedBarrier, int channelIndex) throws Exception {
+		if(causalLoggingManager != null)
+			for (VertexCausalLogDelta v : receivedBarrier.getVertexCausalLogDeltas())
+				this.causalLoggingManager.processUpstreamCausalLogDelta(v);
 		final long barrierId = receivedBarrier.getId();
 
 		// fast path for single channel cases

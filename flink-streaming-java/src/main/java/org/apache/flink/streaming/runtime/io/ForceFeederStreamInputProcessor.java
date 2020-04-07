@@ -74,8 +74,8 @@ public class ForceFeederStreamInputProcessor<IN> extends AbstractStreamInputProc
 					StreamElement recordOrMark = deserializationDelegate.getInstance();
 
 					for (VertexCausalLogDelta d : recordOrMark.getLogDeltas())
-						this.causalLoggingManager.appendDeterminantsToVertexLog(d.getVertexId(), d.getLogDelta());
-					this.causalLoggingManager.addDeterminant(new OrderDeterminant((byte) currentChannel));
+						this.causalLoggingManager.processUpstreamCausalLogDelta(d);
+					this.causalLoggingManager.appendDeterminant(new OrderDeterminant((byte) currentChannel));
 
 					if (recordOrMark.isWatermark()) {
 						// handle watermark
