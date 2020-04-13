@@ -32,4 +32,11 @@ public class OrderDeterminant extends Determinant {
 	public void setChannel(byte channel) {
 		this.channel = channel;
 	}
+
+	@Override
+	public String toString() {
+		return "OrderDeterminant{" +
+			"channel=" + channel +
+			'}';
+	}
 }

@@ -17,6 +17,8 @@
  */
 package org.apache.flink.runtime.causal;
 
+import java.io.Serializable;
+
 /*
 A compact ID to represent a job specific (sub)task. Needs to be compact because it is sent on StreamElements. Task-level
 because standby failover is done at task level.
@@ -25,7 +27,10 @@ Flink has no SubTask specific IDs. It has only JobVertexIDs + subtask index.
 Flink's AbstractID has two issues. 1. it is statistical, 2. it is too large. Compressing that large space into a short
 increases the probability of collisions.
  */
-public class VertexId {
+public class VertexId implements Serializable {
+
+	private static final long serialVersionUID = 1L;
+
 	short id;
 
 	public VertexId(short taskID) {
@@ -44,5 +49,20 @@ public class VertexId {
 	@Override
 	public int hashCode() {
 		return id;
+	}
+
+	@Override
+	public String toString() {
+		return "VertexId{" +
+			"id=" + id +
+			'}';
+	}
+
+	@Override
+	public boolean equals(Object o) {
+		if (this == o) return true;
+		if (o == null || getClass() != o.getClass()) return false;
+		VertexId vertexId = (VertexId) o;
+		return id == vertexId.id;
 	}
 }

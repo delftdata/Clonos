@@ -31,4 +31,11 @@ public class RandomEmitDeterminant extends Determinant {
 	public void setChannel(byte channel) {
 		this.channel = channel;
 	}
+
+	@Override
+	public String toString() {
+		return "RandomEmitDeterminant{" +
+			"channel=" + channel +
+			'}';
+	}
 }
