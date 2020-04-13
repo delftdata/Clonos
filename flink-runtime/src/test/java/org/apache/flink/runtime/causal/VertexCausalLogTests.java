@@ -19,12 +19,10 @@ package org.apache.flink.runtime.causal;
 
 import org.junit.Test;
 
-import java.util.Arrays;
-import java.util.List;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class CircularLogTest {
+public class VertexCausalLogTests {
 
 	private static final String test_sentence_small = "Lorem ipsum "; //12 bytes
 	private static final String test_sentence_large = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. " +
@@ -38,16 +36,14 @@ public class CircularLogTest {
 	@Test
 	public void growthTest() {
 
-		List<VertexId> downstreamOperators = Arrays.asList(new VertexId((short) 0));
 
-		VertexCausalLog log = new CircularVertexCausalLog(32, 1);
+		VertexCausalLog log = new CircularVertexCausalLog(1, new VertexId((short) 0));
 
 		for (int i = 0; i < 3; i++)
 			log.appendDeterminants(test_sentence_small.getBytes()); //36 bytes. Causes one growth
 
 		String expectedResult = test_sentence_small + test_sentence_small + test_sentence_small;
-		assert (new String(log.getDeterminants()).equals(expectedResult));
-		assert (new String(log.getNextDeterminantsForDownstream(0)).equals(expectedResult));
+		assert (new String(log.getNextDeterminantsForDownstream(0).rawDeterminants).equals(expectedResult));
 
 	}
 
@@ -56,7 +52,7 @@ public class CircularLogTest {
 	public void checkpointBarrierTest() throws Exception {
 
 
-		VertexCausalLog log = new CircularVertexCausalLog(32, 1);
+		VertexCausalLog log = new CircularVertexCausalLog(2, new VertexId((short) 0));
 
 		for (int i = 0; i < 2; i++)
 			log.appendDeterminants(test_sentence_small.getBytes());
@@ -66,7 +62,7 @@ public class CircularLogTest {
 		for (int i = 0; i < 3; i++)
 			log.appendDeterminants(test_sentence_small.getBytes());
 
-		log.notifyCheckpointComplete(2l);
+		log.notifyCheckpointComplete(1l);
 
 		String expectedResult = test_sentence_small + test_sentence_small + test_sentence_small;
 		assert (new String(log.getDeterminants()).equals(expectedResult));
@@ -74,41 +70,54 @@ public class CircularLogTest {
 	}
 
 	@Test
-	public void operatorDeterminantTrackingTest() {
+	public void emptyStartStateTest() {
 
-		List<VertexId> downstreamOperators = Arrays.asList(new VertexId[]{new VertexId((short) 0), new VertexId((short) 1)});
+		VertexId trackedVertex = new VertexId((short) 0);
+		VertexCausalLog log = new CircularVertexCausalLog(3, trackedVertex);
 
-		VertexCausalLog log = new CircularVertexCausalLog(32, 1);
+		assert (log.getNextDeterminantsForDownstream(0).equals(new VertexCausalLogDelta(trackedVertex, new byte[0], 0)));
 
-		assert (Arrays.equals(log.getNextDeterminantsForDownstream(0), new byte[0]));
+	}
 
-		for (int i = 0; i < 2; i++)
-			log.appendDeterminants(test_sentence_small.getBytes());
+	@Test
+	public void correctDownstreamTrackingTest() {
+		VertexId trackedVertex = new VertexId((short) 0);
+		VertexCausalLog log = new CircularVertexCausalLog(3, trackedVertex);
 
-		String expectedResult = test_sentence_small + test_sentence_small;
+		log.appendDeterminants(test_sentence_small.getBytes());
+		log.appendDeterminants(test_sentence_small.getBytes());
+		log.getNextDeterminantsForDownstream(0);
+		log.appendDeterminants(test_sentence_small.getBytes());
 
-		assert (new String(log.getNextDeterminantsForDownstream(0)).equals(expectedResult));
-		assert (new String(log.getNextDeterminantsForDownstream(1)).equals(expectedResult));
-		assert (new String(log.getNextDeterminantsForDownstream(2)).equals(""));
+		assert (log.getNextDeterminantsForDownstream(1).equals(new VertexCausalLogDelta(trackedVertex, (test_sentence_small + test_sentence_small + test_sentence_small).getBytes(), 0)));
+		assert (log.getNextDeterminantsForDownstream(0).equals(new VertexCausalLogDelta(trackedVertex, test_sentence_small.getBytes(), test_sentence_small.getBytes().length * 2)));
+		assert (log.getNextDeterminantsForDownstream(2).equals(new VertexCausalLogDelta(trackedVertex, (test_sentence_small + test_sentence_small + test_sentence_small).getBytes(), 0)));
 
-
-		for (int i = 0; i < 3; i++)
-			log.appendDeterminants(test_sentence_small.getBytes());
-
-
-		expectedResult = test_sentence_small + test_sentence_small + test_sentence_small;
-
-		assert (new String(log.getNextDeterminantsForDownstream(0)).equals(expectedResult));
-		assert (new String(log.getNextDeterminantsForDownstream(1)).equals(expectedResult));
-		assert (new String(log.getNextDeterminantsForDownstream(1)).equals(""));
 
 	}
 
 
 	@Test
+	public void correctOffsetTrackingTest() throws Exception {
+		VertexId trackedVertex = new VertexId((short) 0);
+		VertexCausalLog log = new CircularVertexCausalLog(3, trackedVertex);
+
+		log.appendDeterminants(test_sentence_small.getBytes());
+		log.appendDeterminants(test_sentence_small.getBytes());
+
+		log.notifyCheckpointBarrier(1l);
+
+		log.appendDeterminants(test_sentence_small.getBytes());
+
+		log.notifyCheckpointComplete(1l);
+
+	}
+
+	@Test
 	public void performanceTest() throws InterruptedException {
 		AtomicInteger count = new AtomicInteger(0);
-		VertexCausalLog log = new CircularVertexCausalLog(1024, 2);
+		VertexCausalLog log = new CircularVertexCausalLog(1024, new VertexId((short) 0));
+
 		Thread generator = new Thread(new Runnable() {
 			@Override
 			public void run() {
