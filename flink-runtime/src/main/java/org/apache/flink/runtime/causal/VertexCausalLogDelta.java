@@ -17,38 +17,68 @@
  */
 package org.apache.flink.runtime.causal;
 
-public class VertexCausalLogDelta {
-	VertexId vertexId;
-	byte[] logDelta;
-	int offsetFromLastMarker;
+import java.util.Arrays;
+import java.util.Objects;
 
-	public VertexCausalLogDelta(VertexId vertexId, byte[] logDelta, int offsetFromLastMarker) {
-		this.logDelta = logDelta;
+/**
+ * Contains an update on the state of a causal log. Contains the new determinants (the delta) added to the log since the last update.
+ */
+public class VertexCausalLogDelta {
+	/**
+	 * The {@link VertexId} of the vertex that this delta refers to
+	 */
+	VertexId vertexId;
+	/**
+	 * The determinants themselves
+	 */
+	byte[] rawDeterminants;
+
+	/**
+	 * The offset from the current epoch.
+	 */
+	int offsetFromEpoch;
+
+	public VertexCausalLogDelta(VertexId vertexId, byte[] rawDeterminants, int offsetFromEpoch) {
+		this.rawDeterminants = rawDeterminants;
 		this.vertexId = vertexId;
-		this.offsetFromLastMarker = offsetFromLastMarker;
+		this.offsetFromEpoch = offsetFromEpoch;
 	}
 
 	public VertexId getVertexId() {
 		return vertexId;
 	}
 
-	public void setVertexId(VertexId vertexId) {
-		this.vertexId = vertexId;
+	public byte[] getRawDeterminants() {
+		return rawDeterminants;
 	}
 
-	public byte[] getLogDelta() {
-		return logDelta;
+	public int getOffsetFromEpoch() {
+		return offsetFromEpoch;
 	}
 
-	public void setLogDelta(byte[] logDelta) {
-		this.logDelta = logDelta;
+	@Override
+	public String toString() {
+		return "VertexCausalLogDelta{" +
+			"vertexId=" + vertexId +
+			", rawDeterminants=" + Arrays.toString(rawDeterminants) +
+			", offsetFromEpoch=" + offsetFromEpoch +
+			'}';
 	}
 
-	public int getOffsetFromLastMarker() {
-		return offsetFromLastMarker;
+	@Override
+	public boolean equals(Object o) {
+		if (this == o) return true;
+		if (o == null || getClass() != o.getClass()) return false;
+		VertexCausalLogDelta that = (VertexCausalLogDelta) o;
+		return getOffsetFromEpoch() == that.getOffsetFromEpoch() &&
+			getVertexId().equals(that.getVertexId()) &&
+			Arrays.equals(getRawDeterminants(), that.getRawDeterminants());
 	}
 
-	public void setOffsetFromLastMarker(int offsetFromLastMarker) {
-		this.offsetFromLastMarker = offsetFromLastMarker;
+	@Override
+	public int hashCode() {
+		int result = Objects.hash(getVertexId(), getOffsetFromEpoch());
+		result = 31 * result + Arrays.hashCode(getRawDeterminants());
+		return result;
 	}
 }

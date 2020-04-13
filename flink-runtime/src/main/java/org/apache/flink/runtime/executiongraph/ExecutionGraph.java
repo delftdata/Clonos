@@ -1572,47 +1572,27 @@ public class ExecutionGraph implements AccessExecutionGraph {
 	}
 
 	public Collection<VertexId> getUpstreamVertices(JobVertexID jobVertexID) {
+		LOG.info("Building upstream vertices list");
 		//Set to eliminate duplicates from results
 		Set<VertexId> result = new HashSet<>();
 
 		Deque<ExecutionJobVertex> added = new ArrayDeque<>();
 		//Initialize stack with immediately neighbours
-		added.addAll(tasks.get(jobVertexID).getInputs().stream().map(IntermediateResult::getProducer).collect(Collectors.toList()));
+		List<ExecutionJobVertex> jobVertexes = tasks.get(jobVertexID).getInputs().stream().map(IntermediateResult::getProducer).collect(Collectors.toList());
+		added.addAll(jobVertexes);
+		LOG.info("Initializing queue with JobVertexes: {}", String.join(", ", jobVertexes.stream().map(Object::toString).collect(Collectors.toList())));
 		//Start DF reachability
 		while (added.size() != 0) {
 			ExecutionJobVertex jv = added.pop();
-			result.addAll(Arrays.asList(jv.getTaskVertices()).stream().map(ExecutionVertex::getVertexId).collect(Collectors.toList()));
+			List<VertexId> vertexIdsOfJobVertex = Arrays.asList(jv.getTaskVertices()).stream().map(ExecutionVertex::getVertexId).collect(Collectors.toList());
+			result.addAll(vertexIdsOfJobVertex);
+			LOG.info("Vertex Ids for Job Vertex: {}", String.join(", ", vertexIdsOfJobVertex.stream().map(Object::toString).collect(Collectors.toList())));
 			added.addAll(jv.getInputs().stream().map(IntermediateResult::getProducer).collect(Collectors.toList()));
 		}
 
 		return result;
 	}
 
-	public Collection<VertexId> getDownstreamVertices(JobVertexID jobVertexID) {
-		//Set to eliminate duplicates from results
-		Set<VertexId> result = new HashSet<>();
-
-		Deque<ExecutionJobVertex> added = new ArrayDeque<>();
-		//Initialize stack with immediately neighbours
-		List<IntermediateResultPartition> intermediatePartitions = Arrays.asList(tasks.get(jobVertexID).getProducedDataSets()).stream().map(part -> Arrays.asList(part.getPartitions())).flatMap(List::stream).collect(Collectors.toList());
-		List<ExecutionEdge> executionEdges = intermediatePartitions.stream().flatMap(i -> i.getConsumers().stream().flatMap(List::stream)).collect(Collectors.toList());
-		List<ExecutionVertex> consumerVertexes = executionEdges.stream().map(e -> e.getTarget()).collect(Collectors.toList());
-		added.addAll(consumerVertexes.stream().map(v -> v.getJobVertex()).collect(Collectors.toList()));
-
-		//Start DF reachability
-		while (added.size() != 0) {
-			ExecutionJobVertex jv = added.pop();
-
-			result.addAll(Arrays.asList(jv.getTaskVertices()).stream().map(ExecutionVertex::getVertexId).collect(Collectors.toList()));
-
-			intermediatePartitions = Arrays.asList(tasks.get(jobVertexID).getProducedDataSets()).stream().map(part -> Arrays.asList(part.getPartitions())).flatMap(List::stream).collect(Collectors.toList());
-			executionEdges = intermediatePartitions.stream().flatMap(i -> i.getConsumers().stream().flatMap(List::stream)).collect(Collectors.toList());
-			consumerVertexes = executionEdges.stream().map(e -> e.getTarget()).collect(Collectors.toList());
-			added.addAll(consumerVertexes.stream().map(v -> v.getJobVertex()).collect(Collectors.toList()));
-		}
-
-		return result;
-	}
 
 	/**
 	 * Deserializes accumulators from a task state update.

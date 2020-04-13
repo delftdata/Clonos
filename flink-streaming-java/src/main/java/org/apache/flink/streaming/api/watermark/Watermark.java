@@ -22,6 +22,7 @@ import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.runtime.causal.VertexCausalLogDelta;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
 
+import java.util.LinkedList;
 import java.util.List;
 
 /**
@@ -60,7 +61,7 @@ public final class Watermark extends StreamElement {
 	 * Creates a new watermark with the given timestamp in milliseconds.
 	 */
 	public Watermark(long timestamp) {
-		this(timestamp, null);
+		this(timestamp, new LinkedList<>());
 	}
 
 	public Watermark(long timestamp, List<VertexCausalLogDelta> logDeltas) {

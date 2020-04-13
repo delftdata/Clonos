@@ -108,8 +108,6 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 
 	private InFlightLogPrepareEventListener inFlightLogPrepareEventListener;
 
-	private DeterminantResponseEventListener determinantResponseEventListener;
-
 	private final AtomicBoolean downstreamFailed = new AtomicBoolean();
 
 	public final int numTargetKeyGroups;
@@ -564,9 +562,4 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 		LOG.info("Ack inFlightLogPrepareRequest for subpartition {} of {}", subpartitionIndex, this);
 		partitionConsumableNotifier.ackInFlightLogPrepareRequest(partitionId, subpartitionIndex, taskActions);
 	}
-
-	public void setDeterminantResponseEventListener(DeterminantResponseEventListener edel) {
-		this.determinantResponseEventListener = edel;
-	}
-
 }

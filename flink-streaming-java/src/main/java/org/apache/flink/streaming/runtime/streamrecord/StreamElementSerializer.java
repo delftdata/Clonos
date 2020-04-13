@@ -166,13 +166,12 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 	}
 
 	private void serializeLogDeltas(List<VertexCausalLogDelta> logDeltas, DataOutputView target) throws IOException {
-
 		target.writeShort(logDeltas.size());
 		for (VertexCausalLogDelta d : logDeltas) {
 			target.writeShort(d.getVertexId().getVertexId());
-			target.writeInt(d.getOffsetFromLastMarker());
-			target.writeInt(d.getLogDelta().length);
-			target.write(d.getLogDelta());
+			target.writeInt(d.getOffsetFromEpoch());
+			target.writeInt(d.getRawDeterminants().length);
+			target.write(d.getRawDeterminants());
 		}
 
 	}

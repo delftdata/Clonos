@@ -240,7 +240,7 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 					if (currentChannel < numInputChannels1) {
 						StreamElement recordOrWatermark = deserializationDelegate1.getInstance();
 						for (VertexCausalLogDelta d : recordOrWatermark.getLogDeltas())
-							causalLoggingManager.appendDeterminantsToVertexLog(d.getVertexId(), d.getLogDelta());
+							causalLoggingManager.processUpstreamCausalLogDelta(d);
 						if (recordOrWatermark.isWatermark()) {
 							statusWatermarkValve1.inputWatermark(recordOrWatermark.asWatermark(), currentChannel);
 							continue;
@@ -267,7 +267,7 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 					} else {
 						StreamElement recordOrWatermark = deserializationDelegate2.getInstance();
 						for (VertexCausalLogDelta d : recordOrWatermark.getLogDeltas())
-							causalLoggingManager.appendDeterminantsToVertexLog(d.getVertexId(), d.getLogDelta());
+							causalLoggingManager.processUpstreamCausalLogDelta(d);
 						if (recordOrWatermark.isWatermark()) {
 							statusWatermarkValve2.inputWatermark(recordOrWatermark.asWatermark(), currentChannel - numInputChannels1);
 							continue;

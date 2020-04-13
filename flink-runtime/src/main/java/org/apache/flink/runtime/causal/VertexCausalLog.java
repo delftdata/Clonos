@@ -26,24 +26,44 @@ import org.apache.flink.runtime.state.CheckpointListener;
  */
 public interface VertexCausalLog extends CheckpointListener {
 
+	/**
+	 * Get all determinants in this log from start to end. Does not advance any internal offsets.
+	 * @return a byte[] containing all determinants in sequence
+	 */
 	byte[] getDeterminants();
 
 
+	/**
+	 * Appends the provided determinants to the  log.
+	 * @param determinants to append
+	 */
 	void appendDeterminants(byte[] determinants);
 
 	/**
-	 * This may be used both for transmitting actual deltas as for providing a bootstrap of lost determinants for a recovering operator.
-	 * The latter has the issue that we wont know how may grow() operations to apply. Is this an issue? As more appends
-	 * are made in the upstream, it may write over the downstreams limit, or circle around. The downstream will be making those writes as well, to the offsets given.
-	 * If the offsets are above the size, we know we must grow and inplace copy? If they wrap around to zero
+	 * Process a {@link VertexCausalLogDelta}.
+	 * This involves using the provided offset to determine if any new determinants are present and appending only those.
 	 * @param vertexCausalLogDelta
 	 */
 	void processUpstreamVertexCausalLogDelta(VertexCausalLogDelta vertexCausalLogDelta);
 
+
+	/**
+	 * Calculates the next update to send downstream. Advances internal counters as well.
+	 * @param channel the channel to get the next update for.
+	 * @return a {@link VertexCausalLogDelta} containing the update to send downstream
+	 */
 	VertexCausalLogDelta getNextDeterminantsForDownstream(int channel);
 
+	/**
+	 * Notifies the log of a checkpoint. This starts a new epoch.
+	 * @param checkpointId
+	 */
 	void notifyCheckpointBarrier(long checkpointId);
 
+	/**
+	 * Notifies the log of a downstream failure. This resets the internal offsets of the log for that channel to the earliest non-completed epoch.
+	 * @param channel
+	 */
 	void notifyDownstreamFailure(int channel);
 
 }

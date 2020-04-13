@@ -615,6 +615,8 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 						));
 			}
 
+			LOG.info("Creating deployment descriptor for {}", this.getVertex().getVertexId());
+
 			final TaskDeploymentDescriptor deployment = vertex.createDeploymentDescriptor(
 				attemptId,
 				slot,

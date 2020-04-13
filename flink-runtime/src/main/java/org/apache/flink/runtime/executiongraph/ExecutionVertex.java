@@ -932,8 +932,9 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			serializedTaskInformation = new TaskDeploymentDescriptor.Offloaded<>(taskInformationOrBlobKey.right());
 		}
 
+		LOG.info("Calculating upstream vertices");
 		Collection<VertexId> upstreamVertices = this.jobVertex.getGraph().getUpstreamVertices(this.getJobvertexId());
-		Collection<VertexId> downstreamVertices = this.jobVertex.getGraph().getDownstreamVertices(this.getJobvertexId());
+
 		return new TaskDeploymentDescriptor(
 			getJobId(),
 			serializedJobInformation,
@@ -947,7 +948,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			taskRestore,
 			producedPartitions,
 			consumedPartitions,
-			isStandby, upstreamVertices, downstreamVertices);
+			isStandby, upstreamVertices);
 	}
 
 	public CompletableFuture<Void> addStandbyExecution() {

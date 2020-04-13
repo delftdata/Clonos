@@ -22,6 +22,7 @@ import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.runtime.causal.CausalLoggingManager;
+import org.apache.flink.runtime.causal.RecoveryManager;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.metrics.MetricNames;
@@ -30,6 +31,8 @@ import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.runtime.io.ForceFeederStreamInputProcessor;
 import org.apache.flink.streaming.runtime.io.StreamInputProcessor;
 import org.apache.flink.streaming.runtime.metrics.WatermarkGauge;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 
@@ -39,6 +42,7 @@ import javax.annotation.Nullable;
 @Internal
 public class OneInputStreamTask<IN, OUT> extends StreamTask<OUT, OneInputStreamOperator<IN, OUT>> {
 
+	private static final Logger LOG = LoggerFactory.getLogger(OneInputStreamTask.class);
 	private StreamInputProcessor<IN> inputProcessor;
 	private ForceFeederStreamInputProcessor<IN> forceFeeder;
 
@@ -130,13 +134,15 @@ public class OneInputStreamTask<IN, OUT> extends StreamTask<OUT, OneInputStreamO
 	}
 
 	private void recoverIfCausal() throws Exception {
-		if (isCausal() && isStandby()) {
+		if (this.forceFeeder != null) {
 			CausalLoggingManager causalLoggingManager = getCausalLoggingManager();
 			causalLoggingManager.silenceAll();
 
 			final ForceFeederStreamInputProcessor<IN> forceFeeder = this.forceFeeder;
 
-			while (running && causalLoggingManager.getRecoveryManager().isRecovering() && forceFeeder.processInput()) {
+			LOG.info("Starting force feeder!");
+
+			while (running && causalLoggingManager.getRecoveryManager().hasMoreDeterminants() && forceFeeder.processInput()) {
 				// all the work happens in the "processInput" method
 			}
 			causalLoggingManager.unsilenceAll();

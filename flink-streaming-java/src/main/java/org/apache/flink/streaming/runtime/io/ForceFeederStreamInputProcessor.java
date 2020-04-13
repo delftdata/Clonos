@@ -19,12 +19,19 @@ package org.apache.flink.streaming.runtime.io;
 
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.runtime.causal.DeterminantResponseEvent;
 import org.apache.flink.runtime.causal.RecoveryManager;
 import org.apache.flink.runtime.causal.VertexCausalLogDelta;
+import org.apache.flink.runtime.causal.VertexId;
 import org.apache.flink.runtime.causal.determinant.Determinant;
 import org.apache.flink.runtime.causal.determinant.OrderDeterminant;
+import org.apache.flink.runtime.event.AbstractEvent;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
+import org.apache.flink.runtime.io.network.api.DeterminantRequestEvent;
+import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
 import org.apache.flink.runtime.io.network.api.serialization.RecordDeserializer;
+import org.apache.flink.runtime.io.network.partition.consumer.BufferOrEvent;
+import org.apache.flink.runtime.io.network.partition.consumer.InputChannel;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
 import org.apache.flink.streaming.api.CheckpointingMode;
@@ -58,6 +65,7 @@ public class ForceFeederStreamInputProcessor<IN> extends AbstractStreamInputProc
 			throw new RuntimeException("Non-order determinant found in inputLoop.");
 		OrderDeterminant o = (OrderDeterminant) recoveryManager.popNext();
 		this.currentChannel = o.getChannel();
+		LOG.info("Determinant says next channel is {}", currentChannel);
 		this.currentRecordDeserializer = recordDeserializers[this.currentChannel];
 
 		while (true) {
@@ -100,6 +108,27 @@ public class ForceFeederStreamInputProcessor<IN> extends AbstractStreamInputProc
 						return true;
 					}
 				}
+			}
+
+			final BufferOrEvent bufferOrEvent = barrierHandler.getNextNonBlocked();
+			if (bufferOrEvent != null) {
+				if (bufferOrEvent.isBuffer()) {
+					currentChannel = bufferOrEvent.getChannelIndex();
+					currentRecordDeserializer = recordDeserializers[currentChannel];
+					currentRecordDeserializer.setNextBuffer(bufferOrEvent.getBuffer());
+				} else {
+					// Event received
+					final AbstractEvent event = bufferOrEvent.getEvent();
+					if (event.getClass() != EndOfPartitionEvent.class) {
+						throw new IOException("Unexpected event: " + event);
+					}
+				}
+			} else {
+				this.isFinished = true;
+				if (!barrierHandler.isEmpty()) {
+					throw new IllegalStateException("Trailing data in checkpoint barrier handler.");
+				}
+				return false;
 			}
 		}
 	}

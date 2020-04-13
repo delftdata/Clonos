@@ -46,7 +46,6 @@ public final class TaskDeploymentDescriptor implements Serializable {
 	private static final long serialVersionUID = -3233562176034358530L;
 	private final VertexId vertexId;
 	private final Collection<VertexId> uptreamVertices;
-	private final Collection<VertexId> downstreamVertices;
 
 	public VertexId getVertexId() {
 		return this.vertexId;
@@ -56,9 +55,6 @@ public final class TaskDeploymentDescriptor implements Serializable {
 		return uptreamVertices;
 	}
 
-	public Collection<VertexId> getDownstreamVertices() {
-		return downstreamVertices;
-	}
 
 	/**
 	 * Wrapper class for serialized values which may be offloaded to the {@link
@@ -180,7 +176,7 @@ public final class TaskDeploymentDescriptor implements Serializable {
 		this(jobId, serializedJobInformation, serializedTaskInformation,
 			executionAttemptId, allocationId, null, subtaskIndex, attemptNumber,
 			targetSlotNumber, taskRestore, resultPartitionDeploymentDescriptors,
-			inputGateDeploymentDescriptors, isStandby, null, null);
+			inputGateDeploymentDescriptors, isStandby, null);
 	}
 
 	public TaskDeploymentDescriptor(
@@ -199,7 +195,7 @@ public final class TaskDeploymentDescriptor implements Serializable {
 		this(jobId, serializedJobInformation, serializedTaskInformation,
 			executionAttemptId, allocationId, null, subtaskIndex, attemptNumber,
 			targetSlotNumber, taskRestore, resultPartitionDeploymentDescriptors,
-			inputGateDeploymentDescriptors, false, null, null);
+			inputGateDeploymentDescriptors, false, null);
 	}
 
 	public TaskDeploymentDescriptor(
@@ -214,12 +210,12 @@ public final class TaskDeploymentDescriptor implements Serializable {
 		int targetSlotNumber,
 		@Nullable JobManagerTaskRestore taskRestore,
 		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
-		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors, Collection<VertexId> uptreamVertices, Collection<VertexId> downstreamVertices) {
+		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors, Collection<VertexId> uptreamVertices) {
 
 		this(jobId, serializedJobInformation, serializedTaskInformation,
 			executionAttemptId, allocationId, vertexId, subtaskIndex, attemptNumber,
 			targetSlotNumber, taskRestore, resultPartitionDeploymentDescriptors,
-			inputGateDeploymentDescriptors, false, uptreamVertices, downstreamVertices);
+			inputGateDeploymentDescriptors, false, uptreamVertices);
 		}
 
 	public TaskDeploymentDescriptor(
@@ -235,7 +231,7 @@ public final class TaskDeploymentDescriptor implements Serializable {
 		@Nullable JobManagerTaskRestore taskRestore,
 		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
 		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors,
-		boolean isStandby, Collection<VertexId> uptreamVertices, Collection<VertexId> downstreamVertices) {
+		boolean isStandby, Collection<VertexId> uptreamVertices) {
 
 		this.jobId = Preconditions.checkNotNull(jobId);
 
@@ -247,7 +243,6 @@ public final class TaskDeploymentDescriptor implements Serializable {
 		this.vertexId = Preconditions.checkNotNull(vertexId);
 		this.isStandby = isStandby;
 		this.uptreamVertices = Preconditions.checkNotNull(uptreamVertices);
-		this.downstreamVertices = Preconditions.checkNotNull(downstreamVertices);
 
 		Preconditions.checkArgument(0 <= subtaskIndex, "The subtask index must be positive.");
 		this.subtaskIndex = subtaskIndex;

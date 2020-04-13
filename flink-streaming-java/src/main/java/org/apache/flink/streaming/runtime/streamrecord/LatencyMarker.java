@@ -22,6 +22,7 @@ import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.runtime.causal.VertexCausalLogDelta;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 
+import java.util.LinkedList;
 import java.util.List;
 
 /**
@@ -47,7 +48,7 @@ public final class LatencyMarker extends StreamElement {
 	 * Creates a latency mark with the given timestamp.
 	 */
 	public LatencyMarker(long markedTime, OperatorID operatorId, int subtaskIndex) {
-		this(markedTime, operatorId, subtaskIndex, null);
+		this(markedTime, operatorId, subtaskIndex, new LinkedList<>());
 	}
 
 	public LatencyMarker(long markedTime, OperatorID operatorId, int subtaskIndex, List<VertexCausalLogDelta> logDeltas) {

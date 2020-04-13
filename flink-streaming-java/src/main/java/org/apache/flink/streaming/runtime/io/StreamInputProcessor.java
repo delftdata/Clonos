@@ -113,8 +113,10 @@ public class StreamInputProcessor<IN> extends AbstractStreamInputProcessor<IN> {
 				if (result.isFullRecord()) {
 					StreamElement recordOrMark = deserializationDelegate.getInstance();
 
+					LOG.info("Received new record, processing attached deltas!");
 					for (VertexCausalLogDelta d : recordOrMark.getLogDeltas())
 						this.causalLoggingManager.processUpstreamCausalLogDelta(d);
+					LOG.info("Generate new order determinant");
 					this.causalLoggingManager.appendDeterminant(new OrderDeterminant((byte) currentChannel));
 
 					if (recordOrMark.isWatermark()) {

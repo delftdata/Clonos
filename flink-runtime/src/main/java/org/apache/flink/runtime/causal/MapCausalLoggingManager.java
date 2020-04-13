@@ -21,13 +21,19 @@ import org.apache.flink.runtime.causal.determinant.Determinant;
 import org.apache.flink.runtime.causal.determinant.DeterminantEncodingStrategy;
 import org.apache.flink.runtime.causal.determinant.SimpleDeterminantEncodingStrategy;
 import org.apache.flink.runtime.plugable.SerializationDelegate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 /*
 Causal log for this operator. Contains Vertex Specific Causal logs for itself and all upstream operators.
  */
 public class MapCausalLoggingManager implements CausalLoggingManager {
+
+	private static final Logger LOG = LoggerFactory.getLogger(MapCausalLoggingManager.class);
+
 	private Map<VertexId, VertexCausalLog> determinantLogs;
 	private VertexId myVertexId;
 	private DeterminantEncodingStrategy determinantEncodingStrategy;
@@ -36,6 +42,7 @@ public class MapCausalLoggingManager implements CausalLoggingManager {
 
 
 	public MapCausalLoggingManager(VertexId myVertexId, Collection<VertexId> upstreamVertexIds, int numDownstreamChannels) {
+		LOG.info("Creating new CausalLoggingManager for id {}, with upstreams {} and {} downstream channels", myVertexId, String.join(", ", upstreamVertexIds.stream().map(Object::toString).collect(Collectors.toList())), numDownstreamChannels);
 		this.determinantLogs = new HashMap<>();
 		this.myVertexId = myVertexId;
 		for (VertexId u : upstreamVertexIds)
@@ -60,6 +67,7 @@ public class MapCausalLoggingManager implements CausalLoggingManager {
 
 	@Override
 	public void appendDeterminant(Determinant determinant) {
+		LOG.info("Appending determinant {}", determinant);
 		this.determinantLogs.get(this.myVertexId).appendDeterminants(
 			this.determinantEncodingStrategy.encode(determinant)
 		);
@@ -67,21 +75,23 @@ public class MapCausalLoggingManager implements CausalLoggingManager {
 
 	@Override
 	public void processUpstreamCausalLogDelta(VertexCausalLogDelta d) {
+		LOG.info("Processing UpstreamCausalLogDelta {}", d);
+		LOG.info("Map entries: {}", String.join(",", determinantLogs.keySet().stream().map(Objects::toString).collect(Collectors.toList())));
+		LOG.info("d.vertexId {}", d.vertexId);
+		LOG.info("this.determinantLogs: {}", this.determinantLogs);
+		LOG.info("this.determinantLogs.get(d.vertexId: {}", this.determinantLogs.get(d.vertexId));
 		this.determinantLogs.get(d.vertexId).processUpstreamVertexCausalLogDelta(d);
 	}
 
 	@Override
 	public List<VertexCausalLogDelta> getNextDeterminantsForDownstream(int channel) {
+		LOG.info("Getting deltas to send to downstream channel {}", channel);
 		List<VertexCausalLogDelta> results = new LinkedList<>();
 		for (VertexId key : this.determinantLogs.keySet()) {
 			VertexCausalLogDelta vertexCausalLogDelta = determinantLogs.get(key).getNextDeterminantsForDownstream(channel);
-			if (vertexCausalLogDelta.logDelta.length != 0)
+			if (vertexCausalLogDelta.rawDeterminants.length != 0)
 				results.add(vertexCausalLogDelta);
 		}
-
-		VertexCausalLogDelta vertexCausalLogDelta = determinantLogs.get(this.myVertexId).getNextDeterminantsForDownstream(channel);
-		if (vertexCausalLogDelta.logDelta.length != 0)
-			results.add(vertexCausalLogDelta);
 		return results;
 	}
 
@@ -105,17 +115,20 @@ public class MapCausalLoggingManager implements CausalLoggingManager {
 
 	@Override
 	public void registerSilenceable(Silenceable silenceable) {
+		LOG.info("Registering a new Silenceable");
 		this.registeredSilenceables.add(silenceable);
 	}
 
 	@Override
 	public void silenceAll() {
+		LOG.info("Silencing all Silenceables");
 		for (Silenceable s : this.registeredSilenceables)
 			s.silence();
 	}
 
 	@Override
 	public void unsilenceAll() {
+		LOG.info("UNSilencing all Silenceables");
 		for (Silenceable s : this.registeredSilenceables)
 			s.unsilence();
 
@@ -123,6 +136,7 @@ public class MapCausalLoggingManager implements CausalLoggingManager {
 
 	@Override
 	public <T> void enrichWithDeltas(T record, int targetChannel) {
+		LOG.info("Call to enrich with deltas");
 		SerializationDelegate<LogDeltaCarryingStreamElement> r = (SerializationDelegate<LogDeltaCarryingStreamElement>) record;
 		r.getInstance().setLogDeltas(this.getNextDeterminantsForDownstream(targetChannel));
 	}

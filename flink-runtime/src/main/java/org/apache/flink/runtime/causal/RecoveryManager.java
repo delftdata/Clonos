@@ -19,6 +19,8 @@ package org.apache.flink.runtime.causal;
 
 import org.apache.flink.runtime.causal.determinant.Determinant;
 import org.apache.flink.runtime.causal.determinant.DeterminantEncodingStrategy;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.nio.ByteBuffer;
 import java.util.concurrent.CompletableFuture;
@@ -30,6 +32,7 @@ import java.util.concurrent.CompletableFuture;
  * It can deserialize determinants one by one, maintaining low resource usage.
  */
 public class RecoveryManager {
+	private static final Logger LOG = LoggerFactory.getLogger(RecoveryManager.class);
 
 	private final DeterminantEncodingStrategy determinantEncodingStrategy;
 
@@ -42,7 +45,6 @@ public class RecoveryManager {
 	private byte[] mostCompleteDeterminantLog;
 
 
-	private boolean recovering;
 
 	private ByteBuffer mostCompleteDeterminantLogBuffer;
 
@@ -55,7 +57,6 @@ public class RecoveryManager {
 	}
 
 	private void reset(){
-		this.recovering = false;
 		mostCompleteDeterminantLog = new byte[0];
 		mostCompleteDeterminantLogBuffer = ByteBuffer.wrap(mostCompleteDeterminantLog);
 		this.numDeterminantResponsesReceived = 0;
@@ -66,16 +67,14 @@ public class RecoveryManager {
 		return numDeterminantResponsesReceived == numDownstreamChannels;
 	}
 
-	public boolean isRecovering() {
-		return recovering;
-	}
 
 	public void setOutputChannelConnectionsFuture(CompletableFuture<Void> outputChannelConnectionsFuture) {
 		this.outputChannelConnectionsFuture = outputChannelConnectionsFuture;
 	}
 
 	public void processDeterminantResponseEvent(DeterminantResponseEvent determinantResponseEvent) {
-		byte[] receivedDeterminants = determinantResponseEvent.getVertexCausalLogDelta().logDelta;
+		LOG.info("Received a DeterminantResponseEvent");
+		byte[] receivedDeterminants = determinantResponseEvent.getVertexCausalLogDelta().rawDeterminants;
 		if (mostCompleteDeterminantLog.length < receivedDeterminants.length) {
 			mostCompleteDeterminantLog = receivedDeterminants;
 		}
@@ -83,14 +82,15 @@ public class RecoveryManager {
 		numDeterminantResponsesReceived++;
 
 		if (isReadyToStartRecovery()) {
+			LOG.info("We are ready to begin recovery!");
 			outputChannelConnectionsFuture.complete(null); //unblock future
 			mostCompleteDeterminantLogBuffer = ByteBuffer.wrap(mostCompleteDeterminantLog);
-			recovering = true;
 			next = determinantEncodingStrategy.decodeNext(mostCompleteDeterminantLogBuffer);
 		}
 	}
 
 	public Determinant popNext(){
+		LOG.info("Getting next recovery determinant!");
 		Determinant toReturn = next;
 		next = determinantEncodingStrategy.decodeNext(mostCompleteDeterminantLogBuffer);
 		if(next == null)

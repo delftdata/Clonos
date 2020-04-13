@@ -43,10 +43,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.List;
-import java.util.Optional;
-import java.util.Random;
-import java.util.TreeSet;
+import java.util.*;
 
 import static org.apache.flink.runtime.io.network.api.serialization.RecordSerializer.SerializationResult;
 import static org.apache.flink.util.Preconditions.checkState;
@@ -169,13 +166,14 @@ public class RecordWriter<T extends IOReadableWritable> implements Silenceable {
 	 */
 	public void randomEmit(T record) throws IOException, InterruptedException {
 		int channel_chosen = rng.nextInt(numChannels);
-		causalLoggingManager.appendDeterminant(new RNGDeterminant(channel_chosen));
+		if (causalLoggingManager != null)
+			causalLoggingManager.appendDeterminant(new RNGDeterminant(channel_chosen));
 		sendToTarget(record, channel_chosen);
 	}
 
 	private void sendToTarget(T record, int targetChannel) throws IOException, InterruptedException {
 		RecordSerializer<T> serializer = serializers[targetChannel];
-
+		LOG.info("RecordWriter send to target");
 		if (causalLoggingManager != null)
 			causalLoggingManager.enrichWithDeltas(record, targetChannel);
 
@@ -222,7 +220,10 @@ public class RecordWriter<T extends IOReadableWritable> implements Silenceable {
 				if (event instanceof CheckpointBarrier) {
 					//If the event is a Checkpoint barrier, create new events for each channel and provide determinants
 					CheckpointBarrier barrier = (CheckpointBarrier) event;
-					List<VertexCausalLogDelta> deltas = causalLoggingManager.getNextDeterminantsForDownstream(targetChannel);
+					List<VertexCausalLogDelta> deltas = new LinkedList<>();
+					if (causalLoggingManager != null)
+						deltas = causalLoggingManager.getNextDeterminantsForDownstream(targetChannel);
+
 					event = new CheckpointBarrier(barrier.getId(),barrier.getTimestamp(),barrier.getCheckpointOptions(),deltas); //
 
 					inFlightLogger.logCheckpointBarrier(targetChannel, (CheckpointBarrier) event);

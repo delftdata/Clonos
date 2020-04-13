@@ -20,6 +20,7 @@ package org.apache.flink.streaming.runtime.streamrecord;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.runtime.causal.VertexCausalLogDelta;
 
+import java.util.LinkedList;
 import java.util.List;
 
 /**
@@ -50,7 +51,7 @@ public final class StreamRecord<T> extends StreamElement {
 	 * Creates a new StreamRecord. The record does not have a timestamp.
 	 */
 	public StreamRecord(T value) {
-		this(value, null);
+		this(value, new LinkedList<>());
 	}
 
 	public StreamRecord(T value, List<VertexCausalLogDelta> logDeltas) {
@@ -66,7 +67,7 @@ public final class StreamRecord<T> extends StreamElement {
 	 * @param timestamp The timestamp in milliseconds
 	 */
 	public StreamRecord(T value, long timestamp) {
-		this(value, timestamp, null);
+		this(value, timestamp, new LinkedList<>());
 	}
 
 	public StreamRecord(T value, long timestamp, List<VertexCausalLogDelta> logDeltas) {

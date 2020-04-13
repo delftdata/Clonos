@@ -45,8 +45,8 @@ public class DeterminantResponseEvent extends TaskEvent {
 	@Override
 	public void write(DataOutputView out) throws IOException {
 		out.writeShort(vertexCausalLogDelta.getVertexId().getVertexId());
-		out.write(vertexCausalLogDelta.getLogDelta().length);
-		out.write(vertexCausalLogDelta.getLogDelta());
+		out.writeInt(vertexCausalLogDelta.getRawDeterminants().length);
+		out.write(vertexCausalLogDelta.getRawDeterminants());
 	}
 
 	@Override
@@ -54,7 +54,7 @@ public class DeterminantResponseEvent extends TaskEvent {
 		short id = in.readShort();
 		int logDeltaLength = in.readInt();
 		byte[] logDelta = new byte[logDeltaLength];
-		in.read(logDelta, 0, logDeltaLength);
+		in.read(logDelta);
 		this.vertexCausalLogDelta = new VertexCausalLogDelta(new VertexId(id), logDelta, 0);
 	}
 }

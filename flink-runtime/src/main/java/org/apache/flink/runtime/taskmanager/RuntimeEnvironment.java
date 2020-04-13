@@ -261,7 +261,7 @@ public class RuntimeEnvironment implements Environment {
 
 	@Override
 	public VertexId getVertexId() {
-		return null;
+		return vertexId;
 	}
 
 	@Override

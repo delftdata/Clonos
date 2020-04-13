@@ -227,13 +227,14 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 		super(environment);
 		this.vertexId = environment.getVertexId();
+		LOG.info("Received vertexId {}", vertexId);
 		environment.getTaskInfo().getIndexOfThisSubtask();
 
 
 		this.timerService = timeProvider;
 		this.configuration = new StreamConfig(getTaskConfiguration());
 		this.accumulatorMap = getEnvironment().getAccumulatorRegistry().getUserMap();
-		this.streamRecordWriters = createStreamRecordWriters(configuration, environment);
+		this.streamRecordWriters = createStreamRecordWriters(configuration, environment, this.getCausalLoggingManager());
 
 		if (isStandby()) {
 			this.standbyFuture = new CompletableFuture<>();
@@ -336,6 +337,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 				standbyFuture.get();
 				if(isCausal()) {
 					//send DeterminantRequestEvent
+					LOG.info("Creating DeterminantRequestEvent for self with vertexId {}", this.vertexId);
 					DeterminantRequestEvent requestEvent = new DeterminantRequestEvent(this.vertexId);
 					for(StreamRecordWriter streamRecordWriter : streamRecordWriters)
 						streamRecordWriter.broadcastEvent(requestEvent);
@@ -1310,7 +1312,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	@VisibleForTesting
 	public static <OUT> List<StreamRecordWriter<SerializationDelegate<StreamRecord<OUT>>>> createStreamRecordWriters(
 			StreamConfig configuration,
-			Environment environment) {
+			Environment environment, CausalLoggingManager causalLoggingManager) {
 		List<StreamRecordWriter<SerializationDelegate<StreamRecord<OUT>>>> streamRecordWriters = new ArrayList<>();
 		List<StreamEdge> outEdgesInOrder = configuration.getOutEdgesInOrder(environment.getUserClassLoader());
 		Map<Integer, StreamConfig> chainedConfigs = configuration.getTransitiveChainedTaskConfigsWithSelf(environment.getUserClassLoader());
@@ -1323,7 +1325,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 					i,
 					environment,
 					environment.getTaskInfo().getTaskName(),
-					chainedConfigs.get(edge.getSourceId()).getBufferTimeout()));
+					chainedConfigs.get(edge.getSourceId()).getBufferTimeout(), causalLoggingManager));
 		}
 		return streamRecordWriters;
 	}
@@ -1333,7 +1335,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			int outputIndex,
 			Environment environment,
 			String taskName,
-			long bufferTimeout) {
+			long bufferTimeout, CausalLoggingManager causalLoggingManager) {
 		@SuppressWarnings("unchecked")
 		StreamPartitioner<OUT> outputPartitioner = (StreamPartitioner<OUT>) edge.getPartitioner();
 
@@ -1350,7 +1352,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		}
 
 		StreamRecordWriter<SerializationDelegate<StreamRecord<OUT>>> output =
-			new StreamRecordWriter<>(bufferWriter, outputPartitioner, bufferTimeout, taskName);
+			new StreamRecordWriter<>(bufferWriter, outputPartitioner, bufferTimeout, taskName, causalLoggingManager);
 		output.setMetricGroup(environment.getMetricGroup().getIOMetricGroup());
 		return output;
 	}

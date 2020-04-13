@@ -140,7 +140,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 	/**
 	 * The vertex in the JobGraph whose code the task executes.
 	 */
-	private final JobVertexID vertexId;
+	private final JobVertexID jobVertexId;
 
 	/**
 	 * The execution attempt of the parallel subtask.
@@ -152,7 +152,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 	 */
 	private final AllocationID allocationId;
 
-	private final VertexId subvertexId;
+	private final VertexId vertexId;
 
 	/**
 	 * TaskInfo object for this task.
@@ -407,7 +407,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		TaskInformation taskInformation,
 		ExecutionAttemptID executionAttemptID,
 		AllocationID slotAllocationId,
-		VertexId subvertexId,
+		VertexId vertexId,
 		int subtaskIndex,
 		int attemptNumber,
 		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
@@ -448,10 +448,10 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 			String.valueOf(slotAllocationId));
 
 		this.jobId = jobInformation.getJobId();
-		this.vertexId = taskInformation.getJobVertexId();
+		this.jobVertexId = taskInformation.getJobVertexId();
 		this.executionId = Preconditions.checkNotNull(executionAttemptID);
 		this.allocationId = Preconditions.checkNotNull(slotAllocationId);
-		this.subvertexId = Preconditions.checkNotNull(subvertexId);
+		this.vertexId = Preconditions.checkNotNull(vertexId);
 
 		this.isStandby = isStandby;
 		if (this.isStandby) {
@@ -460,7 +460,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 			this.taskNameWithSubtask = taskInfo.getTaskNameWithSubtasks();
 		}
 		if (upstreamVertices != null)
-			this.causalLoggingManager = new MapCausalLoggingManager(this.subvertexId, upstreamVertices, resultPartitionDeploymentDescriptors.size());
+			this.causalLoggingManager = new MapCausalLoggingManager(this.vertexId, upstreamVertices, resultPartitionDeploymentDescriptors.size());
 		else
 			this.causalLoggingManager = null;
 		this.jobConfiguration = jobInformation.getJobConfiguration();
@@ -563,7 +563,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 	}
 
 	public JobVertexID getJobVertexId() {
-		return vertexId;
+		return jobVertexId;
 	}
 
 	public ExecutionAttemptID getExecutionId() {
@@ -808,10 +808,10 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 
 			Environment env = new RuntimeEnvironment(
 				jobId,
-				vertexId,
+				jobVertexId,
 				executionId,
 				executionConfig,
-				subvertexId,
+				vertexId,
 				taskInfo,
 				jobConfiguration,
 				taskConfiguration,
@@ -885,7 +885,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 				if(this.isCausal()){
 					DeterminantResponseEventListener edel = new DeterminantResponseEventListener(userCodeClassLoader, causalLoggingManager);
 					network.getTaskEventDispatcher().subscribeToEvent(partition.getPartitionId(), edel, DeterminantResponseEvent.class);
-					partition.setDeterminantResponseEventListener(edel);
+					LOG.info("Set DeterminantResponseEventListener {} for resultPartition {}.", edel, partition);
 				}
 			}
 
