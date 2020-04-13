@@ -211,7 +211,7 @@ public class EventSerializer {
 				null : checkpointOptions.getTargetLocation().getReferenceBytes();
 
 		//2 for the number of vertex log deltas, the for each: 2 for vertexID, 4 for offset, and 4 for delta length.
-		int numBytesNeededForLogDeltas = 2 + barrier.getVertexCausalLogDeltas().stream().map(v -> 2 + 4 + 4 + v.getLogDelta().length).reduce(0, Integer::sum);
+		int numBytesNeededForLogDeltas = 2 + barrier.getVertexCausalLogDeltas().stream().map(v -> 2 + 4 + 4 + v.getRawDeterminants().length).reduce(0, Integer::sum);
 		final ByteBuffer buf = ByteBuffer.allocate(28 + (locationBytes == null ? 0 : locationBytes.length) + numBytesNeededForLogDeltas);
 
 		// we do not use checkpointType.ordinal() here to make the serialization robust
@@ -240,9 +240,9 @@ public class EventSerializer {
 		buf.putShort((short) barrier.getVertexCausalLogDeltas().size());
 		for(VertexCausalLogDelta delta : barrier.getVertexCausalLogDeltas()) {
 			buf.putShort(delta.getVertexId().getVertexId());
-			buf.putInt(delta.getOffsetFromLastMarker());
-			buf.putInt(delta.getLogDelta().length);
-			buf.put(delta.getLogDelta());
+			buf.putInt(delta.getOffsetFromEpoch());
+			buf.putInt(delta.getRawDeterminants().length);
+			buf.put(delta.getRawDeterminants());
 		}
 
 		buf.flip();

@@ -237,7 +237,7 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 	// ------------------------------------------------------------------------
 
 	@Override
-	void sendTaskEvent(TaskEvent event) throws IOException, InterruptedException {
+	public void sendTaskEvent(TaskEvent event) throws IOException, InterruptedException {
 		LOG.debug("Send task event {} from channel {}.", event, this);
 		checkState(!isReleased.get(), "Tried to send task event to producer after channel has been released.");
 		checkState(subpartitionRequested.get() || event instanceof InFlightLogEvent, "Tried to send task event to producer before requesting a queue.");
