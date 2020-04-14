@@ -33,10 +33,8 @@ import org.apache.flink.runtime.accumulators.AccumulatorRegistry;
 import org.apache.flink.runtime.blob.BlobCacheService;
 import org.apache.flink.runtime.blob.PermanentBlobKey;
 import org.apache.flink.runtime.broadcast.BroadcastVariableManager;
-import org.apache.flink.runtime.causal.CausalLoggingManager;
-import org.apache.flink.runtime.causal.DeterminantResponseEvent;
-import org.apache.flink.runtime.causal.MapCausalLoggingManager;
-import org.apache.flink.runtime.causal.VertexId;
+import org.apache.flink.runtime.causal.*;
+import org.apache.flink.runtime.causal.determinant.SimpleDeterminantEncodingStrategy;
 import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore;
@@ -281,6 +279,11 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 	 * The CausalLog of the task
 	 */
 	private final CausalLoggingManager causalLoggingManager;
+
+	/**
+	 * The recovery manager, in case this is a standby task.
+	 */
+	private final CausalRecoveryManager recoveryManager;
 	// ------------------------------------------------------------------------
 	//  Fields that control the task execution. All these fields are volatile
 	//  (which means that they introduce memory barriers), to establish
@@ -454,13 +457,16 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		this.vertexId = Preconditions.checkNotNull(vertexId);
 
 		this.isStandby = isStandby;
+		int numDownstreamTasks = resultPartitionDeploymentDescriptors.size();
 		if (this.isStandby) {
 			this.taskNameWithSubtask = taskInfo.getTaskNameWithSubtasks() + " (STANDBY)";
+			this.recoveryManager = new CausalRecoveryManager(numDownstreamTasks, new SimpleDeterminantEncodingStrategy());
 		} else {
 			this.taskNameWithSubtask = taskInfo.getTaskNameWithSubtasks();
+			this.recoveryManager = null;
 		}
 		if (upstreamVertices != null)
-			this.causalLoggingManager = new MapCausalLoggingManager(this.vertexId, upstreamVertices, resultPartitionDeploymentDescriptors.size());
+			this.causalLoggingManager = new MapCausalLoggingManager(this.vertexId, upstreamVertices, numDownstreamTasks);
 		else
 			this.causalLoggingManager = null;
 		this.jobConfiguration = jobInformation.getJobConfiguration();
@@ -883,7 +889,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 				partition.setInFlightLogPrepareEventListener(iflpel);
 
 				if(this.isCausal()){
-					DeterminantResponseEventListener edel = new DeterminantResponseEventListener(userCodeClassLoader, causalLoggingManager);
+					DeterminantResponseEventListener edel = new DeterminantResponseEventListener(userCodeClassLoader, recoveryManager);
 					network.getTaskEventDispatcher().subscribeToEvent(partition.getPartitionId(), edel, DeterminantResponseEvent.class);
 					LOG.info("Set DeterminantResponseEventListener {} for resultPartition {}.", edel, partition);
 				}
@@ -1738,6 +1744,10 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 
 	public CausalLoggingManager getCausalLoggingManager() {
 		return causalLoggingManager;
+	}
+
+	public CausalRecoveryManager getRecoveryManager(){
+		return recoveryManager;
 	}
 
 	// ------------------------------------------------------------------------

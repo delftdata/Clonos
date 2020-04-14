@@ -24,6 +24,7 @@ import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.core.fs.CloseableRegistry;
 import org.apache.flink.core.fs.FileSystemSafetyNet;
 import org.apache.flink.runtime.causal.CausalLoggingManager;
+import org.apache.flink.runtime.causal.CausalRecoveryManager;
 import org.apache.flink.runtime.causal.VertexId;
 import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
@@ -199,7 +200,6 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 	protected final VertexId vertexId;
 
-
 	// ------------------------------------------------------------------------
 
 	/**
@@ -234,14 +234,14 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		this.timerService = timeProvider;
 		this.configuration = new StreamConfig(getTaskConfiguration());
 		this.accumulatorMap = getEnvironment().getAccumulatorRegistry().getUserMap();
-		this.streamRecordWriters = createStreamRecordWriters(configuration, environment, this.getCausalLoggingManager());
+		this.streamRecordWriters = createStreamRecordWriters(configuration, environment, this.getCausalLoggingManager(), this.getRecoveryManager());
 
 		if (isStandby()) {
 			this.standbyFuture = new CompletableFuture<>();
 			this.inputChannelConnectionsFuture = new CompletableFuture<>();
-
 			this.outputChannelConnectionsFuture = new CompletableFuture<>();
-			this.getCausalLoggingManager().getRecoveryManager().setOutputChannelConnectionsFuture(this.outputChannelConnectionsFuture);
+			this.getRecoveryManager().registerOutputChannelConnectionsFuture(outputChannelConnectionsFuture);
+
 		}
 		else {
 			this.standbyFuture = null;
@@ -702,6 +702,10 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 	public CausalLoggingManager getCausalLoggingManager() {
 		return this.getEnvironment().getContainingTask().getCausalLoggingManager();
+	}
+
+	public CausalRecoveryManager getRecoveryManager(){
+		return this.getEnvironment().getContainingTask().getRecoveryManager();
 	}
 
 	private boolean performCheckpoint(
@@ -1311,21 +1315,25 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 	@VisibleForTesting
 	public static <OUT> List<StreamRecordWriter<SerializationDelegate<StreamRecord<OUT>>>> createStreamRecordWriters(
-			StreamConfig configuration,
-			Environment environment, CausalLoggingManager causalLoggingManager) {
+		StreamConfig configuration,
+		Environment environment, CausalLoggingManager causalLoggingManager, CausalRecoveryManager recoveryManager) {
 		List<StreamRecordWriter<SerializationDelegate<StreamRecord<OUT>>>> streamRecordWriters = new ArrayList<>();
 		List<StreamEdge> outEdgesInOrder = configuration.getOutEdgesInOrder(environment.getUserClassLoader());
 		Map<Integer, StreamConfig> chainedConfigs = configuration.getTransitiveChainedTaskConfigsWithSelf(environment.getUserClassLoader());
 
 		for (int i = 0; i < outEdgesInOrder.size(); i++) {
 			StreamEdge edge = outEdgesInOrder.get(i);
-			streamRecordWriters.add(
-				createStreamRecordWriter(
-					edge,
-					i,
-					environment,
-					environment.getTaskInfo().getTaskName(),
-					chainedConfigs.get(edge.getSourceId()).getBufferTimeout(), causalLoggingManager));
+
+			StreamRecordWriter newRecordWriter = createStreamRecordWriter(
+				edge,
+				i,
+				environment,
+				environment.getTaskInfo().getTaskName(),
+				chainedConfigs.get(edge.getSourceId()).getBufferTimeout(), causalLoggingManager);
+
+			if(recoveryManager != null)
+				recoveryManager.registerSilenceable(newRecordWriter);
+			streamRecordWriters.add(newRecordWriter);
 		}
 		return streamRecordWriters;
 	}
