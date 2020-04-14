@@ -22,8 +22,11 @@ import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.core.io.IOReadableWritable;
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataOutputView;
+import org.apache.flink.runtime.causal.DeterminantCarrier;
+import org.apache.flink.runtime.causal.VertexCausalLogDelta;
 
 import java.io.IOException;
+import java.util.List;
 
 /**
  * The serialization delegate exposes an arbitrary element as a {@link IOReadableWritable} for
@@ -31,13 +34,13 @@ import java.io.IOException;
  *
  * @param <T> The type to be represented as an IOReadableWritable.
  */
-public class SerializationDelegate<T> implements IOReadableWritable {
+public class SerializationDelegate<T extends DeterminantCarrier> implements IOReadableWritable, DeterminantCarrier {
 
 	private T instance;
 
 	private final TypeSerializer<T> serializer;
 
-	/* Use a fake argument copyConstructor to disambiguate between the twoo constructors. */
+	/* Use a fake argument copyConstructor to disambiguate between the two constructors. */
 	public SerializationDelegate(SerializationDelegate<T> serializationDelegate, boolean copyConstructor) {
 		this.serializer = serializationDelegate.serializer;
 	}
@@ -66,5 +69,15 @@ public class SerializationDelegate<T> implements IOReadableWritable {
 	@Override
 	public void read(DataInputView in) throws IOException {
 		throw new IllegalStateException("Deserialization method called on SerializationDelegate.");
+	}
+
+	@Override
+	public void enrich(List<VertexCausalLogDelta> logDeltaList) {
+		this.getInstance().enrich(logDeltaList);
+	}
+
+	@Override
+	public List<VertexCausalLogDelta> getLogDeltas() {
+		return this.getInstance().getLogDeltas();
 	}
 }

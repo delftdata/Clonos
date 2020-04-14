@@ -21,10 +21,7 @@ package org.apache.flink.runtime.io.network.api.writer;
 import org.apache.flink.core.io.IOReadableWritable;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.SimpleCounter;
-import org.apache.flink.runtime.causal.CausalLoggingManager;
-import org.apache.flink.runtime.causal.Silenceable;
-import org.apache.flink.runtime.causal.VertexCausalLog;
-import org.apache.flink.runtime.causal.VertexCausalLogDelta;
+import org.apache.flink.runtime.causal.*;
 import org.apache.flink.runtime.causal.determinant.RNGDeterminant;
 import org.apache.flink.runtime.event.AbstractEvent;
 import org.apache.flink.runtime.event.InFlightLogPrepareEvent;
@@ -61,7 +58,7 @@ import static org.apache.flink.util.Preconditions.checkState;
  *
  * @param <T> the type of the record that can be emitted with this record writer
  */
-public class RecordWriter<T extends IOReadableWritable> implements Silenceable {
+public class RecordWriter<T extends IOReadableWritable & DeterminantCarrier> implements Silenceable {
 
 	private static final Logger LOG = LoggerFactory.getLogger(RecordWriter.class);
 
@@ -113,9 +110,6 @@ public class RecordWriter<T extends IOReadableWritable> implements Silenceable {
 		this.numChannels = writer.getNumberOfSubpartitions();
 		this.causalLoggingManager = causalLoggingManager;
 		this.silenced = false;
-		if (this.causalLoggingManager != null) {
-			this.causalLoggingManager.registerSilenceable(this);
-		}
 
 		try {
 			this.inFlightLogger = new InFlightLogger(this.targetPartition, this.numChannels);
@@ -146,7 +140,6 @@ public class RecordWriter<T extends IOReadableWritable> implements Silenceable {
 
 	public void emit(T record) throws IOException, InterruptedException {
 		for (int targetChannel : channelSelector.selectChannels(record, numChannels)) {
-
 			sendToTarget(record, targetChannel);
 		}
 	}
@@ -220,14 +213,15 @@ public class RecordWriter<T extends IOReadableWritable> implements Silenceable {
 				if (event instanceof CheckpointBarrier) {
 					//If the event is a Checkpoint barrier, create new events for each channel and provide determinants
 					CheckpointBarrier barrier = (CheckpointBarrier) event;
-					List<VertexCausalLogDelta> deltas = new LinkedList<>();
-					if (causalLoggingManager != null)
-						deltas = causalLoggingManager.getNextDeterminantsForDownstream(targetChannel);
 
-					event = new CheckpointBarrier(barrier.getId(),barrier.getTimestamp(),barrier.getCheckpointOptions(),deltas); //
+					event = new CheckpointBarrier(barrier.getId(),barrier.getTimestamp(),barrier.getCheckpointOptions());
+
+					if (causalLoggingManager != null)
+						causalLoggingManager.enrichWithDeltas((CheckpointBarrier) event, targetChannel);
 
 					inFlightLogger.logCheckpointBarrier(targetChannel, (CheckpointBarrier) event);
 				}
+
 				try (BufferConsumer eventBufferConsumer = EventSerializer.toBufferConsumer(event)) {
 					RecordSerializer<T> serializer = serializers[targetChannel];
 

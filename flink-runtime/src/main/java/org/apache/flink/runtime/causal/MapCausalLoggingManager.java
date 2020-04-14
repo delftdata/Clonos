@@ -37,8 +37,7 @@ public class MapCausalLoggingManager implements CausalLoggingManager {
 	private Map<VertexId, VertexCausalLog> determinantLogs;
 	private VertexId myVertexId;
 	private DeterminantEncodingStrategy determinantEncodingStrategy;
-	private List<Silenceable> registeredSilenceables;
-	private RecoveryManager recoveryManager;
+	private CausalRecoveryManager recoveryManager;
 
 
 	public MapCausalLoggingManager(VertexId myVertexId, Collection<VertexId> upstreamVertexIds, int numDownstreamChannels) {
@@ -49,9 +48,8 @@ public class MapCausalLoggingManager implements CausalLoggingManager {
 			determinantLogs.put(u, new CircularVertexCausalLog(numDownstreamChannels, u));
 		this.determinantLogs.put(this.myVertexId, new CircularVertexCausalLog(numDownstreamChannels, this.myVertexId));
 		this.determinantEncodingStrategy = new SimpleDeterminantEncodingStrategy();
-		this.registeredSilenceables = new ArrayList<Silenceable>(10);
 
-		recoveryManager = new RecoveryManager(numDownstreamChannels, determinantEncodingStrategy);
+		recoveryManager = new CausalRecoveryManager(numDownstreamChannels, determinantEncodingStrategy);
 	}
 
 	@Override
@@ -74,7 +72,7 @@ public class MapCausalLoggingManager implements CausalLoggingManager {
 	}
 
 	@Override
-	public void processUpstreamCausalLogDelta(VertexCausalLogDelta d) {
+	public void processCausalLogDelta(VertexCausalLogDelta d) {
 		LOG.info("Processing UpstreamCausalLogDelta {}", d);
 		LOG.info("Map entries: {}", String.join(",", determinantLogs.keySet().stream().map(Objects::toString).collect(Collectors.toList())));
 		LOG.info("d.vertexId {}", d.vertexId);
@@ -83,17 +81,6 @@ public class MapCausalLoggingManager implements CausalLoggingManager {
 		this.determinantLogs.get(d.vertexId).processUpstreamVertexCausalLogDelta(d);
 	}
 
-	@Override
-	public List<VertexCausalLogDelta> getNextDeterminantsForDownstream(int channel) {
-		LOG.info("Getting deltas to send to downstream channel {}", channel);
-		List<VertexCausalLogDelta> results = new LinkedList<>();
-		for (VertexId key : this.determinantLogs.keySet()) {
-			VertexCausalLogDelta vertexCausalLogDelta = determinantLogs.get(key).getNextDeterminantsForDownstream(channel);
-			if (vertexCausalLogDelta.rawDeterminants.length != 0)
-				results.add(vertexCausalLogDelta);
-		}
-		return results;
-	}
 
 	@Override
 	public void notifyCheckpointBarrier(long checkpointId) {
@@ -112,33 +99,9 @@ public class MapCausalLoggingManager implements CausalLoggingManager {
 		return determinantLogs.get(vertexId).getDeterminants();
 	}
 
-
 	@Override
-	public void registerSilenceable(Silenceable silenceable) {
-		LOG.info("Registering a new Silenceable");
-		this.registeredSilenceables.add(silenceable);
-	}
-
-	@Override
-	public void silenceAll() {
-		LOG.info("Silencing all Silenceables");
-		for (Silenceable s : this.registeredSilenceables)
-			s.silence();
-	}
-
-	@Override
-	public void unsilenceAll() {
-		LOG.info("UNSilencing all Silenceables");
-		for (Silenceable s : this.registeredSilenceables)
-			s.unsilence();
-
-	}
-
-	@Override
-	public <T> void enrichWithDeltas(T record, int targetChannel) {
-		LOG.info("Call to enrich with deltas");
-		SerializationDelegate<LogDeltaCarryingStreamElement> r = (SerializationDelegate<LogDeltaCarryingStreamElement>) record;
-		r.getInstance().setLogDeltas(this.getNextDeterminantsForDownstream(targetChannel));
+	public void enrichWithDeltas(DeterminantCarrier record, int targetChannel) {
+		record.enrich(this.getNextDeterminantsForDownstream(targetChannel));
 	}
 
 	@Override
@@ -147,10 +110,14 @@ public class MapCausalLoggingManager implements CausalLoggingManager {
 			log.notifyCheckpointComplete(checkpointId);
 	}
 
-	@Override
-	public RecoveryManager getRecoveryManager() {
-		return recoveryManager;
+	private List<VertexCausalLogDelta> getNextDeterminantsForDownstream(int channel) {
+		LOG.info("Getting deltas to send to downstream channel {}", channel);
+		List<VertexCausalLogDelta> results = new LinkedList<>();
+		for (VertexId key : this.determinantLogs.keySet()) {
+			VertexCausalLogDelta vertexCausalLogDelta = determinantLogs.get(key).getNextDeterminantsForDownstream(channel);
+			if (vertexCausalLogDelta.rawDeterminants.length != 0)
+				results.add(vertexCausalLogDelta);
+		}
+		return results;
 	}
-
-
 }

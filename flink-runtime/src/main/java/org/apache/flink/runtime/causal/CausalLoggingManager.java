@@ -37,27 +37,14 @@ public interface CausalLoggingManager extends CheckpointListener {
 	void appendDeterminant(Determinant determinant);
 
 
-	void processUpstreamCausalLogDelta(VertexCausalLogDelta d);
+	void processCausalLogDelta(VertexCausalLogDelta d);
 
-	/*
-	Returns a list of deltas containing the updates that have since been obtained for all upstream vertexes or this vertex.
-	 */
-	List<VertexCausalLogDelta> getNextDeterminantsForDownstream(int channel);
+	byte[] getDeterminantsOfVertex(VertexId vertexId);
+
+	void enrichWithDeltas(DeterminantCarrier record, int targetChannel);
 
 	void notifyCheckpointBarrier(long checkpointId);
 
 	void notifyDownstreamFailure(int channel);
-
-	byte[] getDeterminantsOfVertex(VertexId vertexId);
-
-	void registerSilenceable(Silenceable silenceable);
-
-	void silenceAll();
-
-	void unsilenceAll();
-
-	<T> void enrichWithDeltas(T record, int targetChannel);
-
-	RecoveryManager getRecoveryManager();
 
 }
