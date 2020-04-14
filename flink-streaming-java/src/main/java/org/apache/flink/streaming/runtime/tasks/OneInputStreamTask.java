@@ -22,13 +22,11 @@ import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.runtime.causal.CausalLoggingManager;
-import org.apache.flink.runtime.causal.RecoveryManager;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.metrics.MetricNames;
 import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
-import org.apache.flink.streaming.runtime.io.ForceFeederStreamInputProcessor;
 import org.apache.flink.streaming.runtime.io.StreamInputProcessor;
 import org.apache.flink.streaming.runtime.metrics.WatermarkGauge;
 import org.slf4j.Logger;
@@ -44,7 +42,6 @@ public class OneInputStreamTask<IN, OUT> extends StreamTask<OUT, OneInputStreamO
 
 	private static final Logger LOG = LoggerFactory.getLogger(OneInputStreamTask.class);
 	private StreamInputProcessor<IN> inputProcessor;
-	private ForceFeederStreamInputProcessor<IN> forceFeeder;
 
 	private volatile boolean running = true;
 
@@ -97,23 +94,10 @@ public class OneInputStreamTask<IN, OUT> extends StreamTask<OUT, OneInputStreamO
 				getStreamStatusMaintainer(),
 				this.headOperator,
 				getEnvironment().getMetricGroup().getIOMetricGroup(),
-				inputWatermarkGauge,
-				getStreamOutputs());
+				inputWatermarkGauge);
 
 			if (isCausal() && isStandby()) {
-				this.forceFeeder = new ForceFeederStreamInputProcessor<>(
-					inputGates,
-					inSerializer,
-					this,
-					configuration.getCheckpointMode(),
-					getCheckpointLock(),
-					getEnvironment().getIOManager(),
-					getEnvironment().getTaskManagerInfo().getConfiguration(),
-					getStreamStatusMaintainer(),
-					this.headOperator,
-					getEnvironment().getMetricGroup().getIOMetricGroup(),
-					inputWatermarkGauge,
-					getStreamOutputs());
+				this.getRecoveryManager();
 			}
 		}
 		headOperator.getMetricGroup().gauge(MetricNames.IO_CURRENT_INPUT_WATERMARK, this.inputWatermarkGauge);
@@ -123,7 +107,6 @@ public class OneInputStreamTask<IN, OUT> extends StreamTask<OUT, OneInputStreamO
 
 	@Override
 	protected void run() throws Exception {
-		recoverIfCausal();
 
 		// cache processor reference on the stack, to make the code more JIT friendly
 		final StreamInputProcessor<IN> inputProcessor = this.inputProcessor;
@@ -133,21 +116,6 @@ public class OneInputStreamTask<IN, OUT> extends StreamTask<OUT, OneInputStreamO
 		}
 	}
 
-	private void recoverIfCausal() throws Exception {
-		if (this.forceFeeder != null) {
-			CausalLoggingManager causalLoggingManager = getCausalLoggingManager();
-			causalLoggingManager.silenceAll();
-
-			final ForceFeederStreamInputProcessor<IN> forceFeeder = this.forceFeeder;
-
-			LOG.info("Starting force feeder!");
-
-			while (running && causalLoggingManager.getRecoveryManager().hasMoreDeterminants() && forceFeeder.processInput()) {
-				// all the work happens in the "processInput" method
-			}
-			causalLoggingManager.unsilenceAll();
-		}
-	}
 
 	@Override
 	protected void cleanup() throws Exception {
