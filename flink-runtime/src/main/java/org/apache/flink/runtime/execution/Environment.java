@@ -43,6 +43,8 @@ import org.apache.flink.runtime.state.internal.InternalKvState;
 import org.apache.flink.runtime.taskmanager.Task;
 import org.apache.flink.runtime.taskmanager.TaskManagerRuntimeInfo;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Future;
 
@@ -221,4 +223,7 @@ public interface Environment {
 	TaskEventDispatcher getTaskEventDispatcher();
 
 	VertexId getVertexId();
+
+	Collection<VertexId> getUpstreamVertexIDs();
+
 }

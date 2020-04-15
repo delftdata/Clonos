@@ -41,6 +41,8 @@ import org.apache.flink.runtime.metrics.groups.TaskMetricGroup;
 import org.apache.flink.runtime.query.TaskKvStateRegistry;
 import org.apache.flink.runtime.state.TaskStateManager;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Future;
 
@@ -87,6 +89,7 @@ public class RuntimeEnvironment implements Environment {
 	private final TaskMetricGroup metrics;
 
 	private final Task containingTask;
+	private Collection<VertexId> upstreamVertexIDs;
 
 	// ------------------------------------------------------------------------
 
@@ -96,6 +99,7 @@ public class RuntimeEnvironment implements Environment {
 		ExecutionAttemptID executionId,
 		ExecutionConfig executionConfig,
 		VertexId vertexId,
+		Collection<VertexId> upstreamVertexIDs,
 		TaskInfo taskInfo,
 		Configuration jobConfiguration,
 		Configuration taskConfiguration,
@@ -120,6 +124,7 @@ public class RuntimeEnvironment implements Environment {
 		this.jobVertexId = checkNotNull(jobVertexId);
 		this.executionId = checkNotNull(executionId);
 		this.vertexId = checkNotNull(vertexId);
+		this.upstreamVertexIDs = checkNotNull(upstreamVertexIDs);
 		this.taskInfo = checkNotNull(taskInfo);
 		this.executionConfig = checkNotNull(executionConfig);
 		this.jobConfiguration = checkNotNull(jobConfiguration);
@@ -262,6 +267,11 @@ public class RuntimeEnvironment implements Environment {
 	@Override
 	public VertexId getVertexId() {
 		return vertexId;
+	}
+
+	@Override
+	public Collection<VertexId> getUpstreamVertexIDs() {
+		return upstreamVertexIDs;
 	}
 
 	@Override

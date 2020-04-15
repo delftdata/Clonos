@@ -58,36 +58,33 @@ import static org.apache.flink.util.Preconditions.checkState;
  *
  * @param <T> the type of the record that can be emitted with this record writer
  */
-public class RecordWriter<T extends IOReadableWritable & DeterminantCarrier> implements Silenceable {
+public class RecordWriter<T extends IOReadableWritable> {
 
 	private static final Logger LOG = LoggerFactory.getLogger(RecordWriter.class);
 
 	protected final ResultPartitionWriter targetPartition;
 
-	private final ChannelSelector<T> channelSelector;
+	protected final ChannelSelector<T> channelSelector;
 
-	private final int numChannels;
+	protected final int numChannels;
 
 	/**
 	 * {@link RecordSerializer} per outgoing channel.
 	 */
-	private final RecordSerializer<T>[] serializers;
+	protected final RecordSerializer<T>[] serializers;
 
-	private final Optional<BufferBuilder>[] bufferBuilders;
+	protected final Optional<BufferBuilder>[] bufferBuilders;
 
-	private final Random rng = new XORShiftRandom();
+	protected final Random rng = new XORShiftRandom();
 
-	private final boolean flushAlways;
+	protected final boolean flushAlways;
 
-	private Counter numBytesOut = new SimpleCounter();
+	protected Counter numBytesOut = new SimpleCounter();
 
-	private final InFlightLogger inFlightLogger;
+	protected final InFlightLogger inFlightLogger;
 
-	private boolean buffersCleared = false;
+	protected boolean buffersCleared = false;
 
-	private CausalLoggingManager causalLoggingManager;
-
-	private boolean silenced;
 
 	public RecordWriter(ResultPartitionWriter writer) {
 		this(writer, new RoundRobinChannelSelector<T>());
@@ -99,24 +96,17 @@ public class RecordWriter<T extends IOReadableWritable & DeterminantCarrier> imp
 	}
 
 	public RecordWriter(ResultPartitionWriter writer, ChannelSelector<T> channelSelector, boolean flushAlways) {
-		this(writer, channelSelector, flushAlways, null);
-	}
-
-	public RecordWriter(ResultPartitionWriter writer, ChannelSelector<T> channelSelector, boolean flushAlways, CausalLoggingManager causalLoggingManager) {
 		this.flushAlways = flushAlways;
 		this.targetPartition = writer;
 		this.channelSelector = channelSelector;
 
 		this.numChannels = writer.getNumberOfSubpartitions();
-		this.causalLoggingManager = causalLoggingManager;
-		this.silenced = false;
 
 		try {
 			this.inFlightLogger = new InFlightLogger(this.targetPartition, this.numChannels);
 		} catch (IOException e) {
 			throw new RuntimeException("Error while creating the RecordWriter.", e);
 		}
-
 		/*
 		 * The runtime exposes a channel abstraction for the produced results
 		 * (see {@link ChannelSelector}). Every channel has an independent
@@ -130,13 +120,6 @@ public class RecordWriter<T extends IOReadableWritable & DeterminantCarrier> imp
 		}
 	}
 
-	public void silence() {
-		this.silenced = true;
-	}
-
-	public void unsilence() {
-		this.silenced = false;
-	}
 
 	public void emit(T record) throws IOException, InterruptedException {
 		for (int targetChannel : channelSelector.selectChannels(record, numChannels)) {
@@ -158,101 +141,66 @@ public class RecordWriter<T extends IOReadableWritable & DeterminantCarrier> imp
 	 * This is used to send LatencyMarks to a random target channel.
 	 */
 	public void randomEmit(T record) throws IOException, InterruptedException {
-		int channel_chosen = rng.nextInt(numChannels);
-		if (causalLoggingManager != null)
-			causalLoggingManager.appendDeterminant(new RNGDeterminant(channel_chosen));
-		sendToTarget(record, channel_chosen);
+		sendToTarget(record, rng.nextInt(numChannels));
 	}
 
-	private void sendToTarget(T record, int targetChannel) throws IOException, InterruptedException {
+	protected void sendToTarget(T record, int targetChannel) throws IOException, InterruptedException {
 		RecordSerializer<T> serializer = serializers[targetChannel];
 		LOG.info("RecordWriter send to target");
-		if (causalLoggingManager != null)
-			causalLoggingManager.enrichWithDeltas(record, targetChannel);
 
-		if (!silenced) {
-			SerializationResult result = serializer.addRecord(record);
+		SerializationResult result = serializer.addRecord(record);
 
-			if (!inFlightLogger.replaying()) {
-				checkReplayInFlightLog();
-			}
+		if (!inFlightLogger.replaying()) {
+			checkReplayInFlightLog();
+		}
 
-			while (result.isFullBuffer()) {
-				if (tryFinishCurrentBufferBuilder(targetChannel, serializer)) {
-					// If this was a full record, we are done. Not breaking
-					// out of the loop at this point will lead to another
-					// buffer request before breaking out (that would not be
-					// a problem per se, but it can lead to stalls in the
-					// pipeline).
-					if (result.isFullRecord()) {
-						break;
-					}
+		while (result.isFullBuffer()) {
+			if (tryFinishCurrentBufferBuilder(targetChannel, serializer)) {
+				// If this was a full record, we are done. Not breaking
+				// out of the loop at this point will lead to another
+				// buffer request before breaking out (that would not be
+				// a problem per se, but it can lead to stalls in the
+				// pipeline).
+				if (result.isFullRecord()) {
+					break;
 				}
-				LOG.debug("{}: sendToTarget() calls requestNewBufferBuilder() for resultPartition {}, subpartitionIndex {}.", targetPartition.getTaskName(), targetPartition, targetChannel);
-				BufferBuilder bufferBuilder = requestNewBufferBuilder(targetChannel);
-				LOG.debug("New BufferBuilder's memory segment hash: {}", bufferBuilder.getMemorySegmentHash());
-
-				result = serializer.continueWritingWithNextBufferBuilder(bufferBuilder);
 			}
-			checkState(!serializer.hasSerializedData(), "All data should be written at once");
+			LOG.debug("{}: sendToTarget() calls requestNewBufferBuilder() for resultPartition {}, subpartitionIndex {}.", targetPartition.getTaskName(), targetPartition, targetChannel);
+			BufferBuilder bufferBuilder = requestNewBufferBuilder(targetChannel);
+			LOG.debug("New BufferBuilder's memory segment hash: {}", bufferBuilder.getMemorySegmentHash());
 
-			if (flushAlways) {
-				targetPartition.flush(targetChannel);
-			}
+			result = serializer.continueWritingWithNextBufferBuilder(bufferBuilder);
+		}
+		checkState(!serializer.hasSerializedData(), "All data should be written at once");
+
+		if (flushAlways) {
+			targetPartition.flush(targetChannel);
 		}
 	}
 
 	public void broadcastEvent(AbstractEvent event) throws IOException, InterruptedException {
 		LOG.debug("{}: RecordWriter broadcast event {}.", targetPartition.getTaskName(), event);
+		for (int targetChannel = 0; targetChannel < numChannels; targetChannel++) {
+			if (event instanceof CheckpointBarrier)
+				inFlightLogger.logCheckpointBarrier(targetChannel, (CheckpointBarrier) event);
 
-
-		if (!silenced) {
-			//todo figure out what to do about these events
-
-			for (int targetChannel = 0; targetChannel < numChannels; targetChannel++) {
-				if (event instanceof CheckpointBarrier) {
-					//If the event is a Checkpoint barrier, create new events for each channel and provide determinants
-					CheckpointBarrier barrier = (CheckpointBarrier) event;
-
-					event = new CheckpointBarrier(barrier.getId(),barrier.getTimestamp(),barrier.getCheckpointOptions());
-
-					if (causalLoggingManager != null)
-						causalLoggingManager.enrichWithDeltas((CheckpointBarrier) event, targetChannel);
-
-					inFlightLogger.logCheckpointBarrier(targetChannel, (CheckpointBarrier) event);
-				}
-
-				try (BufferConsumer eventBufferConsumer = EventSerializer.toBufferConsumer(event)) {
-					RecordSerializer<T> serializer = serializers[targetChannel];
-
-					tryFinishCurrentBufferBuilder(targetChannel, serializer);
-
-					// retain the buffer so that it can be recycled by each channel of targetPartition
-					targetPartition.addBufferConsumer(eventBufferConsumer.copy(), targetChannel);
-				}
-
-				if (flushAlways) {
-					flushAll();
-				}
-			}
+			emitEvent(event, targetChannel);
 		}
 	}
 
 	public void emitEvent(AbstractEvent event, int targetChannel) throws IOException, InterruptedException {
 		LOG.debug("{}: RecordWriter replay {}.", targetPartition.getTaskName(), event);
 
-		if (!silenced) {
-			try (BufferConsumer eventBufferConsumer = EventSerializer.toBufferConsumer(event)) {
-				RecordSerializer<T> serializer = serializers[targetChannel];
+		try (BufferConsumer eventBufferConsumer = EventSerializer.toBufferConsumer(event)) {
+			RecordSerializer<T> serializer = serializers[targetChannel];
 
-				tryFinishCurrentBufferBuilder(targetChannel, serializer);
+			tryFinishCurrentBufferBuilder(targetChannel, serializer);
 
-				// retain the buffer so that it can be recycled by each channel of targetPartition
-				targetPartition.addBufferConsumer(eventBufferConsumer.copy(), targetChannel);
+			// retain the buffer so that it can be recycled by each channel of targetPartition
+			targetPartition.addBufferConsumer(eventBufferConsumer.copy(), targetChannel);
 
-				if (flushAlways) {
-					targetPartition.flush(targetChannel);
-				}
+			if (flushAlways) {
+				targetPartition.flush(targetChannel);
 			}
 		}
 	}
@@ -272,7 +220,7 @@ public class RecordWriter<T extends IOReadableWritable & DeterminantCarrier> imp
 
 	/**
 	 * Sets the metric group for this RecordWriter.
-     */
+	 */
 	public void setMetricGroup(TaskIOMetricGroup metrics) {
 		numBytesOut = metrics.getNumBytesOutCounter();
 	}
@@ -282,7 +230,7 @@ public class RecordWriter<T extends IOReadableWritable & DeterminantCarrier> imp
 	 *
 	 * @return true if some data were written
 	 */
-	private boolean tryFinishCurrentBufferBuilder(int targetChannel, RecordSerializer<T> serializer) throws IOException, InterruptedException {
+	protected boolean tryFinishCurrentBufferBuilder(int targetChannel, RecordSerializer<T> serializer) throws IOException, InterruptedException {
 
 		if (!bufferBuilders[targetChannel].isPresent()) {
 			return false;
@@ -404,7 +352,7 @@ public class RecordWriter<T extends IOReadableWritable & DeterminantCarrier> imp
 
 	private boolean downstreamFailed() throws IOException, InterruptedException {
 		if (targetPartition instanceof ResultPartition &&
-				((ResultPartition) targetPartition).downstreamFailed()) {
+			((ResultPartition) targetPartition).downstreamFailed()) {
 			LOG.info("Downstream task of {} failed.", ((ResultPartition) targetPartition).getTaskName());
 			int i = 0;
 			while (!inFlightLogPrepareSignalled() && i < 100) {

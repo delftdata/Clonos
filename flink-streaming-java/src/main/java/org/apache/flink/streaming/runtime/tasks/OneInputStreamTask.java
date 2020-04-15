@@ -95,10 +95,6 @@ public class OneInputStreamTask<IN, OUT> extends StreamTask<OUT, OneInputStreamO
 				this.headOperator,
 				getEnvironment().getMetricGroup().getIOMetricGroup(),
 				inputWatermarkGauge);
-
-			if (isCausal() && isStandby()) {
-				this.getRecoveryManager();
-			}
 		}
 		headOperator.getMetricGroup().gauge(MetricNames.IO_CURRENT_INPUT_WATERMARK, this.inputWatermarkGauge);
 		// wrap watermark gauge since registered metrics must be unique

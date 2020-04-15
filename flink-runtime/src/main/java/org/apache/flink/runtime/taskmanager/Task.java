@@ -151,6 +151,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 	private final AllocationID allocationId;
 
 	private final VertexId vertexId;
+	private final Collection<VertexId> upstreamVertexIds;
 
 	/**
 	 * TaskInfo object for this task.
@@ -275,15 +276,6 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 	 */
 	private final boolean isStandby;
 
-	/**
-	 * The CausalLog of the task
-	 */
-	private final CausalLoggingManager causalLoggingManager;
-
-	/**
-	 * The recovery manager, in case this is a standby task.
-	 */
-	private final CausalRecoveryManager recoveryManager;
 	// ------------------------------------------------------------------------
 	//  Fields that control the task execution. All these fields are volatile
 	//  (which means that they introduce memory barriers), to establish
@@ -455,20 +447,15 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		this.executionId = Preconditions.checkNotNull(executionAttemptID);
 		this.allocationId = Preconditions.checkNotNull(slotAllocationId);
 		this.vertexId = Preconditions.checkNotNull(vertexId);
+		this.upstreamVertexIds = Preconditions.checkNotNull(upstreamVertices);
 
 		this.isStandby = isStandby;
 		int numDownstreamTasks = resultPartitionDeploymentDescriptors.size();
 		if (this.isStandby) {
 			this.taskNameWithSubtask = taskInfo.getTaskNameWithSubtasks() + " (STANDBY)";
-			this.recoveryManager = new CausalRecoveryManager(numDownstreamTasks, new SimpleDeterminantEncodingStrategy());
 		} else {
 			this.taskNameWithSubtask = taskInfo.getTaskNameWithSubtasks();
-			this.recoveryManager = null;
 		}
-		if (upstreamVertices != null)
-			this.causalLoggingManager = new MapCausalLoggingManager(this.vertexId, upstreamVertices, numDownstreamTasks);
-		else
-			this.causalLoggingManager = null;
 		this.jobConfiguration = jobInformation.getJobConfiguration();
 		this.taskConfiguration = taskInformation.getTaskConfiguration();
 		this.requiredJarFiles = jobInformation.getRequiredJarFileBlobKeys();
@@ -818,6 +805,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 				executionId,
 				executionConfig,
 				vertexId,
+				upstreamVertexIds,
 				taskInfo,
 				jobConfiguration,
 				taskConfiguration,
@@ -888,11 +876,6 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 				LOG.info("Set inFlightLogPrepareEventListener {} for resultPartition {}.", iflpel, partition);
 				partition.setInFlightLogPrepareEventListener(iflpel);
 
-				if(this.isCausal()){
-					DeterminantResponseEventListener edel = new DeterminantResponseEventListener(userCodeClassLoader, recoveryManager);
-					network.getTaskEventDispatcher().subscribeToEvent(partition.getPartitionId(), edel, DeterminantResponseEvent.class);
-					LOG.info("Set DeterminantResponseEventListener {} for resultPartition {}.", edel, partition);
-				}
 			}
 
 			// make sure the user code classloader is accessible thread-locally
@@ -1738,17 +1721,6 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		}
 	}
 
-	public boolean isCausal() {
-		return getCausalLoggingManager() != null;
-	}
-
-	public CausalLoggingManager getCausalLoggingManager() {
-		return causalLoggingManager;
-	}
-
-	public CausalRecoveryManager getRecoveryManager(){
-		return recoveryManager;
-	}
 
 	// ------------------------------------------------------------------------
 	//  Task cancellation

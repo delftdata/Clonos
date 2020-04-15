@@ -34,7 +34,7 @@ import java.util.List;
  *
  * @param <T> The type to be represented as an IOReadableWritable.
  */
-public class SerializationDelegate<T extends DeterminantCarrier> implements IOReadableWritable, DeterminantCarrier {
+public class SerializationDelegate<T> implements IOReadableWritable, DeterminantCarrier {
 
 	private T instance;
 
@@ -73,11 +73,11 @@ public class SerializationDelegate<T extends DeterminantCarrier> implements IORe
 
 	@Override
 	public void enrich(List<VertexCausalLogDelta> logDeltaList) {
-		this.getInstance().enrich(logDeltaList);
+		((DeterminantCarrier)instance).enrich(logDeltaList);
 	}
 
 	@Override
 	public List<VertexCausalLogDelta> getLogDeltas() {
-		return this.getInstance().getLogDeltas();
+		return ((DeterminantCarrier)instance).getLogDeltas();
 	}
 }

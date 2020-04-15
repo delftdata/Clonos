@@ -18,7 +18,6 @@
 package org.apache.flink.streaming.runtime.io;
 
 import org.apache.flink.runtime.causal.CausalLoggingManager;
-import org.apache.flink.runtime.causal.RecoveryManager;
 import org.apache.flink.runtime.causal.determinant.OrderDeterminant;
 import org.apache.flink.runtime.io.network.partition.consumer.BufferOrEvent;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
@@ -29,7 +28,6 @@ import java.util.Deque;
 
 public class CausalBufferHandler implements CheckpointBarrierHandler {
 
-	private RecoveryManager recoveryManager;
 	private CausalLoggingManager causalLoggingManager;
 
 	private Deque<BufferOrEvent>[] bufferedBuffersPerChannel;
@@ -39,9 +37,8 @@ public class CausalBufferHandler implements CheckpointBarrierHandler {
 	//This is just to reduce the complexity of going over bufferedBuffersPerChannel
 	private int numUnprocessedBuffers;
 
-	public CausalBufferHandler(CausalLoggingManager causalLoggingManager, RecoveryManager recoveryManager, CheckpointBarrierHandler wrapped, int numInputChannels) {
+	public CausalBufferHandler(CausalLoggingManager causalLoggingManager, CheckpointBarrierHandler wrapped, int numInputChannels) {
 		this.causalLoggingManager = causalLoggingManager;
-		this.recoveryManager = recoveryManager;
 		this.wrapped = wrapped;
 		this.bufferedBuffersPerChannel = new Deque[numInputChannels];
 		for (int i = 0; i < numInputChannels; i++)
@@ -53,8 +50,8 @@ public class CausalBufferHandler implements CheckpointBarrierHandler {
 	@Override
 	public BufferOrEvent getNextNonBlocked() throws Exception {
 		BufferOrEvent toReturn;
-		if (recoveryManager.isRecovering()) {
-			OrderDeterminant determinant = recoveryManager.getNextOrderDeterminant();
+		if (causalLoggingManager.isRecovering()) {
+			OrderDeterminant determinant = causalLoggingManager.getRecoveryOrderDeterminant();
 			if (bufferedBuffersPerChannel[determinant.getChannel()].isEmpty())
 				toReturn = processUntilFindBufferForChannel(determinant.getChannel());
 			else

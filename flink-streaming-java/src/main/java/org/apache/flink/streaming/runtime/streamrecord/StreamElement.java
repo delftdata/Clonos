@@ -42,7 +42,7 @@ public abstract class StreamElement implements DeterminantCarrier {
 		return logDeltas;
 	}
 
-	public void setLogDeltas(List<VertexCausalLogDelta> logDeltas) {
+	public void enrich(List<VertexCausalLogDelta> logDeltaList){
 		this.logDeltas = logDeltas;
 	}
 

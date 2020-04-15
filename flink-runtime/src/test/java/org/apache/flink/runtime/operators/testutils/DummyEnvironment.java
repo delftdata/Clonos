@@ -48,6 +48,7 @@ import org.apache.flink.runtime.taskmanager.TaskManagerRuntimeInfo;
 import org.apache.flink.runtime.util.TestingTaskManagerRuntimeInfo;
 
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Future;
 
@@ -233,6 +234,11 @@ public class DummyEnvironment implements Environment {
 
 	@Override
 	public VertexId getVertexId() {
+		return null;
+	}
+
+	@Override
+	public List<VertexId> getUpstreamVertexIDs() {
 		return null;
 	}
 

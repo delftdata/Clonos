@@ -17,14 +17,13 @@
  */
 package org.apache.flink.runtime.causal;
 
-import org.apache.flink.runtime.causal.determinant.Determinant;
-import org.apache.flink.runtime.causal.determinant.DeterminantEncodingStrategy;
-import org.apache.flink.runtime.causal.determinant.SimpleDeterminantEncodingStrategy;
-import org.apache.flink.runtime.plugable.SerializationDelegate;
+import org.apache.flink.runtime.causal.determinant.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.ByteBuffer;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 /*
@@ -37,19 +36,40 @@ public class MapCausalLoggingManager implements CausalLoggingManager {
 	private Map<VertexId, VertexCausalLog> determinantLogs;
 	private VertexId myVertexId;
 	private DeterminantEncodingStrategy determinantEncodingStrategy;
-	private CausalRecoveryManager recoveryManager;
 
+	// Recovery fields
+	private final int numDownstreamChannels;
+	private int numProcessedDeterminantResponses;
+	private CompletableFuture<Void> outputChannelConnectionsFuture;
+	private ByteBuffer determinantsToRecoverFrom;
+	private List<Silenceable> registeredSilenceables;
+	private Determinant nextDeterminant;
+	private boolean isRecovering;
 
-	public MapCausalLoggingManager(VertexId myVertexId, Collection<VertexId> upstreamVertexIds, int numDownstreamChannels) {
+	//services
+	private final RandomService randomService;
+
+	public MapCausalLoggingManager(VertexId myVertexId, Collection<VertexId> upstreamVertexIds, int numDownstreamChannels,  CompletableFuture<Void> unblockRecoveringTask) {
 		LOG.info("Creating new CausalLoggingManager for id {}, with upstreams {} and {} downstream channels", myVertexId, String.join(", ", upstreamVertexIds.stream().map(Object::toString).collect(Collectors.toList())), numDownstreamChannels);
 		this.determinantLogs = new HashMap<>();
 		this.myVertexId = myVertexId;
+
 		for (VertexId u : upstreamVertexIds)
 			determinantLogs.put(u, new CircularVertexCausalLog(numDownstreamChannels, u));
 		this.determinantLogs.put(this.myVertexId, new CircularVertexCausalLog(numDownstreamChannels, this.myVertexId));
+
 		this.determinantEncodingStrategy = new SimpleDeterminantEncodingStrategy();
 
-		recoveryManager = new CausalRecoveryManager(numDownstreamChannels, determinantEncodingStrategy);
+		this.outputChannelConnectionsFuture = unblockRecoveringTask;
+		this.isRecovering = outputChannelConnectionsFuture != null;
+
+		this.numDownstreamChannels = numDownstreamChannels;
+		this.registeredSilenceables = new ArrayList<>(10);
+		this.numProcessedDeterminantResponses = 0;
+		this.determinantsToRecoverFrom = ByteBuffer.allocate(0);
+
+
+		this.randomService = new RandomService(this);
 	}
 
 	@Override
@@ -80,7 +100,6 @@ public class MapCausalLoggingManager implements CausalLoggingManager {
 		LOG.info("this.determinantLogs.get(d.vertexId: {}", this.determinantLogs.get(d.vertexId));
 		this.determinantLogs.get(d.vertexId).processUpstreamVertexCausalLogDelta(d);
 	}
-
 
 	@Override
 	public void notifyCheckpointBarrier(long checkpointId) {
@@ -119,5 +138,91 @@ public class MapCausalLoggingManager implements CausalLoggingManager {
 				results.add(vertexCausalLogDelta);
 		}
 		return results;
+	}
+
+	// =========== Recovery Manager =======================
+
+	@Override
+	public boolean isRecovering() {
+		return isRecovering;
+	}
+
+	@Override
+	public OrderDeterminant getRecoveryOrderDeterminant() {
+		if(!(nextDeterminant instanceof OrderDeterminant))
+			throw new RuntimeException("Unexpected determinant type! Expected Order but got " + nextDeterminant.getClass());
+
+		OrderDeterminant toReturn = (OrderDeterminant) nextDeterminant;
+		prepareNextRecoveryDeterminant();
+		return toReturn;
+	}
+
+	@Override
+	public RNGDeterminant getRecoveryRNGDeterminant() {
+		if(!(nextDeterminant instanceof RNGDeterminant))
+			throw new RuntimeException("Unexpected determinant type! Expected RNG but got " + nextDeterminant.getClass());
+		RNGDeterminant toReturn = (RNGDeterminant) nextDeterminant;
+		prepareNextRecoveryDeterminant();
+		return (RNGDeterminant) toReturn;
+	}
+
+	private void prepareNextRecoveryDeterminant(){
+		if(determinantsToRecoverFrom.hasRemaining())
+			nextDeterminant = determinantEncodingStrategy.decodeNext(determinantsToRecoverFrom);
+
+		while(nextDeterminant instanceof TimerTriggerDeterminant){
+			processTimerDeterminant();
+			if(determinantsToRecoverFrom.hasRemaining())
+				nextDeterminant = determinantEncodingStrategy.decodeNext(determinantsToRecoverFrom);
+		}
+
+		if(nextDeterminant == null) { //recovery is finished
+			isRecovering = false;
+			unsilenceAll();
+		}
+	}
+
+
+	private void processTimerDeterminant() {
+		//todo
+	}
+
+	@Override
+	public void notifyDeterminantResponseEvent(DeterminantResponseEvent determinantResponseEvent) {
+		//Todo: possible optimization, after receiving the first response we could immediately start recovery
+		numProcessedDeterminantResponses++;
+
+		//If this downstream has a more up to date causal log, we use it for recovery.
+		if(determinantResponseEvent.getVertexCausalLogDelta().rawDeterminants.length > determinantsToRecoverFrom.array().length)
+			determinantsToRecoverFrom = ByteBuffer.wrap(determinantResponseEvent.getVertexCausalLogDelta().rawDeterminants);
+
+		if(numProcessedDeterminantResponses == numDownstreamChannels) {//Received all responses, Unblock the task
+			isRecovering = true;
+			silenceAll();
+			prepareNextRecoveryDeterminant();
+			outputChannelConnectionsFuture.complete(null);
+		}
+	}
+
+	@Override
+	public void registerSilenceable(Silenceable silenceable) {
+		this.registeredSilenceables.add(silenceable);
+	}
+
+	private void silenceAll(){
+		for(Silenceable s: registeredSilenceables)
+			s.silence();
+	}
+
+	private void unsilenceAll(){
+		for(Silenceable s: registeredSilenceables)
+			s.unsilence();
+	}
+
+	//============= Services ===================
+
+	@Override
+	public RandomService getRandomService() {
+		return randomService;
 	}
 }

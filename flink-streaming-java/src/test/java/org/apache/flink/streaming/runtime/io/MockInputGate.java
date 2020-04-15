@@ -21,6 +21,7 @@ package org.apache.flink.streaming.runtime.io;
 import org.apache.flink.runtime.event.TaskEvent;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
 import org.apache.flink.runtime.io.network.partition.consumer.BufferOrEvent;
+import org.apache.flink.runtime.io.network.partition.consumer.InputChannel;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGateListener;
 
@@ -54,6 +55,11 @@ public class MockInputGate implements InputGate {
 	@Override
 	public int getPageSize() {
 		return pageSize;
+	}
+
+	@Override
+	public InputChannel getInputChannel(int i) {
+		return null;
 	}
 
 	@Override

@@ -265,6 +265,11 @@ public class MockEnvironment implements Environment, AutoCloseable {
 	}
 
 	@Override
+	public List<VertexId> getUpstreamVertexIDs() {
+		return null;
+	}
+
+	@Override
 	public JobVertexID getJobVertexId() {
 		return jobVertexID;
 	}

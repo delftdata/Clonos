@@ -23,21 +23,22 @@ import org.apache.flink.api.common.accumulators.Accumulator;
 import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.core.fs.CloseableRegistry;
 import org.apache.flink.core.fs.FileSystemSafetyNet;
-import org.apache.flink.runtime.causal.CausalLoggingManager;
-import org.apache.flink.runtime.causal.CausalRecoveryManager;
-import org.apache.flink.runtime.causal.VertexId;
+import org.apache.flink.runtime.causal.*;
 import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
+import org.apache.flink.runtime.event.DeterminantResponseEventListener;
 import org.apache.flink.runtime.execution.CancelTaskException;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.inflightlogging.InFlightLogger;
 import org.apache.flink.runtime.io.network.api.CancelCheckpointMarker;
 import org.apache.flink.runtime.io.network.api.DeterminantRequestEvent;
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
+import org.apache.flink.runtime.io.network.partition.ResultPartition;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
+import org.apache.flink.runtime.plugable.DeterminantCarryingSerializationDelegate;
 import org.apache.flink.runtime.plugable.SerializationDelegate;
 import org.apache.flink.runtime.state.*;
 import org.apache.flink.runtime.taskmanager.DispatcherThreadFactory;
@@ -58,10 +59,7 @@ import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 import java.io.Closeable;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -200,6 +198,10 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 	protected final VertexId vertexId;
 
+	private final Collection<VertexId> upstreamIDs;
+
+	private final CausalLoggingManager causalLoggingManager;
+
 	// ------------------------------------------------------------------------
 
 	/**
@@ -227,6 +229,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 		super(environment);
 		this.vertexId = environment.getVertexId();
+		this.upstreamIDs = environment.getUpstreamVertexIDs();
+		int numDownstreamTasks = environment.getAllWriters().length;
 		LOG.info("Received vertexId {}", vertexId);
 		environment.getTaskInfo().getIndexOfThisSubtask();
 
@@ -234,20 +238,26 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		this.timerService = timeProvider;
 		this.configuration = new StreamConfig(getTaskConfiguration());
 		this.accumulatorMap = getEnvironment().getAccumulatorRegistry().getUserMap();
-		this.streamRecordWriters = createStreamRecordWriters(configuration, environment, this.getCausalLoggingManager(), this.getRecoveryManager());
 
 		if (isStandby()) {
 			this.standbyFuture = new CompletableFuture<>();
 			this.inputChannelConnectionsFuture = new CompletableFuture<>();
 			this.outputChannelConnectionsFuture = new CompletableFuture<>();
-			this.getRecoveryManager().registerOutputChannelConnectionsFuture(outputChannelConnectionsFuture);
-
 		}
 		else {
 			this.standbyFuture = null;
 			this.inputChannelConnectionsFuture = null;
 			this.outputChannelConnectionsFuture = null;
 		}
+
+		this.causalLoggingManager = new MapCausalLoggingManager(vertexId, upstreamIDs,  numDownstreamTasks,this.outputChannelConnectionsFuture);
+
+		for(ResultPartition partition : environment.getContainingTask().getProducedPartitions()) {
+			DeterminantResponseEventListener edel = new DeterminantResponseEventListener(environment.getUserClassLoader(), causalLoggingManager);
+			environment.getTaskEventDispatcher().subscribeToEvent(partition.getPartitionId(), edel, DeterminantResponseEvent.class);
+			LOG.info("Set DeterminantResponseEventListener {} for resultPartition {}.", edel, partition);
+		}
+		this.streamRecordWriters = createStreamRecordWriters(configuration, environment, this.causalLoggingManager);
 
 	}
 
@@ -701,12 +711,9 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	}
 
 	public CausalLoggingManager getCausalLoggingManager() {
-		return this.getEnvironment().getContainingTask().getCausalLoggingManager();
+		return this.causalLoggingManager;
 	}
 
-	public CausalRecoveryManager getRecoveryManager(){
-		return this.getEnvironment().getContainingTask().getRecoveryManager();
-	}
 
 	private boolean performCheckpoint(
 		CheckpointMetaData checkpointMetaData,
@@ -1316,7 +1323,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	@VisibleForTesting
 	public static <OUT> List<StreamRecordWriter<SerializationDelegate<StreamRecord<OUT>>>> createStreamRecordWriters(
 		StreamConfig configuration,
-		Environment environment, CausalLoggingManager causalLoggingManager, CausalRecoveryManager recoveryManager) {
+		Environment environment, CausalLoggingManager causalLoggingManager) {
 		List<StreamRecordWriter<SerializationDelegate<StreamRecord<OUT>>>> streamRecordWriters = new ArrayList<>();
 		List<StreamEdge> outEdgesInOrder = configuration.getOutEdgesInOrder(environment.getUserClassLoader());
 		Map<Integer, StreamConfig> chainedConfigs = configuration.getTransitiveChainedTaskConfigsWithSelf(environment.getUserClassLoader());
@@ -1330,9 +1337,6 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 				environment,
 				environment.getTaskInfo().getTaskName(),
 				chainedConfigs.get(edge.getSourceId()).getBufferTimeout(), causalLoggingManager);
-
-			if(recoveryManager != null)
-				recoveryManager.registerSilenceable(newRecordWriter);
 			streamRecordWriters.add(newRecordWriter);
 		}
 		return streamRecordWriters;
@@ -1360,7 +1364,9 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		}
 
 		StreamRecordWriter<SerializationDelegate<StreamRecord<OUT>>> output =
-			new StreamRecordWriter<>(bufferWriter, outputPartitioner, bufferTimeout, taskName, causalLoggingManager);
+			new StreamRecordWriter<SerializationDelegate<StreamRecord<OUT>>>(bufferWriter, outputPartitioner, bufferTimeout, taskName, causalLoggingManager);
+		if(causalLoggingManager != null)
+			causalLoggingManager.registerSilenceable(output);
 		output.setMetricGroup(environment.getMetricGroup().getIOMetricGroup());
 		return output;
 	}

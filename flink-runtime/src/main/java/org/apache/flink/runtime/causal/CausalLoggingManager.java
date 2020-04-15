@@ -18,6 +18,8 @@
 package org.apache.flink.runtime.causal;
 
 import org.apache.flink.runtime.causal.determinant.Determinant;
+import org.apache.flink.runtime.causal.determinant.OrderDeterminant;
+import org.apache.flink.runtime.causal.determinant.RNGDeterminant;
 import org.apache.flink.runtime.state.CheckpointListener;
 
 import java.util.List;
@@ -46,5 +48,21 @@ public interface CausalLoggingManager extends CheckpointListener {
 	void notifyCheckpointBarrier(long checkpointId);
 
 	void notifyDownstreamFailure(int channel);
+
+	//============== Services to simplify usage
+
+    RandomService getRandomService();
+
+	//============= Recovery Manager
+
+	void registerSilenceable(Silenceable silenceable);
+
+	void notifyDeterminantResponseEvent(DeterminantResponseEvent determinantResponseEvent);
+
+	boolean isRecovering();
+
+	OrderDeterminant getRecoveryOrderDeterminant();
+
+	RNGDeterminant getRecoveryRNGDeterminant();
 
 }

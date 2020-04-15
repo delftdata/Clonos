@@ -278,6 +278,11 @@ public class StreamMockEnvironment implements Environment {
 	}
 
 	@Override
+	public List<VertexId> getUpstreamVertexIDs() {
+		return null;
+	}
+
+	@Override
 	public JobVertexID getJobVertexId() {
 		return new JobVertexID(new byte[16]);
 	}
