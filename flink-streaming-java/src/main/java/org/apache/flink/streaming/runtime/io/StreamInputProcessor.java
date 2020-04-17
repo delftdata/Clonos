@@ -209,6 +209,7 @@ public class StreamInputProcessor<IN> {
 					} else {
 						// now we can do the actual processing
 						StreamRecord<IN> record = recordOrMark.asRecord();
+						LOG.info("Record contents: {}", record);
 						synchronized (lock) {
 							numRecordsIn.inc();
 							streamOperator.setKeyContextElement1(record);
@@ -228,9 +229,9 @@ public class StreamInputProcessor<IN> {
 				} else {// Event received
 					final AbstractEvent event = bufferOrEvent.getEvent();
 					if (event.getClass() == DeterminantRequestEvent.class) {
-						LOG.info("Received DeterminantRequestEvent! Responding");
 						InputChannel toRespondTo = inputGate.getInputChannel(bufferOrEvent.getChannelIndex());
 						VertexId failedVertex = ((DeterminantRequestEvent)event).getFailedVertex();
+						LOG.info("Received DeterminantRequestEvent from failed vertex {}! Responding", failedVertex);
 						byte[] determinants = this.causalLoggingManager.getDeterminantsOfVertex(failedVertex);
 						//todo if dont have locally, recurr request and make future.
 						toRespondTo.sendTaskEvent(new DeterminantResponseEvent(new VertexCausalLogDelta(failedVertex, determinants,0)));

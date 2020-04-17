@@ -352,8 +352,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 					for(StreamRecordWriter streamRecordWriter : streamRecordWriters)
 						streamRecordWriter.broadcastEvent(requestEvent);
 					outputChannelConnectionsFuture.get(); //Wait for determinants to arrive
+					LOG.debug("Task {} reached outputChannelConnectionsFuture {}.", getName(), outputChannelConnectionsFuture);
 				}
-				LOG.debug("Task {} reached inputChannelConnectionsFuture {}.", getName(), inputChannelConnectionsFuture);
 				inputChannelConnectionsFuture.get();
 				LOG.debug("Task {} starts execution after inputChannelConnectionsFuture {}.", getName(), inputChannelConnectionsFuture);
 			}
@@ -752,7 +752,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 					LOG.info("{}: Create slices of InFlightLogger {} for new checkpoint (previous checkpoint id is {}).", getName(), inFlightLogger, checkpointId);
 					inFlightLogger.createSlices(checkpointId);
 				}
-				getCausalLoggingManager().notifyCheckpointBarrier(checkpointId);
+
+				causalLoggingManager.notifyCheckpointBarrier(checkpointId);
 
 				return true;
 			}
@@ -802,7 +803,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 							inFlightLogger.discardSlice(checkpointId);
 						}
 
-						getCausalLoggingManager().notifyCheckpointComplete(checkpointId);
+						causalLoggingManager.notifyCheckpointComplete(checkpointId);
 					}
 				}
 			}
@@ -1364,7 +1365,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		}
 
 		StreamRecordWriter<SerializationDelegate<StreamRecord<OUT>>> output =
-			new StreamRecordWriter<SerializationDelegate<StreamRecord<OUT>>>(bufferWriter, outputPartitioner, bufferTimeout, taskName, causalLoggingManager);
+			new StreamRecordWriter<>(bufferWriter, outputPartitioner, bufferTimeout, taskName, causalLoggingManager);
 		if(causalLoggingManager != null)
 			causalLoggingManager.registerSilenceable(output);
 		output.setMetricGroup(environment.getMetricGroup().getIOMetricGroup());

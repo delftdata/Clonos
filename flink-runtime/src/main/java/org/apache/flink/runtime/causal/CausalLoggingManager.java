@@ -59,10 +59,15 @@ public interface CausalLoggingManager extends CheckpointListener {
 
 	void notifyDeterminantResponseEvent(DeterminantResponseEvent determinantResponseEvent);
 
-	boolean isRecovering();
+	boolean hasDeterminantsToRecoverFrom();
 
 	OrderDeterminant getRecoveryOrderDeterminant();
 
 	RNGDeterminant getRecoveryRNGDeterminant();
 
+	void stopRecovery();
+
+	void startRecovery();
+
+	boolean isRecovering();
 }

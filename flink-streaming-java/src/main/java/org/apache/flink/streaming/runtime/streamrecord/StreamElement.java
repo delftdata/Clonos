@@ -34,6 +34,9 @@ public abstract class StreamElement implements DeterminantCarrier {
 
 	private List<VertexCausalLogDelta> logDeltas;
 
+	public StreamElement() {
+	}
+
 	public StreamElement(List<VertexCausalLogDelta> logDeltas) {
 		this.logDeltas = logDeltas;
 	}
@@ -43,7 +46,7 @@ public abstract class StreamElement implements DeterminantCarrier {
 	}
 
 	public void enrich(List<VertexCausalLogDelta> logDeltaList){
-		this.logDeltas = logDeltas;
+		this.logDeltas = logDeltaList;
 	}
 
 	/**

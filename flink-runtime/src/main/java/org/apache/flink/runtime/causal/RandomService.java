@@ -43,7 +43,7 @@ public class RandomService {
 	}
 
 	public int nextInt(int maxExclusive) {
-		if(causalLoggingManager.isRecovering())
+		if(causalLoggingManager.hasDeterminantsToRecoverFrom())
 			 return  causalLoggingManager.getRecoveryRNGDeterminant().getNumber();
 
 		int generatedNumber = random.nextInt(maxExclusive);

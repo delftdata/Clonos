@@ -40,10 +40,12 @@ public class MapCausalLoggingManager implements CausalLoggingManager {
 	// Recovery fields
 	private final int numDownstreamChannels;
 	private int numProcessedDeterminantResponses;
-	private CompletableFuture<Void> outputChannelConnectionsFuture;
+	private CompletableFuture<Void> unblockTaskFuture;
 	private ByteBuffer determinantsToRecoverFrom;
 	private List<Silenceable> registeredSilenceables;
 	private Determinant nextDeterminant;
+
+	private boolean hasDeterminantsToRecoverFrom;
 	private boolean isRecovering;
 
 	//services
@@ -60,8 +62,9 @@ public class MapCausalLoggingManager implements CausalLoggingManager {
 
 		this.determinantEncodingStrategy = new SimpleDeterminantEncodingStrategy();
 
-		this.outputChannelConnectionsFuture = unblockRecoveringTask;
-		this.isRecovering = outputChannelConnectionsFuture != null;
+		this.unblockTaskFuture = unblockRecoveringTask;
+		this.hasDeterminantsToRecoverFrom = false;
+		this.isRecovering = false;
 
 		this.numDownstreamChannels = numDownstreamChannels;
 		this.registeredSilenceables = new ArrayList<>(10);
@@ -94,17 +97,19 @@ public class MapCausalLoggingManager implements CausalLoggingManager {
 	@Override
 	public void processCausalLogDelta(VertexCausalLogDelta d) {
 		LOG.info("Processing UpstreamCausalLogDelta {}", d);
-		LOG.info("Map entries: {}", String.join(",", determinantLogs.keySet().stream().map(Objects::toString).collect(Collectors.toList())));
-		LOG.info("d.vertexId {}", d.vertexId);
-		LOG.info("this.determinantLogs: {}", this.determinantLogs);
-		LOG.info("this.determinantLogs.get(d.vertexId: {}", this.determinantLogs.get(d.vertexId));
+		LOG.info("Determinant log pre processing: {}", this.determinantLogs.get(d.vertexId));
 		this.determinantLogs.get(d.vertexId).processUpstreamVertexCausalLogDelta(d);
+		LOG.info("Determinant log post processing: {}", this.determinantLogs.get(d.vertexId));
 	}
 
 	@Override
 	public void notifyCheckpointBarrier(long checkpointId) {
-		for (VertexCausalLog log : determinantLogs.values())
+		LOG.info("Processing checkpoint barrier {}", checkpointId);
+		for (VertexCausalLog log : determinantLogs.values()) {
+			LOG.info("Determinant log pre processing: {}", log);
 			log.notifyCheckpointBarrier(checkpointId);
+			LOG.info("Determinant log post processing: {}", log);
+		}
 	}
 
 	@Override
@@ -125,8 +130,12 @@ public class MapCausalLoggingManager implements CausalLoggingManager {
 
 	@Override
 	public void notifyCheckpointComplete(long checkpointId) throws Exception {
-		for (VertexCausalLog log : determinantLogs.values())
+		LOG.info("Processing checkpoint complete notification for id {}", checkpointId);
+		for (VertexCausalLog log : determinantLogs.values()) {
+			LOG.info("Determinant log pre processing: {}", log);
 			log.notifyCheckpointComplete(checkpointId);
+			LOG.info("Determinant log post processing: {}", log);
+		}
 	}
 
 	private List<VertexCausalLogDelta> getNextDeterminantsForDownstream(int channel) {
@@ -143,8 +152,26 @@ public class MapCausalLoggingManager implements CausalLoggingManager {
 	// =========== Recovery Manager =======================
 
 	@Override
+	public boolean hasDeterminantsToRecoverFrom() {
+		return hasDeterminantsToRecoverFrom;
+	}
+
+	@Override
 	public boolean isRecovering() {
 		return isRecovering;
+	}
+
+	@Override
+	public void startRecovery(){
+		isRecovering = true;
+		silenceAll();
+		prepareNextRecoveryDeterminant();
+	}
+
+	@Override
+	public void stopRecovery(){
+		isRecovering = false;
+		unsilenceAll();
 	}
 
 	@Override
@@ -167,40 +194,40 @@ public class MapCausalLoggingManager implements CausalLoggingManager {
 	}
 
 	private void prepareNextRecoveryDeterminant(){
-		if(determinantsToRecoverFrom.hasRemaining())
-			nextDeterminant = determinantEncodingStrategy.decodeNext(determinantsToRecoverFrom);
+		nextDeterminant = determinantEncodingStrategy.decodeNext(determinantsToRecoverFrom);
 
 		while(nextDeterminant instanceof TimerTriggerDeterminant){
 			processTimerDeterminant();
-			if(determinantsToRecoverFrom.hasRemaining())
-				nextDeterminant = determinantEncodingStrategy.decodeNext(determinantsToRecoverFrom);
+			nextDeterminant = determinantEncodingStrategy.decodeNext(determinantsToRecoverFrom);
 		}
 
-		if(nextDeterminant == null) { //recovery is finished
-			isRecovering = false;
-			unsilenceAll();
-		}
+		if(nextDeterminant == null)  //recovery is finished
+			hasDeterminantsToRecoverFrom = false;
+
 	}
 
 
 	private void processTimerDeterminant() {
 		//todo
+		nextDeterminant = null;
 	}
 
 	@Override
 	public void notifyDeterminantResponseEvent(DeterminantResponseEvent determinantResponseEvent) {
+		LOG.info("Received a {}!", determinantResponseEvent);
 		//Todo: possible optimization, after receiving the first response we could immediately start recovery
 		numProcessedDeterminantResponses++;
 
 		//If this downstream has a more up to date causal log, we use it for recovery.
-		if(determinantResponseEvent.getVertexCausalLogDelta().rawDeterminants.length > determinantsToRecoverFrom.array().length)
+		if(determinantResponseEvent.getVertexCausalLogDelta().rawDeterminants.length > determinantsToRecoverFrom.array().length) {
+			LOG.info("It is longer than our current determinant list, keep it");
 			determinantsToRecoverFrom = ByteBuffer.wrap(determinantResponseEvent.getVertexCausalLogDelta().rawDeterminants);
+		}
 
 		if(numProcessedDeterminantResponses == numDownstreamChannels) {//Received all responses, Unblock the task
-			isRecovering = true;
-			silenceAll();
-			prepareNextRecoveryDeterminant();
-			outputChannelConnectionsFuture.complete(null);
+			LOG.info("We have received all DeterminantResponseEvents! Unblocking task and starting recovery!");
+			hasDeterminantsToRecoverFrom = true;
+			unblockTaskFuture.complete(null);
 		}
 	}
 
@@ -210,11 +237,13 @@ public class MapCausalLoggingManager implements CausalLoggingManager {
 	}
 
 	private void silenceAll(){
+		LOG.info("Silencing all Silenceables");
 		for(Silenceable s: registeredSilenceables)
 			s.silence();
 	}
 
 	private void unsilenceAll(){
+		LOG.info("UNSilencing all Silenceables");
 		for(Silenceable s: registeredSilenceables)
 			s.unsilence();
 	}

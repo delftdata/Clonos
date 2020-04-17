@@ -57,4 +57,11 @@ public class DeterminantResponseEvent extends TaskEvent {
 		in.read(logDelta);
 		this.vertexCausalLogDelta = new VertexCausalLogDelta(new VertexId(id), logDelta, 0);
 	}
+
+	@Override
+	public String toString() {
+		return "DeterminantResponseEvent{" +
+			"vertexCausalLogDelta=" + vertexCausalLogDelta +
+			'}';
+	}
 }
