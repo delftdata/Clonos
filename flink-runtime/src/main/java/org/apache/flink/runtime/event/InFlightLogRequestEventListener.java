@@ -19,6 +19,7 @@
 package org.apache.flink.runtime.event;
 
 //import org.apache.flink.runtime.event.TaskEvent;
+import org.apache.flink.runtime.io.network.partition.ResultPartition;
 import org.apache.flink.runtime.util.event.EventListener;
 
 import org.slf4j.Logger;
@@ -32,8 +33,9 @@ public class InFlightLogRequestEventListener extends InFlightLogEventListener {
 
 	private static final Logger LOG = LoggerFactory.getLogger(InFlightLogRequestEventListener.class);
 
-	public InFlightLogRequestEventListener(ClassLoader userCodeClassLoader) {
-		super(userCodeClassLoader);
+
+	public InFlightLogRequestEventListener(ClassLoader userCodeClassLoader, ResultPartition toNotify) {
+		super(userCodeClassLoader, toNotify);
 	}
 
 	/** Barrier will turn the in-flight log request signal to true */
@@ -41,9 +43,8 @@ public class InFlightLogRequestEventListener extends InFlightLogEventListener {
 	public void onEvent(TaskEvent event) {
 		LOG.info("{} received event {}.", this, event);
 		if (event instanceof InFlightLogRequestEvent) {
-			inFlightLogEvents.add((InFlightLogRequestEvent) event);
-		}
-		else {
+			toNotify.notifyInFlightLogRequestEvent((InFlightLogRequestEvent)event);
+		} else {
 			throw new IllegalArgumentException(String.format("Unknown event type: %s.", event));
 		}
 	}

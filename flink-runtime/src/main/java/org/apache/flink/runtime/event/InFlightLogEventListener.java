@@ -19,6 +19,7 @@
 package org.apache.flink.runtime.event;
 
 //import org.apache.flink.runtime.event.TaskEvent;
+import org.apache.flink.runtime.io.network.partition.ResultPartition;
 import org.apache.flink.runtime.util.event.EventListener;
 
 import java.util.ArrayDeque;
@@ -30,10 +31,11 @@ public abstract class InFlightLogEventListener implements EventListener<TaskEven
 
 	private final ClassLoader userCodeClassLoader;
 
-	protected ArrayDeque<InFlightLogEvent> inFlightLogEvents = new ArrayDeque<>();
+	protected ResultPartition toNotify;
 
-	public InFlightLogEventListener(ClassLoader userCodeClassLoader) {
+	public InFlightLogEventListener(ClassLoader userCodeClassLoader, ResultPartition toNotify) {
 		this.userCodeClassLoader = userCodeClassLoader;
+		this.toNotify = toNotify;
 	}
 
 	/** Setup the in-flight log request listener */
@@ -45,11 +47,4 @@ public abstract class InFlightLogEventListener implements EventListener<TaskEven
 	@Override
 	public abstract void onEvent(TaskEvent event);
 
-	public boolean inFlightLogSignalled() {
-		return !inFlightLogEvents.isEmpty();
-	}
-
-	public InFlightLogEvent getInFlightLogEvent() {
-		return inFlightLogEvents.poll();
-	}
 }

@@ -777,18 +777,16 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 			// Subscribe to consumer in-flight log requests
 			for (ResultPartition partition : producedPartitions) {
 				InFlightLogRequestEventListener iflrel =
-						new InFlightLogRequestEventListener(userCodeClassLoader);
+						new InFlightLogRequestEventListener(userCodeClassLoader, partition);
 				network.getTaskEventDispatcher().subscribeToEvent(partition.getPartitionId(),
 						iflrel, InFlightLogRequestEvent.class);
 				LOG.info("Set inFlightLogRequestEventListener {} for resultPartition {}.", iflrel, partition);
-				partition.setInFlightLogRequestEventListener(iflrel);
 
 				InFlightLogPrepareEventListener iflpel =
-						new InFlightLogPrepareEventListener(userCodeClassLoader);
+						new InFlightLogPrepareEventListener(userCodeClassLoader, partition);
 				network.getTaskEventDispatcher().subscribeToEvent(partition.getPartitionId(),
 						iflpel, InFlightLogPrepareEvent.class);
 				LOG.info("Set inFlightLogPrepareEventListener {} for resultPartition {}.", iflpel, partition);
-				partition.setInFlightLogPrepareEventListener(iflpel);
 			}
 
 			// make sure the user code classloader is accessible thread-locally

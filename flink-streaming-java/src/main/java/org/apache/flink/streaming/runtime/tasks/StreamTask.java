@@ -29,9 +29,9 @@ import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
 import org.apache.flink.runtime.execution.CancelTaskException;
 import org.apache.flink.runtime.execution.Environment;
-import org.apache.flink.runtime.inflightlogging.InFlightLogger;
 import org.apache.flink.runtime.io.network.api.CancelCheckpointMarker;
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
+import org.apache.flink.runtime.io.network.partition.ResultPartition;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.apache.flink.runtime.plugable.SerializationDelegate;
@@ -594,15 +594,6 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		return operatorChain.getStreamOutputs();
 	}
 
-	List<InFlightLogger> getInFlightLoggers() {
-		List<InFlightLogger> inFlightLoggers = new ArrayList<>();
-		for (StreamRecordWriter<SerializationDelegate<StreamRecord<OUT>>> streamRecordWriter : streamRecordWriters) {
-			inFlightLoggers.add(streamRecordWriter.getInFlightLogger());
-			LOG.debug("Return InFlightLogger {} of StreamRecordWriter {}.", streamRecordWriter.getInFlightLogger(), streamRecordWriter);
-		}
-		return inFlightLoggers;
-	}
-
 	// ------------------------------------------------------------------------
 	//  Checkpoint and Restore
 	// ------------------------------------------------------------------------
@@ -685,6 +676,11 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 				//           The pre-barrier work should be nothing or minimal in the common case.
 				operatorChain.prepareSnapshotPreBarrier(checkpointMetaData.getCheckpointId());
 
+				long checkpointId = checkpointMetaData.getCheckpointId();
+				ResultPartition[] partitions = this.getEnvironment().getContainingTask().getProducedPartitions();
+				for(ResultPartition rp : partitions)
+					rp.notifyCheckpointBarrier(checkpointId);
+
 				// Step (2): Send the checkpoint barrier downstream
 				operatorChain.broadcastCheckpointBarrier(
 						checkpointMetaData.getCheckpointId(),
@@ -694,12 +690,6 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 				// Step (3): Take the state snapshot. This should be largely asynchronous, to not
 				//           impact progress of the streaming topology
 				checkpointState(checkpointMetaData, checkpointOptions, checkpointMetrics);
-
-				long checkpointId = checkpointMetaData.getCheckpointId();
-				for (InFlightLogger inFlightLogger : getInFlightLoggers()) {
-					LOG.info("{}: Create slices of InFlightLogger {} for new checkpoint (previous checkpoint id is {}).", getName(), inFlightLogger, checkpointId);
-					inFlightLogger.createSlices(checkpointId);
-				}
 
 				return true;
 			}
@@ -744,12 +734,11 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 				for (StreamOperator<?> operator : operatorChain.getAllOperators()) {
 					if (operator != null) {
 						operator.notifyCheckpointComplete(checkpointId);
-						for (InFlightLogger inFlightLogger : getInFlightLoggers()) {
-							LOG.debug("{}: Discard slices of InFlightLogger {} for checkpoint {}.", getName(), inFlightLogger, checkpointId);
-							inFlightLogger.discardSlice(checkpointId);
-						}
 					}
 				}
+				ResultPartition[] partitions = this.getEnvironment().getContainingTask().getProducedPartitions();
+				for(ResultPartition rp : partitions)
+					rp.notifyCheckpointBarrier(checkpointId);
 			}
 			else {
 				LOG.debug("Ignoring notification of complete checkpoint for not-running task {}", getName());
@@ -804,13 +793,6 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			if (null != operator) {
 				operator.initializeState();
 			}
-		}
-	}
-
-	@Override
-	public void updateInFlightLoggerCheckpointId(long checkpointId) {
-		for (InFlightLogger inFlightLogger : getInFlightLoggers()) {
-			inFlightLogger.updateCheckpointId(checkpointId);
 		}
 	}
 
