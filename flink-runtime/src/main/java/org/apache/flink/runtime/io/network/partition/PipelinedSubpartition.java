@@ -18,6 +18,9 @@
 
 package org.apache.flink.runtime.io.network.partition;
 
+import org.apache.flink.runtime.inflightlogging.InFlightLog;
+import org.apache.flink.runtime.inflightlogging.SizedListIterator;
+import org.apache.flink.runtime.inflightlogging.SubpartitionInFlightLogger;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
@@ -30,6 +33,10 @@ import javax.annotation.Nullable;
 import javax.annotation.concurrent.GuardedBy;
 
 import java.io.IOException;
+import java.util.Deque;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
@@ -56,8 +63,36 @@ class PipelinedSubpartition extends ResultSubpartition {
 	private volatile boolean isReleased;
 	// ------------------------------------------------------------------------
 
+	private InFlightLog inFlightLog;
+
+	private long nextCheckpointId;
+
+	/**
+	 * Access is also guarded by buffers lock
+	 * -1 represents not a checkpoint buffer
+	 */
+	private Deque<Long> checkpointIds;
+
+	private AtomicBoolean isPreparedToReplay;
+	private AtomicBoolean isReplaying;
+
+	private SizedListIterator<Buffer> replayIterator;
+
 	PipelinedSubpartition(int index, ResultPartition parent) {
 		super(index, parent);
+
+		this.inFlightLog = new SubpartitionInFlightLogger();
+		this.checkpointIds = new LinkedList<>();
+		this.nextCheckpointId = -1l;
+		this.isReplaying.set(false);
+	}
+
+	public void notifyCheckpointBarrier(long checkpointId){
+		this.nextCheckpointId = checkpointId;
+	}
+
+	public void notifyCheckpointComplete(long checkpointId){
+		this.inFlightLog.notifyCheckpointComplete(checkpointId);
 	}
 
 	@Override
@@ -96,6 +131,10 @@ class PipelinedSubpartition extends ResultSubpartition {
 			updateStatistics(bufferConsumer);
 			increaseBuffersInBacklog(bufferConsumer);
 
+			checkpointIds.push(nextCheckpointId);
+			//todo - possible issue if two checkpoints in a row
+			nextCheckpointId = -1;
+
 			if (finish) {
 				isFinished = true;
 				flush();
@@ -123,6 +162,8 @@ class PipelinedSubpartition extends ResultSubpartition {
 				buffer.close();
 			}
 			buffers.clear();
+
+
 
 			view = readView;
 			readView = null;
@@ -158,6 +199,36 @@ class PipelinedSubpartition extends ResultSubpartition {
 
 	@Nullable
 	BufferAndBacklog pollBuffer() {
+		while(isPreparedToReplay.get()); //wait
+
+		if(isReplaying.get())
+			return getReplayedBuffer();
+		else
+			return getBufferFromQueuedBufferConsumers();
+
+	}
+
+	private BufferAndBacklog getReplayedBuffer() {
+		Buffer buffer = replayIterator.next();
+		if(!replayIterator.hasNext())
+			isReplaying.set(false);
+		return new BufferAndBacklog(buffer,
+			replayIterator.hasNext() || isAvailableUnsafe(),
+			getBuffersInBacklog() + replayIterator.numberRemaining(),
+			_recoveryNextBufferIsEvent());
+	}
+
+	private boolean _recoveryNextBufferIsEvent() {
+		boolean isNextAnEvent;
+		if(replayIterator.hasNext()){
+			isNextAnEvent = !replayIterator.next().isBuffer();
+			replayIterator.previous(); //return to previous position
+		}else
+			isNextAnEvent = _nextBufferIsEvent();
+		return isNextAnEvent;
+	}
+
+	private BufferAndBacklog getBufferFromQueuedBufferConsumers() {
 		synchronized (buffers) {
 			Buffer buffer = null;
 
@@ -169,6 +240,8 @@ class PipelinedSubpartition extends ResultSubpartition {
 				BufferConsumer bufferConsumer = buffers.peek();
 
 				buffer = bufferConsumer.build();
+
+				logBuffer(buffer);
 
 				checkState(bufferConsumer.isFinished() || buffers.size() == 1,
 					"When there are multiple buffers, an unfinished bufferConsumer can not be at the head of the buffers queue.");
@@ -208,6 +281,15 @@ class PipelinedSubpartition extends ResultSubpartition {
 				getBuffersInBacklog(),
 				_nextBufferIsEvent());
 		}
+	}
+
+	private void logBuffer(Buffer buffer) {
+		long checkpointId = checkpointIds.pop();
+		boolean isCheckpoint = checkpointId != -1L;
+		if(isCheckpoint)
+			inFlightLog.logCheckpointBarrier(buffer, checkpointId);
+		else
+			inFlightLog.log(buffer);
 	}
 
 	boolean nextBufferIsEvent() {
@@ -321,5 +403,15 @@ class PipelinedSubpartition extends ResultSubpartition {
 
 		// We assume that only last buffer is not finished.
 		return Math.max(0, buffers.size() - 1);
+	}
+
+	public void prepareInFlightReplay(long checkpointId) {
+			isPreparedToReplay.set(true);			
+			replayIterator = inFlightLog.getInFlightFromCheckpoint(checkpointId);
+	}
+
+	public void startInFlightReplay(long checkpointId) {
+		isPreparedToReplay.set(false);
+		isReplaying.set(true);
 	}
 }
