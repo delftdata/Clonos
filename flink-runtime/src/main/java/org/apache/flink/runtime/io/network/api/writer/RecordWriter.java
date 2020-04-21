@@ -22,29 +22,20 @@ import org.apache.flink.core.io.IOReadableWritable;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.SimpleCounter;
 import org.apache.flink.runtime.event.AbstractEvent;
-import org.apache.flink.runtime.event.InFlightLogEvent;
-import org.apache.flink.runtime.event.InFlightLogPrepareEvent;
-import org.apache.flink.runtime.event.InFlightLogRequestEvent;
-import org.apache.flink.runtime.inflightlogging.InFlightLogger;
-import org.apache.flink.runtime.io.network.api.CheckpointBarrier;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
 import org.apache.flink.runtime.io.network.api.serialization.RecordSerializer;
 import org.apache.flink.runtime.io.network.api.serialization.SpanningRecordSerializer;
 import org.apache.flink.runtime.io.network.buffer.BufferBuilder;
 import org.apache.flink.runtime.io.network.buffer.BufferConsumer;
-import org.apache.flink.runtime.io.network.partition.ResultPartition;
 import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
-import org.apache.flink.runtime.plugable.SerializationDelegate;
 import org.apache.flink.util.XORShiftRandom;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.List;
 import java.util.Optional;
 import java.util.Random;
-import java.util.TreeSet;
 
 import static org.apache.flink.runtime.io.network.api.serialization.RecordSerializer.SerializationResult;
 import static org.apache.flink.util.Preconditions.checkState;
@@ -85,9 +76,6 @@ public class RecordWriter<T extends IOReadableWritable> {
 
 	private Counter numBytesOut = new SimpleCounter();
 
-	private final InFlightLogger inFlightLogger;
-
-	private boolean buffersCleared = false;
 
 	public RecordWriter(ResultPartitionWriter writer) {
 		this(writer, new RoundRobinChannelSelector<T>());
@@ -104,12 +92,6 @@ public class RecordWriter<T extends IOReadableWritable> {
 		this.channelSelector = channelSelector;
 
 		this.numChannels = writer.getNumberOfSubpartitions();
-
-		try {
-			this.inFlightLogger = new InFlightLogger(this.targetPartition, this.numChannels);
-		} catch (IOException e) {
-			throw new RuntimeException("Error while creating the RecordWriter.", e);
-		}
 
 		/*
 		 * The runtime exposes a channel abstraction for the produced results
@@ -152,9 +134,6 @@ public class RecordWriter<T extends IOReadableWritable> {
 
 		SerializationResult result = serializer.addRecord(record);
 
-		if (!inFlightLogger.replaying()) {
-			checkReplayInFlightLog();
-		}
 
 		while (result.isFullBuffer()) {
 			if (tryFinishCurrentBufferBuilder(targetChannel, serializer)) {
@@ -183,9 +162,6 @@ public class RecordWriter<T extends IOReadableWritable> {
 	public void broadcastEvent(AbstractEvent event) throws IOException, InterruptedException {
 		LOG.debug("{}: RecordWriter broadcast event {}.", targetPartition.getTaskName(), event);
 
-		if (event instanceof CheckpointBarrier) {
-			inFlightLogger.logCheckpointBarrier((CheckpointBarrier) event);
-		}
 
 		try (BufferConsumer eventBufferConsumer = EventSerializer.toBufferConsumer(event)) {
 			for (int targetChannel = 0; targetChannel < numChannels; targetChannel++) {
@@ -254,7 +230,6 @@ public class RecordWriter<T extends IOReadableWritable> {
 		bufferBuilders[targetChannel] = Optional.empty();
 
 		numBytesOut.inc(bufferBuilder.finish());
-		inFlightLogger.log(bufferBuilder, targetChannel);
 		serializer.clear();
 		return true;
 	}
@@ -274,167 +249,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 
 			LOG.debug("Close bufferbuilder {}.", bufferBuilder);
 			numBytesOut.inc(bufferBuilder.finish());
-			inFlightLogger.log(bufferBuilder, targetChannel);
 		}
 	}
 
-	public InFlightLogger getInFlightLogger() {
-		return inFlightLogger;
-	}
-
-	public void checkReplayInFlightLog() throws IOException, InterruptedException {
-		LOG.debug("Check for in-flight log request.");
-
-		if (downstreamFailed() || inFlightLogPrepareSignalled()) {
-			InFlightLogPrepareEvent inFlightLogPrepareEvent = getInFlightLogPrepareEvent();
-			LOG.info("{} has been signalled. Ack it.", inFlightLogPrepareEvent);
-			int subpartitionIndex = inFlightLogPrepareEvent.getSubpartitionIndex();
-			long downstreamCheckpointId = inFlightLogPrepareEvent.getCheckpointId();
-			if (targetPartition instanceof ResultPartition) {
-				((ResultPartition) targetPartition).ackInFlightLogPrepareRequest(subpartitionIndex);
-			}
-
-			// Clear the state
-			RecordSerializer<T> serializer = serializers[subpartitionIndex];
-			if (!buffersCleared) {
-				LOG.debug("Close buffer builder.");
-				closeBufferBuilder(subpartitionIndex);
-				LOG.debug("Clear serializer {}.", serializer);
-				serializer.clear();
-				LOG.debug("Prune internal state (dataBuffer) of serializer {}.", serializer);
-				serializer.prune();
-				if (targetPartition instanceof ResultPartition) {
-					ResultPartition tp = (ResultPartition) targetPartition;
-					LOG.debug("Release buffers of partition {} index {}.", tp, subpartitionIndex);
-					tp.releaseBuffers(subpartitionIndex);
-				}
-				LOG.debug("State of serializer {}.", serializer);
-				buffersCleared = true;
-			}
-
-			// Wait for replay signal (state restoring downstream)
-			if (replaySignalFailed(inFlightLogPrepareEvent)) {
-				return;
-			}
-
-			int replayCounter = 0;
-			int totalReplayCounter = 0;
-			TreeSet<Long> checkpointIdsToReplay = inFlightLogger.getCheckpointIdsToReplay(downstreamCheckpointId);
-			LOG.info("Received {} checkpoint ids to replay buffers for.", checkpointIdsToReplay.size());
-
-			for (long checkpointId : checkpointIdsToReplay) {
-				LOG.debug("Start to replay buffers for checkpoint {}.", checkpointId);
-				List<BufferBuilder> bufferBuilders = inFlightLogger.getReplayLog(subpartitionIndex, checkpointId);
-				for (BufferBuilder bufferBuilder : bufferBuilders) {
-					LOG.debug("{}: Replay buffer at pos {}: {} of task {} for checkpoint {}.", inFlightLogger, replayCounter, bufferBuilder, ((ResultPartition) targetPartition).getTaskName(), checkpointId);
-					targetPartition.addBufferConsumer(bufferBuilder.createBufferConsumer(), subpartitionIndex);
-					replayCounter++;
-					totalReplayCounter++;
-				}
-
-				LOG.info("Replaying {} buffers for checkpoint {} completed.", replayCounter, checkpointId);
-				replayCounter = 0;
-
-				CheckpointBarrier checkpointBarrier = inFlightLogger.getCheckpointBarrier(subpartitionIndex, checkpointId);
-				if (checkpointBarrier != null) {
-					LOG.info("Replay {}.", checkpointBarrier);
-					emitEvent(checkpointBarrier, subpartitionIndex);
-				}
-			}
-			inFlightLogger.setReplaying(false);
-
-			LOG.info("Replaying {} buffers completed. Flush buffers and check whether there is another in-flight log request.", totalReplayCounter);
-
-			// If flushing each record is disabled,
-			// flush the accumulated in-flight log records.
-			if (!flushAlways) {
-				targetPartition.flush(subpartitionIndex);
-			}
-
-			checkReplayInFlightLog();
-		}
-		buffersCleared = false;
-	}
-
-	private boolean inFlightLogRequestSignalled() throws IOException {
-		if (targetPartition instanceof ResultPartition) {
-			ResultPartition targetResultPartition = (ResultPartition) targetPartition;
-			return targetResultPartition.inFlightLogRequestSignalled();
-		} else {
-			throw new IOException("Unable to check whether in-flight log request is received for partition of type " + targetPartition + ".");
-		}
-	}
-
-	private boolean downstreamFailed() throws IOException, InterruptedException {
-		if (targetPartition instanceof ResultPartition &&
-				((ResultPartition) targetPartition).downstreamFailed()) {
-			LOG.info("Downstream task of {} failed.", ((ResultPartition) targetPartition).getTaskName());
-			int i = 0;
-			while (!inFlightLogPrepareSignalled() && i < 100) {
-				try {
-					Thread.sleep(10);
-				} catch (InterruptedException e) {
-					Thread.currentThread().interrupt();
-				}
-				i++;
-			}
-
-			if (i == 100) {
-				LOG.warn("In-flight log prepare request delayed more than 1 second. Aborting.");
-				return false;
-			}
-			return true;
-		}
-		return false;
-	}
-
-	private boolean inFlightLogPrepareSignalled() throws IOException {
-		if (targetPartition instanceof ResultPartition) {
-			ResultPartition targetResultPartition = (ResultPartition) targetPartition;
-			return targetResultPartition.inFlightLogPrepareSignalled();
-		} else {
-			throw new IOException("Unable to check whether in-flight log prepare event is received for partition of type " + targetPartition + ".");
-		}
-	}
-
-	private InFlightLogRequestEvent getInFlightLogRequestEvent() throws IOException {
-		if (targetPartition instanceof ResultPartition) {
-			ResultPartition targetResultPartition = (ResultPartition) targetPartition;
-			return targetResultPartition.getInFlightLogRequestEvent();
-		} else {
-			throw new IOException("Unable to get in-flight log request event for partition of type " + targetPartition + ".");
-		}
-	}
-
-	private InFlightLogPrepareEvent getInFlightLogPrepareEvent() throws IOException {
-		if (targetPartition instanceof ResultPartition) {
-			ResultPartition targetResultPartition = (ResultPartition) targetPartition;
-			return targetResultPartition.getInFlightLogPrepareEvent();
-		} else {
-			throw new IOException("Unable to get in-flight log prepare event for partition of type " + targetPartition + ".");
-		}
-	}
-
-	private boolean replaySignalFailed(InFlightLogPrepareEvent inFlightLogPrepareEvent) throws IOException, InterruptedException {
-		int i = 0;
-		while (!inFlightLogRequestSignalled() && i < 100) {
-			Thread.sleep(10);
-			i++;
-		}
-
-		if (i == 100) {
-			LOG.warn("In-flight log request {} delayed more than 1 second. Aborting.", inFlightLogPrepareEvent);
-			return true;
-		}
-
-		InFlightLogRequestEvent inFlightLogRequestEvent = getInFlightLogRequestEvent();
-		LOG.debug("{} has been signalled.", inFlightLogRequestEvent);
-
-		if (!inFlightLogRequestEvent.equals(inFlightLogPrepareEvent)) {
-			LOG.warn("In-flight log prepare event {} not validated. Replay request {} received afterwards does not match.", inFlightLogPrepareEvent, inFlightLogRequestEvent);
-			return true;
-		}
-
-		return false;
-	}
 }
