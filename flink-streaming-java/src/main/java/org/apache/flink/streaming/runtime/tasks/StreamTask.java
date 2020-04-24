@@ -738,7 +738,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 				}
 				ResultPartition[] partitions = this.getEnvironment().getContainingTask().getProducedPartitions();
 				for(ResultPartition rp : partitions)
-					rp.notifyCheckpointBarrier(checkpointId);
+					rp.notifyCheckpointComplete(checkpointId);
 			}
 			else {
 				LOG.debug("Ignoring notification of complete checkpoint for not-running task {}", getName());

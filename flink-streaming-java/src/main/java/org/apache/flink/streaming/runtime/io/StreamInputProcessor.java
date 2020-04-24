@@ -266,12 +266,6 @@ public class StreamInputProcessor<IN> {
 		barrierHandler.cleanup();
 	}
 
-	private void checkReplayInFlightLog() throws Exception {
-		LOG.debug("{}: Check in-flight log for replay ({} recordWriterOutputs).", taskName, recordWriterOutputs.length);
-		for (RecordWriterOutput output : recordWriterOutputs) {
-			output.checkReplayInFlightLog();
-		}
-	}
 
 	private class ForwardingValveOutputHandler implements StatusWatermarkValve.ValveOutputHandler {
 		private final OneInputStreamOperator<IN, ?> operator;
