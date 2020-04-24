@@ -80,4 +80,14 @@ public class RecordOrEventCollectingResultPartitionWriter<T> extends AbstractCol
 	public String getTaskName() {
 		return null;
 	}
+
+	@Override
+	public void notifyCheckpointBarrier(long checkpointId) {
+
+	}
+
+	@Override
+	public void notifyCheckpointComplete(long checkpointId) {
+
+	}
 }
