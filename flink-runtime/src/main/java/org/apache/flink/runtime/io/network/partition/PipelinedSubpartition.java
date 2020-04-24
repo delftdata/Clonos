@@ -72,7 +72,7 @@ class PipelinedSubpartition extends ResultSubpartition {
 
 	private InFlightLog inFlightLog;
 
-	private AtomicLong nextCheckpointId;
+	private long nextCheckpointId;
 
 	/**
 	 * Access is also guarded by buffers lock
@@ -81,8 +81,8 @@ class PipelinedSubpartition extends ResultSubpartition {
 	@GuardedBy("buffers")
 	private Deque<Long> checkpointIds;
 
-	private AtomicBoolean isPreparingToReplay;
-	private AtomicBoolean isReplaying;
+	private boolean isPreparingToReplay;
+	private boolean isReplaying;
 
 	private SizedListIterator<Buffer> replayIterator;
 
@@ -91,14 +91,14 @@ class PipelinedSubpartition extends ResultSubpartition {
 
 		this.inFlightLog = new SubpartitionInFlightLogger();
 		this.checkpointIds = new LinkedList<>();
-		this.nextCheckpointId = new AtomicLong(-1L);
-		this.isPreparingToReplay = new AtomicBoolean(false);
-		this.isReplaying = new AtomicBoolean(false);
+		this.nextCheckpointId = -1L;
+		this.isPreparingToReplay = false;
+		this.isReplaying = false;
 	}
 
 	public void notifyCheckpointBarrier(long checkpointId) {
 		LOG.debug("PipelinedSubpartition notified of checkpoint {} barrier", checkpointId);
-		this.nextCheckpointId.set(checkpointId);
+		this.nextCheckpointId = checkpointId;
 	}
 
 	public void notifyCheckpointComplete(long checkpointId) {
@@ -142,9 +142,8 @@ class PipelinedSubpartition extends ResultSubpartition {
 			updateStatistics(bufferConsumer);
 			increaseBuffersInBacklog(bufferConsumer);
 
-			long toMarkwith = nextCheckpointId.get();
-			checkpointIds.add(nextCheckpointId.getAndSet(-1L));
-			LOG.debug("Received a BufferConsumer, marking it with checkpointId {}\n\tbuffers: {}\n\tcheckpo: {}",toMarkwith, "[" + buffers.stream().map(x->"*").collect(Collectors.joining(", ")) + "]", "[" + checkpointIds.stream().map(x->x+"").collect(Collectors.joining(", ") )+ "]");
+			checkpointIds.add(nextCheckpointId);
+			nextCheckpointId = -1;
 
 
 			if (finish) {
@@ -211,11 +210,11 @@ class PipelinedSubpartition extends ResultSubpartition {
 
 	@Nullable
 	BufferAndBacklog pollBuffer() {
-		while (isPreparingToReplay.get()){
+		while (isPreparingToReplay){
 			LOG.debug("Blocked waiting for Start Replay signal");
 		}
 
-		if (isReplaying.get()) {
+		if (isReplaying) {
 			LOG.debug("We are replaying, get inflight logs next buffer");
 			return getReplayedBuffer();
 		} else {
@@ -229,7 +228,7 @@ class PipelinedSubpartition extends ResultSubpartition {
 			Buffer buffer = replayIterator.next();
 			if (!replayIterator.hasNext()) {
 				replayIterator = null;
-				isReplaying.set(false);
+				isReplaying = false;
 			}
 			return new BufferAndBacklog(buffer,
 				(replayIterator != null && replayIterator.hasNext()) || isAvailableUnsafe(),
@@ -431,7 +430,7 @@ class PipelinedSubpartition extends ResultSubpartition {
 	}
 
 	public void prepareInFlightReplay(long checkpointId) {
-		isPreparingToReplay.set(true);
+		isPreparingToReplay = true;
 		LOG.debug("Prepare replay signal");
 		replayIterator = inFlightLog.getInFlightFromCheckpoint(checkpointId);
 		LOG.debug("Prepare replay signal, for checkpoint id {}, buffers to replay {}", checkpointId, replayIterator.numberRemaining());
@@ -439,18 +438,18 @@ class PipelinedSubpartition extends ResultSubpartition {
 	}
 
 	public void startInFlightReplay(long checkpointId) {
-		while(!isPreparingToReplay.get()){
+		while(!isPreparingToReplay){
 			LOG.debug("Spinning waiting for prepareInFlightReplay Signal");
 		}
 		LOG.debug("Start replay signal");
 		//todo check match on checkpointid
 		if(!replayIterator.hasNext()) {
 			LOG.debug("ReplayIterator does not have next. {}", replayIterator.toString());
-			isReplaying.set(false);
+			isReplaying = false;
 		}
 		else
-			isReplaying.set(true);
+			isReplaying = true;
 
-		isPreparingToReplay.set(false);
+		isPreparingToReplay = false;
 	}
 }
