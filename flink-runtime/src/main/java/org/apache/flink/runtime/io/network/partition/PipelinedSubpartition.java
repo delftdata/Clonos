@@ -1,7 +1,7 @@
 /*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
- * distributed with this work for additional information
+ * distributed with this work for additional debugrmation
  * regarding copyright ownership.  The ASF licenses this file
  * to you under the Apache License, Version 2.0 (the
  * "License"); you may not use this file except in compliance
@@ -18,6 +18,9 @@
 
 package org.apache.flink.runtime.io.network.partition;
 
+import org.apache.flink.runtime.inflightlogging.InFlightLog;
+import org.apache.flink.runtime.inflightlogging.SizedListIterator;
+import org.apache.flink.runtime.inflightlogging.SubpartitionInFlightLogger;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
@@ -30,6 +33,11 @@ import javax.annotation.Nullable;
 import javax.annotation.concurrent.GuardedBy;
 
 import java.io.IOException;
+import java.util.Deque;
+import java.util.LinkedList;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
@@ -43,21 +51,59 @@ class PipelinedSubpartition extends ResultSubpartition {
 
 	// ------------------------------------------------------------------------
 
-	/** The read view to consume this subpartition. */
+	/**
+	 * The read view to consume this subpartition.
+	 */
 	private PipelinedSubpartitionView readView;
 
-	/** Flag indicating whether the subpartition has been finished. */
+	/**
+	 * Flag indicating whether the subpartition has been finished.
+	 */
 	private boolean isFinished;
 
 	@GuardedBy("buffers")
 	private boolean flushRequested;
 
-	/** Flag indicating whether the subpartition has been released. */
+	/**
+	 * Flag indicating whether the subpartition has been released.
+	 */
 	private volatile boolean isReleased;
 	// ------------------------------------------------------------------------
 
+	private InFlightLog inFlightLog;
+
+	private long nextCheckpointId;
+
+	/**
+	 * Access is also guarded by buffers lock
+	 * -1 represents not a checkpoint buffer
+	 */
+	@GuardedBy("buffers")
+	private Deque<Long> checkpointIds;
+
+	private boolean isPreparingToReplay;
+	private boolean isReplaying;
+
+	private SizedListIterator<Buffer> replayIterator;
+
 	PipelinedSubpartition(int index, ResultPartition parent) {
 		super(index, parent);
+
+		this.inFlightLog = new SubpartitionInFlightLogger();
+		this.checkpointIds = new LinkedList<>();
+		this.nextCheckpointId = -1L;
+		this.isPreparingToReplay = false;
+		this.isReplaying = false;
+	}
+
+	public void notifyCheckpointBarrier(long checkpointId) {
+		LOG.debug("PipelinedSubpartition notified of checkpoint {} barrier", checkpointId);
+		this.nextCheckpointId = checkpointId;
+	}
+
+	public void notifyCheckpointComplete(long checkpointId) {
+		LOG.debug("PipelinedSubpartition notified of checkpoint {} completion", checkpointId);
+		this.inFlightLog.notifyCheckpointComplete(checkpointId);
 	}
 
 	@Override
@@ -96,11 +142,14 @@ class PipelinedSubpartition extends ResultSubpartition {
 			updateStatistics(bufferConsumer);
 			increaseBuffersInBacklog(bufferConsumer);
 
+			checkpointIds.add(nextCheckpointId);
+			nextCheckpointId = -1;
+
+
 			if (finish) {
 				isFinished = true;
 				flush();
-			}
-			else {
+			} else {
 				maybeNotifyDataAvailable();
 			}
 		}
@@ -123,6 +172,8 @@ class PipelinedSubpartition extends ResultSubpartition {
 				buffer.close();
 			}
 			buffers.clear();
+			checkpointIds.clear();
+
 
 			view = readView;
 			readView = null;
@@ -147,6 +198,7 @@ class PipelinedSubpartition extends ResultSubpartition {
 				buffer.close();
 			}
 			buffers.clear();
+			checkpointIds.clear();
 			resetBuffersInBacklog();
 			LOG.debug("Released buffers of {}. Now {} buffers.", this, buffers.size());
 		}
@@ -158,8 +210,47 @@ class PipelinedSubpartition extends ResultSubpartition {
 
 	@Nullable
 	BufferAndBacklog pollBuffer() {
+		while (isPreparingToReplay){
+			LOG.debug("Blocked waiting for Start Replay signal");
+		}
+
+		if (isReplaying) {
+			LOG.debug("We are replaying, get inflight logs next buffer");
+			return getReplayedBuffer();
+		} else {
+			return getBufferFromQueuedBufferConsumers();
+		}
+
+	}
+
+	private BufferAndBacklog getReplayedBuffer() {
+		synchronized (buffers) {
+			Buffer buffer = replayIterator.next();
+			if (!replayIterator.hasNext()) {
+				replayIterator = null;
+				isReplaying = false;
+			}
+			return new BufferAndBacklog(buffer,
+				(replayIterator != null && replayIterator.hasNext()) || isAvailableUnsafe(),
+				getBuffersInBacklog() + (replayIterator != null ? replayIterator.numberRemaining() : 0),
+				_recoveryNextBufferIsEvent());
+		}
+	}
+
+	private boolean _recoveryNextBufferIsEvent() {
+		boolean isNextAnEvent;
+		if (replayIterator != null && replayIterator.hasNext()) {
+			isNextAnEvent = !replayIterator.next().isBuffer();
+			replayIterator.previous(); //return to previous position
+		} else
+			isNextAnEvent = _nextBufferIsEvent();
+		return isNextAnEvent;
+	}
+
+	private BufferAndBacklog getBufferFromQueuedBufferConsumers() {
 		synchronized (buffers) {
 			Buffer buffer = null;
+			long checkpointId = 0;
 
 			if (buffers.isEmpty()) {
 				flushRequested = false;
@@ -167,8 +258,10 @@ class PipelinedSubpartition extends ResultSubpartition {
 
 			while (!buffers.isEmpty()) {
 				BufferConsumer bufferConsumer = buffers.peek();
+				checkpointId = checkpointIds.peek();
 
 				buffer = bufferConsumer.build();
+
 
 				checkState(bufferConsumer.isFinished() || buffers.size() == 1,
 					"When there are multiple buffers, an unfinished bufferConsumer can not be at the head of the buffers queue.");
@@ -180,6 +273,7 @@ class PipelinedSubpartition extends ResultSubpartition {
 
 				if (bufferConsumer.isFinished()) {
 					buffers.pop().close();
+					checkpointIds.pop();
 					decreaseBuffersInBacklogUnsafe(bufferConsumer.isBuffer());
 				}
 
@@ -197,7 +291,11 @@ class PipelinedSubpartition extends ResultSubpartition {
 				return null;
 			}
 
+
+			LOG.debug("Done getting buffer from queue\n\tbuffers: {}\n\tcheckpo: {}", "[" + buffers.stream().map(x->"*").collect(Collectors.joining(", ")) + "]", "[" + checkpointIds.stream().map(x->x+"").collect(Collectors.joining(", ") )+ "]");
 			updateStatistics(buffer);
+			logBuffer(buffer, checkpointId);
+			LOG.debug("POST LOG\n\tbuffers: {}\n\tcheckpo: {}", "[" + buffers.stream().map(x->"*").collect(Collectors.joining(", ")) + "]", "[" + checkpointIds.stream().map(x->x+"").collect(Collectors.joining(", ") )+ "]");
 			// Do not report last remaining buffer on buffers as available to read (assuming it's unfinished).
 			// It will be reported for reading either on flush or when the number of buffers in the queue
 			// will be 2 or more.
@@ -208,6 +306,14 @@ class PipelinedSubpartition extends ResultSubpartition {
 				getBuffersInBacklog(),
 				_nextBufferIsEvent());
 		}
+	}
+
+	private void logBuffer(Buffer buffer, long checkpointId) {
+		boolean isCheckpoint = checkpointId != -1L;
+		if (isCheckpoint)
+			inFlightLog.logCheckpointBarrier(buffer, checkpointId);
+		else
+			inFlightLog.log(buffer);
 	}
 
 	boolean nextBufferIsEvent() {
@@ -240,15 +346,15 @@ class PipelinedSubpartition extends ResultSubpartition {
 			checkState(!isReleased);
 
 			if (readView == null) {
-				LOG.info("Creating read view for {} (index: {}) of partition {}.", this, index, parent.getPartitionId());
+				LOG.debug("Creating read view for {} (index: {}) of partition {}.", this, index, parent.getPartitionId());
 
 				readView = new PipelinedSubpartitionView(this, availabilityListener);
 			} else {
 				readView.setAvailabilityListener(availabilityListener);
-				LOG.info("(Re)using read view {} for {} (index: {}) of partition {}.", readView, this, index, parent.getPartitionId());
+				LOG.debug("(Re)using read view {} for {} (index: {}) of partition {}.", readView, this, index, parent.getPartitionId());
 			}
 
-			if (!buffers.isEmpty()) {
+			if (!buffers.isEmpty() || (replayIterator != null && replayIterator.numberRemaining() > 0)) {
 				notifyDataAvailable();
 			}
 		}
@@ -321,5 +427,29 @@ class PipelinedSubpartition extends ResultSubpartition {
 
 		// We assume that only last buffer is not finished.
 		return Math.max(0, buffers.size() - 1);
+	}
+
+	public void prepareInFlightReplay(long checkpointId) {
+		isPreparingToReplay = true;
+		LOG.debug("Prepare replay signal");
+		replayIterator = inFlightLog.getInFlightFromCheckpoint(checkpointId);
+		LOG.debug("Prepare replay signal, for checkpoint id {}, buffers to replay {}", checkpointId, replayIterator.numberRemaining());
+		parent.ackInFlightLogPrepareRequest(this.index);
+	}
+
+	public void startInFlightReplay(long checkpointId) {
+		while(!isPreparingToReplay){
+			LOG.debug("Spinning waiting for prepareInFlightReplay Signal");
+		}
+		LOG.debug("Start replay signal");
+		//todo check match on checkpointid
+		if(!replayIterator.hasNext()) {
+			LOG.debug("ReplayIterator does not have next. {}", replayIterator.toString());
+			isReplaying = false;
+		}
+		else
+			isReplaying = true;
+
+		isPreparingToReplay = false;
 	}
 }

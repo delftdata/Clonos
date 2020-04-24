@@ -87,6 +87,7 @@ public abstract class ResultSubpartition {
 		return parent.getFailureCause();
 	}
 
+
 	/**
 	 * Adds the given buffer.
 	 *
@@ -117,6 +118,9 @@ public abstract class ResultSubpartition {
 	abstract int releaseMemory() throws IOException;
 
 	abstract public boolean isReleased();
+
+	abstract public void notifyCheckpointBarrier(long checkpointId);
+	abstract public void notifyCheckpointComplete(long checkpointId);
 
 	/**
 	 * Gets the number of non-event buffers in this subpartition.

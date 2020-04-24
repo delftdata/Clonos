@@ -133,7 +133,7 @@ public class RpcTaskManagerGateway implements TaskManagerGateway {
 
 	@Override
 	public CompletableFuture<Acknowledge> ackInFlightLogPrepareRequest(ExecutionAttemptID executionAttemptID, IntermediateDataSetID intermediateDataSetId, ResultPartitionID resultPartitionId, Time timeout) {
-		LOG.info("Send ackInFlightLogPrepareRequest to TaskExecutor for attemptID {}, intermediateDataSetId {}, resultPartitionId {}.", executionAttemptID, intermediateDataSetId, resultPartitionId);
+		LOG.debug("Send ackInFlightLogPrepareRequest to TaskExecutor for attemptID {}, intermediateDataSetId {}, resultPartitionId {}.", executionAttemptID, intermediateDataSetId, resultPartitionId);
 		return taskExecutorGateway.ackInFlightLogPrepareRequest(executionAttemptID, intermediateDataSetId, resultPartitionId, timeout);
 	}
 

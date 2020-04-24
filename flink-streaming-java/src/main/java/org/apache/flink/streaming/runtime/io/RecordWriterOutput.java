@@ -177,4 +177,5 @@ public class RecordWriterOutput<OUT> implements OperatorChain.WatermarkGaugeExpo
 		return watermarkGauge;
 	}
 
+
 }

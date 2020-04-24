@@ -264,6 +264,7 @@ public class StreamInputProcessor<IN> {
 		barrierHandler.cleanup();
 	}
 
+
 	private class ForwardingValveOutputHandler implements StatusWatermarkValve.ValveOutputHandler {
 		private final OneInputStreamOperator<IN, ?> operator;
 		private final Object lock;

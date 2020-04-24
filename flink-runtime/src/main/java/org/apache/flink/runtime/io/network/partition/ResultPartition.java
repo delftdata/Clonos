@@ -104,10 +104,6 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 
 	private final ResultPartitionConsumableNotifier partitionConsumableNotifier;
 
-	private InFlightLogRequestEventListener inFlightLogRequestEventListener;
-
-	private InFlightLogPrepareEventListener inFlightLogPrepareEventListener;
-
 	private final AtomicBoolean downstreamFailed = new AtomicBoolean();
 
 	public final int numTargetKeyGroups;
@@ -188,6 +184,14 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 		LOG.debug("{}: Initialized {}", owningTaskName, this);
 	}
 
+	public void notifyInFlightLogPrepareEvent(InFlightLogPrepareEvent inFlightLogPrepareEvent) {
+		((PipelinedSubpartition)subpartitions[inFlightLogPrepareEvent.getSubpartitionIndex()]).prepareInFlightReplay(inFlightLogPrepareEvent.getCheckpointId());
+	}
+
+	public void notifyInFlightLogRequestEvent(InFlightLogRequestEvent inFlightLogRequestEvent) {
+		((PipelinedSubpartition)subpartitions[inFlightLogRequestEvent.getSubpartitionIndex()]).startInFlightReplay(inFlightLogRequestEvent.getCheckpointId());
+	}
+
 	/**
 	 * Registers a buffer pool with this result partition.
 	 * <p>
@@ -264,6 +268,18 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 		return owningTaskName;
 	}
 
+	@Override
+	public void notifyCheckpointBarrier(long checkpointId) {
+		for(ResultSubpartition sb : subpartitions)
+			sb.notifyCheckpointBarrier(checkpointId);
+	}
+
+	@Override
+	public void notifyCheckpointComplete(long checkpointId) {
+		for(ResultSubpartition sb : subpartitions)
+			sb.notifyCheckpointComplete(checkpointId);
+	}
+
 	public int getNumberOfQueuedBuffers() {
 		int totalBuffers = 0;
 
@@ -282,45 +298,6 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 	public ResultPartitionType getPartitionType() {
 		return partitionType;
 	}
-
-	public void setInFlightLogRequestEventListener(InFlightLogRequestEventListener iflrel) {
-		this.inFlightLogRequestEventListener = iflrel;
-	}
-
-	public void setInFlightLogPrepareEventListener(InFlightLogPrepareEventListener iflpel) {
-		this.inFlightLogPrepareEventListener = iflpel;
-	}
-
-	public boolean inFlightLogRequestSignalled() {
-		boolean signalled = false;
-		try {
-			signalled = inFlightLogRequestEventListener.inFlightLogSignalled();
-		} catch (NullPointerException e) {
-			LOG.error("Requested inFlightLogRequestEventListener, but none has been set for resultPartition {}. Caught exception: {}", this, e);
-		}
-		return signalled;
-	}
-
-	public boolean inFlightLogPrepareSignalled() {
-		boolean signalled = false;
-		try {
-			signalled = inFlightLogPrepareEventListener.inFlightLogSignalled();
-		} catch (NullPointerException e) {
-			LOG.error("Requested inFlightLogRequestEventListener, but none has been set for resultPartition {}. Caught exception: {}", this, e);
-		}
-		return signalled;
-	}
-
-	public InFlightLogRequestEvent getInFlightLogRequestEvent() {
-		InFlightLogRequestEvent iflre = (InFlightLogRequestEvent) inFlightLogRequestEventListener.getInFlightLogEvent();
-		return iflre;
-	}
-
-	public InFlightLogPrepareEvent getInFlightLogPrepareEvent() {
-		InFlightLogPrepareEvent iflpe = (InFlightLogPrepareEvent) inFlightLogPrepareEventListener.getInFlightLogEvent();
-		return iflpe;
-	}
-
 
 	// ------------------------------------------------------------------------
 
@@ -414,14 +391,9 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 		}
 	}
 
-	public void releaseBuffers(int index) {
-		subpartitions[index].releaseBuffers();
-	}
 
 	public void sendFailConsumerTrigger(int subpartitionIndex, Throwable cause) {
 		LOG.info("Task {} sends fail consumer trigger for result partition {} subpartition {} and release its buffers.", owningTaskName, partitionId, subpartitionIndex);
-		downstreamFailed.set(true);
-		releaseBuffers(subpartitionIndex);
 		partitionConsumableNotifier.requestFailConsumer(partitionId, subpartitionIndex, cause, taskActions);
 	}
 
@@ -457,10 +429,6 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 	@Override
 	public int getNumTargetKeyGroups() {
 		return numTargetKeyGroups;
-	}
-
-	public boolean downstreamFailed() {
-		return downstreamFailed.get();
 	}
 
 	/**
@@ -559,7 +527,7 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 	}
 
 	public void ackInFlightLogPrepareRequest(int subpartitionIndex) {
-		LOG.info("Ack inFlightLogPrepareRequest for subpartition {} of {}", subpartitionIndex, this);
+		LOG.debug("Ack inFlightLogPrepareRequest for subpartition {} of {}", subpartitionIndex, this);
 		partitionConsumableNotifier.ackInFlightLogPrepareRequest(partitionId, subpartitionIndex, taskActions);
 	}
 }

@@ -635,12 +635,10 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 	public CompletableFuture<Acknowledge> ackInFlightLogPrepareRequest(ExecutionAttemptID executionAttemptID, IntermediateDataSetID intermediateDataSetId, ResultPartitionID resultPartitionId, Time timeout) {
 		final Task task = taskSlotTable.getTask(executionAttemptID);
 
-		log.info("ackInFlightLogPrepareRequest to task {}.", task);
-
 		if (task != null) {
 			try {
 				final SingleInputGate singleInputGate = task.getInputGateById(intermediateDataSetId);
-				log.info("Deliver ack InFlightLogPrepareRequest to task {} SingleInputGate {}.", task, singleInputGate);
+				log.debug("Deliver ack InFlightLogPrepareRequest to task {} SingleInputGate {}.", task, singleInputGate);
 				CompletableFuture<Acknowledge> ackFuture = singleInputGate.ackInFlightLogPrepareRequest(resultPartitionId);
 				task.checkInputChannelConnectionsComplete();
 				return ackFuture;
@@ -677,7 +675,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 					getRpcService().execute(
 						() -> {
 							try {
-								log.info("Update input channel of task " + task);
+								log.debug("Update input channel of task " + task);
 								singleInputGate.updateInputChannel(partitionInfo.getInputChannelDeploymentDescriptor(), networkEnvironment, task.getMetricGroup().getIOMetricGroup());
 							} catch (IOException | InterruptedException e) {
 								log.error("Could not update input data location for task {}. Trying to fail task.", task.getTaskInfo().getTaskName(), e);

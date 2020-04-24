@@ -65,4 +65,8 @@ public interface ResultPartitionWriter {
 	 * Return the name of the task that owns the ResultPartition.
 	 */
 	String getTaskName();
+
+    void notifyCheckpointBarrier(long checkpointId);
+
+	void notifyCheckpointComplete(long checkpointId);
 }
