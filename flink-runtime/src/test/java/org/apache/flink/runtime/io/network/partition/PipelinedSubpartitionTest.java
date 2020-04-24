@@ -531,4 +531,41 @@ public class PipelinedSubpartitionTest extends SubpartitionTestBase {
 		assertEquals(2, partition.getTotalNumberOfBuffers());
 		assertEquals(0, partition.getTotalNumberOfBytes()); // buffer data is never consumed
 	}
+
+
+	@Test
+	public void testReplay() throws Exception {
+		PipelinedSubpartition partition = createSubpartition();
+
+		BufferConsumer buffer1 = createFilledBufferConsumer(100);
+		BufferConsumer buffer2 = createFilledBufferConsumer(200);
+		BufferConsumer chk1 = createFilledBufferConsumer(50);
+		BufferConsumer buffer3 = createFilledBufferConsumer(300);
+		BufferConsumer buffer4 = createFilledBufferConsumer(400);
+		BufferConsumer chk2 = createFilledBufferConsumer(50);
+		partition.add(buffer1);
+		partition.pollBuffer();
+		partition.add(buffer2);
+		partition.notifyCheckpointBarrier(1);
+		partition.add(chk1);
+		partition.add(buffer3);
+		partition.add(buffer4);
+		partition.pollBuffer();
+		partition.pollBuffer();
+		partition.notifyCheckpointComplete(1);
+		partition.notifyCheckpointBarrier(2);
+		partition.add(chk2);
+		partition.pollBuffer();
+		partition.pollBuffer();
+		partition.pollBuffer();
+		partition.prepareInFlightReplay(1);
+		partition.startInFlightReplay(1);
+		assertEquals(300, partition.pollBuffer().buffer().getSize());
+		assertEquals(400, partition.pollBuffer().buffer().getSize());
+		assertEquals(50, partition.pollBuffer().buffer().getSize());
+
+		//partition.notifyCheckpointComplete(1);
+		//partition.notifyCheckpointComplete(1);
+	}
+
 }
