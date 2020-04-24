@@ -1,7 +1,7 @@
 /*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
- * distributed with this work for additional information
+ * distributed with this work for additional debugrmation
  * regarding copyright ownership.  The ASF licenses this file
  * to you under the Apache License, Version 2.0 (the
  * "License"); you may not use this file except in compliance
@@ -97,12 +97,12 @@ class PipelinedSubpartition extends ResultSubpartition {
 	}
 
 	public void notifyCheckpointBarrier(long checkpointId) {
-		LOG.info("PipelinedSubpartition notified of checkpoint {} barrier", checkpointId);
+		LOG.debug("PipelinedSubpartition notified of checkpoint {} barrier", checkpointId);
 		this.nextCheckpointId.set(checkpointId);
 	}
 
 	public void notifyCheckpointComplete(long checkpointId) {
-		LOG.info("PipelinedSubpartition notified of checkpoint {} completion", checkpointId);
+		LOG.debug("PipelinedSubpartition notified of checkpoint {} completion", checkpointId);
 		this.inFlightLog.notifyCheckpointComplete(checkpointId);
 	}
 
@@ -144,7 +144,7 @@ class PipelinedSubpartition extends ResultSubpartition {
 
 			long toMarkwith = nextCheckpointId.get();
 			checkpointIds.add(nextCheckpointId.getAndSet(-1L));
-			LOG.info("Received a BufferConsumer, marking it with checkpointId {}\n\tbuffers: {}\n\tcheckpo: {}",toMarkwith, "[" + buffers.stream().map(x->"*").collect(Collectors.joining(", ")) + "]", "[" + checkpointIds.stream().map(x->x+"").collect(Collectors.joining(", ") )+ "]");
+			LOG.debug("Received a BufferConsumer, marking it with checkpointId {}\n\tbuffers: {}\n\tcheckpo: {}",toMarkwith, "[" + buffers.stream().map(x->"*").collect(Collectors.joining(", ")) + "]", "[" + checkpointIds.stream().map(x->x+"").collect(Collectors.joining(", ") )+ "]");
 
 
 			if (finish) {
@@ -212,11 +212,11 @@ class PipelinedSubpartition extends ResultSubpartition {
 	@Nullable
 	BufferAndBacklog pollBuffer() {
 		while (isPreparingToReplay.get()){
-			LOG.info("Blocked waiting for Start Replay signal");
+			LOG.debug("Blocked waiting for Start Replay signal");
 		}
 
 		if (isReplaying.get()) {
-			LOG.info("We are replaying, get inflight logs next buffer");
+			LOG.debug("We are replaying, get inflight logs next buffer");
 			return getReplayedBuffer();
 		} else {
 			return getBufferFromQueuedBufferConsumers();
@@ -293,10 +293,10 @@ class PipelinedSubpartition extends ResultSubpartition {
 			}
 
 
-			LOG.info("Done getting buffer from queue\n\tbuffers: {}\n\tcheckpo: {}", "[" + buffers.stream().map(x->"*").collect(Collectors.joining(", ")) + "]", "[" + checkpointIds.stream().map(x->x+"").collect(Collectors.joining(", ") )+ "]");
+			LOG.debug("Done getting buffer from queue\n\tbuffers: {}\n\tcheckpo: {}", "[" + buffers.stream().map(x->"*").collect(Collectors.joining(", ")) + "]", "[" + checkpointIds.stream().map(x->x+"").collect(Collectors.joining(", ") )+ "]");
 			updateStatistics(buffer);
 			logBuffer(buffer, checkpointId);
-			LOG.info("POST LOG\n\tbuffers: {}\n\tcheckpo: {}", "[" + buffers.stream().map(x->"*").collect(Collectors.joining(", ")) + "]", "[" + checkpointIds.stream().map(x->x+"").collect(Collectors.joining(", ") )+ "]");
+			LOG.debug("POST LOG\n\tbuffers: {}\n\tcheckpo: {}", "[" + buffers.stream().map(x->"*").collect(Collectors.joining(", ")) + "]", "[" + checkpointIds.stream().map(x->x+"").collect(Collectors.joining(", ") )+ "]");
 			// Do not report last remaining buffer on buffers as available to read (assuming it's unfinished).
 			// It will be reported for reading either on flush or when the number of buffers in the queue
 			// will be 2 or more.
@@ -432,20 +432,20 @@ class PipelinedSubpartition extends ResultSubpartition {
 
 	public void prepareInFlightReplay(long checkpointId) {
 		isPreparingToReplay.set(true);
-		LOG.info("Prepare replay signal");
+		LOG.debug("Prepare replay signal");
 		replayIterator = inFlightLog.getInFlightFromCheckpoint(checkpointId);
-		LOG.info("Prepare replay signal, for checkpoint id {}, buffers to replay {}", checkpointId, replayIterator.numberRemaining());
+		LOG.debug("Prepare replay signal, for checkpoint id {}, buffers to replay {}", checkpointId, replayIterator.numberRemaining());
 		parent.ackInFlightLogPrepareRequest(this.index);
 	}
 
 	public void startInFlightReplay(long checkpointId) {
 		while(!isPreparingToReplay.get()){
-			LOG.info("Spinning waiting for prepareInFlightReplay Signal");
+			LOG.debug("Spinning waiting for prepareInFlightReplay Signal");
 		}
-		LOG.info("Start replay signal");
+		LOG.debug("Start replay signal");
 		//todo check match on checkpointid
 		if(!replayIterator.hasNext()) {
-			LOG.info("ReplayIterator does not have next. {}", replayIterator.toString());
+			LOG.debug("ReplayIterator does not have next. {}", replayIterator.toString());
 			isReplaying.set(false);
 		}
 		else
