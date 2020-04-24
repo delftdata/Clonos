@@ -1,7 +1,7 @@
 /*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
- * distributed with this work for additional information
+ * distributed with this work for additional debugrmation
  * regarding copyright ownership.  The ASF licenses this file
  * to you under the Apache License, Version 2.0 (the
  * "License"); you may not use this file except in compliance
@@ -36,7 +36,7 @@ public class SubpartitionInFlightLogger implements InFlightLog {
 
 
 	public void log(Buffer buffer) {
-		LOG.info("Logged a new buffer for epoch {}", slicedLog.lastKey());
+		LOG.debug("Logged a new buffer for epoch {}", slicedLog.lastKey());
 		getCurrentSlice().add(buffer.retainBuffer());
 	}
 
@@ -51,7 +51,7 @@ public class SubpartitionInFlightLogger implements InFlightLog {
 
 	@Override
 	public void logCheckpointBarrier(Buffer buffer, long checkpointId) {
-		LOG.info("Logging a checkpoint barrier buffer with id {}", checkpointId);
+		LOG.debug("Logging a checkpoint barrier buffer with id {}", checkpointId);
 		getCurrentSlice().add(buffer.retainBuffer());
 		slicedLog.put(checkpointId, new LinkedList<>());
 	}
@@ -63,14 +63,14 @@ public class SubpartitionInFlightLogger implements InFlightLog {
 	@Override
 	public void notifyCheckpointComplete(long completedCheckpointId) {
 
-		LOG.info("Got notified of checkpoint {} completion\nCurrent log: {}", completedCheckpointId, representLogAsString(this.slicedLog));
+		LOG.debug("Got notified of checkpoint {} completion\nCurrent log: {}", completedCheckpointId, representLogAsString(this.slicedLog));
 		List<Long> toRemove = new LinkedList<>();
 
 		//keys are in ascending order
 		for (long epochId : slicedLog.keySet()) {
 			if (epochId < completedCheckpointId) {
 				toRemove.add(epochId);
-				LOG.info("Removing epoch {}", epochId);
+				LOG.debug("Removing epoch {}", epochId);
 			}
 		}
 
@@ -109,10 +109,10 @@ public class SubpartitionInFlightLogger implements InFlightLog {
 			this.startKey = lastCompletedCheckpointOfFailed;
 			this.currentKey = lastCompletedCheckpointOfFailed;
 			this.logToReplay = logToReplay.tailMap(lastCompletedCheckpointOfFailed);
-			LOG.info(" Getting iterator for checkpoint id {} with log state {} and sublog state {}", currentKey, representLogAsString(logToReplay), representLogAsString(this.logToReplay));
+			LOG.debug(" Getting iterator for checkpoint id {} with log state {} and sublog state {}", currentKey, representLogAsString(logToReplay), representLogAsString(this.logToReplay));
 			this.currentIterator = this.logToReplay.get(currentKey).listIterator();
 			numberOfBuffersLeft = this.logToReplay.values().stream().mapToInt(List::size).sum(); //add up the sizes
-			LOG.info("State of log: {}\nlog tailmap {}\nIterator creation {}: ", representLogAsString(logToReplay), representLogAsString(this.logToReplay), this.toString());
+			LOG.debug("State of log: {}\nlog tailmap {}\nIterator creation {}: ", representLogAsString(logToReplay), representLogAsString(this.logToReplay), this.toString());
 		}
 
 		private void advanceToNextNonEmptyIteratorIfNeeded() {
