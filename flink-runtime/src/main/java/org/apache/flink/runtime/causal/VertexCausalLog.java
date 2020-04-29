@@ -60,10 +60,4 @@ public interface VertexCausalLog extends CheckpointListener {
 	 */
 	void notifyCheckpointBarrier(long checkpointId);
 
-	/**
-	 * Notifies the log of a downstream failure. This resets the internal offsets of the log for that channel to the earliest non-completed epoch.
-	 * @param channel
-	 */
-	void notifyDownstreamFailure(int channel);
-
 }

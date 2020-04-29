@@ -122,13 +122,6 @@ public class CircularVertexCausalLog implements VertexCausalLog {
 	}
 
 	@Override
-	public void notifyDownstreamFailure(int channel) {
-		CheckpointOffset earliestNonCompletedEpoch = epochStartOffsets.get(0);
-		channelOffsets[channel] = new DownstreamChannelOffset(earliestNonCompletedEpoch);
-	}
-
-
-	@Override
 	public void notifyCheckpointComplete(long checkpointId) throws Exception {
 		CheckpointOffset top;
 		while (true) {
