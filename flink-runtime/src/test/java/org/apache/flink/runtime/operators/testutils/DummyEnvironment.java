@@ -242,6 +242,11 @@ public class DummyEnvironment implements Environment {
 		return null;
 	}
 
+	@Override
+	public int getNumberDirectDownstreamVertexes() {
+		return 0;
+	}
+
 	public void setTaskStateManager(TaskStateManager taskStateManager) {
 		this.taskStateManager = taskStateManager;
 	}

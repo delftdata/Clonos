@@ -90,6 +90,7 @@ public class RuntimeEnvironment implements Environment {
 
 	private final Task containingTask;
 	private Collection<VertexId> upstreamVertexIDs;
+	private int numberDirectDownstreamVertexes;
 
 	// ------------------------------------------------------------------------
 
@@ -100,6 +101,7 @@ public class RuntimeEnvironment implements Environment {
 		ExecutionConfig executionConfig,
 		VertexId vertexId,
 		Collection<VertexId> upstreamVertexIDs,
+		int numberDirectDownstreamVertexes,
 		TaskInfo taskInfo,
 		Configuration jobConfiguration,
 		Configuration taskConfiguration,
@@ -125,6 +127,7 @@ public class RuntimeEnvironment implements Environment {
 		this.executionId = checkNotNull(executionId);
 		this.vertexId = checkNotNull(vertexId);
 		this.upstreamVertexIDs = checkNotNull(upstreamVertexIDs);
+		this.numberDirectDownstreamVertexes = checkNotNull(numberDirectDownstreamVertexes);
 		this.taskInfo = checkNotNull(taskInfo);
 		this.executionConfig = checkNotNull(executionConfig);
 		this.jobConfiguration = checkNotNull(jobConfiguration);
@@ -272,6 +275,11 @@ public class RuntimeEnvironment implements Environment {
 	@Override
 	public Collection<VertexId> getUpstreamVertexIDs() {
 		return upstreamVertexIDs;
+	}
+
+	@Override
+	public int getNumberDirectDownstreamVertexes() {
+		return numberDirectDownstreamVertexes;
 	}
 
 	@Override

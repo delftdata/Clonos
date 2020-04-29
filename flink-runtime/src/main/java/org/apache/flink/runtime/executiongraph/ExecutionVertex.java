@@ -52,6 +52,7 @@ import javax.annotation.Nullable;
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
 
 import static org.apache.flink.runtime.execution.ExecutionState.FINISHED;
 import static org.apache.flink.runtime.execution.ExecutionState.RUNNING;
@@ -934,7 +935,8 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 
 		LOG.info("Calculating upstream vertices");
 		Collection<VertexId> upstreamVertices = this.jobVertex.getGraph().getUpstreamVertices(this.getJobvertexId());
-
+		//TODO: fix
+		int numberDirectDownstreamVertexes = (int) this.resultPartitions.values().stream().map(x -> x.getConsumers().stream().flatMap(List::stream).distinct().collect(Collectors.toList())).flatMap(List::stream).distinct().count();
 		return new TaskDeploymentDescriptor(
 			getJobId(),
 			serializedJobInformation,
@@ -948,7 +950,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			taskRestore,
 			producedPartitions,
 			consumedPartitions,
-			isStandby, upstreamVertices);
+			isStandby, upstreamVertices, numberDirectDownstreamVertexes);
 	}
 
 	public CompletableFuture<Void> addStandbyExecution() {

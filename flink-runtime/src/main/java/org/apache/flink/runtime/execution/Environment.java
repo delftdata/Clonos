@@ -226,4 +226,5 @@ public interface Environment {
 
 	Collection<VertexId> getUpstreamVertexIDs();
 
+	int getNumberDirectDownstreamVertexes();
 }

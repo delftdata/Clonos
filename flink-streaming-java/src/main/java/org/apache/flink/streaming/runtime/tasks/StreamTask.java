@@ -229,7 +229,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		super(environment);
 		this.vertexId = environment.getVertexId();
 		this.upstreamIDs = environment.getUpstreamVertexIDs();
-		int numDownstreamTasks = environment.getAllWriters().length;
+		int numDownstreamTasks = environment.getNumberDirectDownstreamVertexes();
 		LOG.info("Received vertexId {}", vertexId);
 		environment.getTaskInfo().getIndexOfThisSubtask();
 
@@ -728,6 +728,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 				operatorChain.prepareSnapshotPreBarrier(checkpointMetaData.getCheckpointId());
 
 				long checkpointId = checkpointMetaData.getCheckpointId();
+				causalLoggingManager.notifyCheckpointBarrier(checkpointId);
 				ResultPartition[] partitions = this.getEnvironment().getContainingTask().getProducedPartitions();
 				for(ResultPartition rp : partitions)
 					rp.notifyCheckpointBarrier(checkpointId);
@@ -787,6 +788,9 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 						operator.notifyCheckpointComplete(checkpointId);
 					}
 				}
+
+				causalLoggingManager.notifyCheckpointComplete(checkpointId);
+				//Notify InFlightLogger
 				ResultPartition[] partitions = this.getEnvironment().getContainingTask().getProducedPartitions();
 				for(ResultPartition rp : partitions)
 					rp.notifyCheckpointComplete(checkpointId);

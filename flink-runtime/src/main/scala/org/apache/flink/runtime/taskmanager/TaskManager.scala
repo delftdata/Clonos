@@ -1248,7 +1248,7 @@ class TaskManager(
         resultPartitionConsumableNotifier,
         partitionStateChecker,
         context.dispatcher,
-        tdd.getIsStandby, tdd.getUptreamVertices)
+        tdd.getIsStandby, tdd.getUptreamVertices,tdd.getNumberDirectDownstreamVertexes)
 
       log.info(s"Received task ${task.getTaskInfo.getTaskNameWithSubtasks()}")
 

@@ -507,7 +507,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 				resultPartitionConsumableNotifier,
 				partitionStateChecker,
 				getRpcService().getExecutor(),
-				tdd.getIsStandby(), tdd.getUptreamVertices());
+				tdd.getIsStandby(), tdd.getUptreamVertices(),tdd.getNumberDirectDownstreamVertexes());
 
 			log.info("Received task {}.", task.getTaskInfo().getTaskNameWithSubtasks());
 

@@ -270,6 +270,11 @@ public class MockEnvironment implements Environment, AutoCloseable {
 	}
 
 	@Override
+	public int getNumberDirectDownstreamVertexes() {
+		return 0;
+	}
+
+	@Override
 	public JobVertexID getJobVertexId() {
 		return jobVertexID;
 	}

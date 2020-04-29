@@ -283,6 +283,11 @@ public class StreamMockEnvironment implements Environment {
 	}
 
 	@Override
+	public int getNumberDirectDownstreamVertexes() {
+		return 0;
+	}
+
+	@Override
 	public JobVertexID getJobVertexId() {
 		return new JobVertexID(new byte[16]);
 	}

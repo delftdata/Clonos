@@ -152,6 +152,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 
 	private final VertexId vertexId;
 	private final Collection<VertexId> upstreamVertexIds;
+	private final int numberDirectDownstreamVertexes;
 
 	/**
 	 * TaskInfo object for this task.
@@ -357,7 +358,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 			taskManagerActions, inputSplitProvider, checkpointResponder,
 			blobService, libraryCache, fileCache, taskManagerConfig,
 			metricGroup, resultPartitionConsumableNotifier,
-			partitionProducerStateChecker, executor, false, null);
+			partitionProducerStateChecker, executor, false, null,0);
 	}
 
 	public Task(
@@ -394,7 +395,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 			taskManagerActions, inputSplitProvider, checkpointResponder,
 			blobService, libraryCache, fileCache, taskManagerConfig,
 			metricGroup, resultPartitionConsumableNotifier,
-			partitionProducerStateChecker, executor, isStandby, null);
+			partitionProducerStateChecker, executor, isStandby, null, 0);
 	}
 
 	public Task(
@@ -424,7 +425,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		ResultPartitionConsumableNotifier resultPartitionConsumableNotifier,
 		PartitionProducerStateChecker partitionProducerStateChecker,
 		Executor executor,
-		boolean isStandby, Collection<VertexId> upstreamVertices) {
+		boolean isStandby, Collection<VertexId> upstreamVertices, int numDirectDownstreamVertexes) {
 
 
 		Preconditions.checkNotNull(jobInformation);
@@ -448,9 +449,9 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		this.allocationId = Preconditions.checkNotNull(slotAllocationId);
 		this.vertexId = Preconditions.checkNotNull(vertexId);
 		this.upstreamVertexIds = Preconditions.checkNotNull(upstreamVertices);
+		this.numberDirectDownstreamVertexes =numDirectDownstreamVertexes;
 
 		this.isStandby = isStandby;
-		int numDownstreamTasks = resultPartitionDeploymentDescriptors.size();
 		if (this.isStandby) {
 			this.taskNameWithSubtask = taskInfo.getTaskNameWithSubtasks() + " (STANDBY)";
 		} else {
@@ -806,6 +807,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 				executionConfig,
 				vertexId,
 				upstreamVertexIds,
+				numberDirectDownstreamVertexes,
 				taskInfo,
 				jobConfiguration,
 				taskConfiguration,
