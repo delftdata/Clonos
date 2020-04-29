@@ -19,6 +19,7 @@ package org.apache.flink.runtime.causal;
 
 import org.junit.Test;
 
+import java.util.Arrays;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -92,10 +93,92 @@ public class VertexCausalLogTests {
 		assert (log.getNextDeterminantsForDownstream(1).equals(new VertexCausalLogDelta(trackedVertex, (test_sentence_small + test_sentence_small + test_sentence_small).getBytes(), 0)));
 		assert (log.getNextDeterminantsForDownstream(0).equals(new VertexCausalLogDelta(trackedVertex, test_sentence_small.getBytes(), test_sentence_small.getBytes().length * 2)));
 		assert (log.getNextDeterminantsForDownstream(2).equals(new VertexCausalLogDelta(trackedVertex, (test_sentence_small + test_sentence_small + test_sentence_small).getBytes(), 0)));
-
-
 	}
 
+	/**
+	 * Scenario:
+	 * 	   O
+	 *   /   \
+	 * O       O
+	 *   \   /
+	 *     O
+	 */
+	@Test
+	public void convergeReplicationTest() throws Exception {
+
+		VertexId trackedVertex = new VertexId((short) 0);
+
+		VertexCausalLog src = new CircularVertexCausalLog(2, trackedVertex);
+		VertexCausalLog mid0 = new CircularVertexCausalLog(1, trackedVertex);
+		VertexCausalLog mid1 = new CircularVertexCausalLog(1, trackedVertex);
+		VertexCausalLog sink = new CircularVertexCausalLog(0, trackedVertex);
+
+		src.appendDeterminants(test_sentence_small.getBytes());
+		src.notifyCheckpointBarrier(1);
+
+		VertexCausalLogDelta delta0 = src.getNextDeterminantsForDownstream(0);
+
+		mid0.processUpstreamVertexCausalLogDelta(delta0);
+		mid0.notifyCheckpointBarrier(1);
+
+		VertexCausalLogDelta delta1 = src.getNextDeterminantsForDownstream(1);
+		mid1.processUpstreamVertexCausalLogDelta(delta1);
+		mid1.notifyCheckpointBarrier(1);
+
+		VertexCausalLogDelta deltaSinkFrom0 = mid0.getNextDeterminantsForDownstream(0);
+		sink.processUpstreamVertexCausalLogDelta(deltaSinkFrom0);
+		VertexCausalLogDelta deltaSinkFrom1 = mid1.getNextDeterminantsForDownstream(0);
+		sink.processUpstreamVertexCausalLogDelta(deltaSinkFrom0);
+		sink.notifyCheckpointBarrier(1);
+
+		src.appendDeterminants(test_sentence_small.getBytes());
+
+		delta0 = src.getNextDeterminantsForDownstream(0);
+		mid0.processUpstreamVertexCausalLogDelta(delta0);
+
+		src.appendDeterminants(test_sentence_small.getBytes());
+
+		delta0 = src.getNextDeterminantsForDownstream(0);
+		mid0.processUpstreamVertexCausalLogDelta(delta0);
+
+		src.notifyCheckpointComplete(1);
+		mid0.notifyCheckpointComplete(1);
+		mid1.notifyCheckpointComplete(1);
+		sink.notifyCheckpointComplete(1);
+
+		delta1 = src.getNextDeterminantsForDownstream(1);
+		mid1.processUpstreamVertexCausalLogDelta(delta1);
+
+		deltaSinkFrom1 = mid1.getNextDeterminantsForDownstream(0);
+		sink.processUpstreamVertexCausalLogDelta(deltaSinkFrom1);
+
+		System.out.println(sink);
+
+		deltaSinkFrom0 = mid0.getNextDeterminantsForDownstream(0);
+		sink.processUpstreamVertexCausalLogDelta(deltaSinkFrom0);
+
+
+		System.out.println(src);
+		System.out.println(mid0);
+		System.out.println(mid1);
+		System.out.println(sink);
+
+		assert  (Arrays.equals(src.getDeterminants(), mid0.getDeterminants()));
+		assert  (Arrays.equals(src.getDeterminants(), mid1.getDeterminants()));
+		assert  (Arrays.equals(src.getDeterminants(), sink.getDeterminants()));
+	}
+
+
+	@Test
+	public void checkpointOnly() throws Exception {
+		VertexId trackedVertex = new VertexId((short) 0);
+		VertexCausalLog log = new CircularVertexCausalLog(2, trackedVertex);
+
+		log.notifyCheckpointBarrier(1);
+		log.notifyCheckpointBarrier(2);
+		log.notifyCheckpointComplete(1);
+		System.out.println(log);
+	}
 
 	@Test
 	public void correctOffsetTrackingTest() throws Exception {
