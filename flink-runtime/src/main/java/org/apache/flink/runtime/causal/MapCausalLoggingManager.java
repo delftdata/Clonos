@@ -33,8 +33,8 @@ public class MapCausalLoggingManager implements CausalLoggingManager {
 
 	private static final Logger LOG = LoggerFactory.getLogger(MapCausalLoggingManager.class);
 
-	private Map<VertexId, VertexCausalLog> determinantLogs;
 	private VertexId myVertexId;
+	private Map<VertexId, VertexCausalLog> determinantLogs;
 	private DeterminantEncodingStrategy determinantEncodingStrategy;
 
 	// Recovery fields
@@ -142,9 +142,11 @@ public class MapCausalLoggingManager implements CausalLoggingManager {
 		LOG.info("Getting deltas to send to downstream channel {}", channel);
 		List<VertexCausalLogDelta> results = new LinkedList<>();
 		for (VertexId key : this.determinantLogs.keySet()) {
+			LOG.info("Determinant log pre processing: {}", determinantLogs.get(key));
 			VertexCausalLogDelta vertexCausalLogDelta = determinantLogs.get(key).getNextDeterminantsForDownstream(channel);
 			if (vertexCausalLogDelta.rawDeterminants.length != 0)
 				results.add(vertexCausalLogDelta);
+			LOG.info("Determinant log post processing: {}", determinantLogs.get(key));
 		}
 		return results;
 	}
@@ -226,7 +228,8 @@ public class MapCausalLoggingManager implements CausalLoggingManager {
 
 		if(numProcessedDeterminantResponses == numDownstreamChannels) {//Received all responses, Unblock the task
 			LOG.info("We have received all DeterminantResponseEvents! Unblocking task and starting recovery!");
-			hasDeterminantsToRecoverFrom = true;
+			if(determinantsToRecoverFrom.hasRemaining())
+				hasDeterminantsToRecoverFrom = true;
 			unblockTaskFuture.complete(null);
 		}
 	}

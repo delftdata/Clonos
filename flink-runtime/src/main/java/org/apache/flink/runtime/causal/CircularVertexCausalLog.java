@@ -62,13 +62,13 @@ public class CircularVertexCausalLog implements VertexCausalLog {
 
 		this.vertexBeingLogged = vertexBeingLogged;
 
-		CheckpointOffset startCheckpointOffset = new CheckpointOffset(0l, 0);
-		epochStartOffsets.add(startCheckpointOffset);
+		CheckpointOffset startEpochOffset = new CheckpointOffset(0l, 0);
+		epochStartOffsets.add(startEpochOffset);
 
 		//initialized to 0s
 		channelOffsets = new DownstreamChannelOffset[numDownstreamChannels];
 		for (int i = 0; i < numDownstreamChannels; i++) {
-			channelOffsets[i] = new DownstreamChannelOffset(startCheckpointOffset); //Initialize all downstreams to be at 0
+			channelOffsets[i] = new DownstreamChannelOffset(startEpochOffset); //Initialize all downstreams to be at 0
 		}
 	}
 
@@ -90,7 +90,9 @@ public class CircularVertexCausalLog implements VertexCausalLog {
 
 	@Override
 	public void processUpstreamVertexCausalLogDelta(VertexCausalLogDelta vertexCausalLogDelta) {
-		int newDeterminantsLength = (vertexCausalLogDelta.offsetFromEpoch + vertexCausalLogDelta.rawDeterminants.length) - end;
+		//int newDeterminantsLength = vertexCausalLogDelta.offsetFromEpoch + vertexCausalLogDelta.rawDeterminants.length - end;
+
+		int newDeterminantsLength = (vertexCausalLogDelta.offsetFromEpoch + vertexCausalLogDelta.rawDeterminants.length) - logOffsetFromLatestEpoch();
 
 		while (!hasSpaceFor(newDeterminantsLength))
 			grow();
@@ -102,15 +104,19 @@ public class CircularVertexCausalLog implements VertexCausalLog {
 
 	}
 
+	public int logOffsetFromLatestEpoch() {
+		return end - getLatestEpochOffset().getOffset();
+	}
+
 
 	@Override
 	public void notifyCheckpointBarrier(long checkpointId) {
 		CheckpointOffset newOffset = new CheckpointOffset(checkpointId, end);
 		epochStartOffsets.add(newOffset);
-		for (DownstreamChannelOffset downstreamChannelOffset : channelOffsets) {
-			downstreamChannelOffset.setEpochStart(newOffset);
-			downstreamChannelOffset.setOffset(0);
-		}
+		//for (DownstreamChannelOffset downstreamChannelOffset : channelOffsets) {
+		//	downstreamChannelOffset.setEpochStart(newOffset);
+		//	downstreamChannelOffset.setOffset(0);
+		//}
 		//record current position, as all records pertaining to this checkpoint are going to be between end
 		// and next offsets end
 	}
@@ -141,18 +147,15 @@ public class CircularVertexCausalLog implements VertexCausalLog {
 
 	@Override
 	public VertexCausalLogDelta getNextDeterminantsForDownstream(int channel) {
-		int physicalOffset = getLatestEpochOffset().getOffset() + channelOffsets[channel].offset;
-		LOG.info("Get next determinants for downstream");
-		LOG.info("Latest Epoch offset: {}, channelOffset: {}", getLatestEpochOffset().getOffset(), channelOffsets[channel].offset);
-		LOG.info("Circ distance: {}", circularDistance(physicalOffset, end, array.length));
-		LOG.info("State of log: {}", this.toString());
-		byte[] toReturn = new byte[circularDistance(physicalOffset, end, array.length)];
+		int physicalOffsetForDownstream = channelOffsets[channel].epochStart.offset + channelOffsets[channel].offset;
+		byte[] toReturn = new byte[circularDistance(physicalOffsetForDownstream, end, array.length)];
 
-		circularArrayCopyOutOfLog(array, physicalOffset, end - physicalOffset, toReturn);
+		circularArrayCopyOutOfLog(array, physicalOffsetForDownstream, end - physicalOffsetForDownstream, toReturn);
 
 		int offsetToSend = channelOffsets[channel].offset;
 
-		channelOffsets[channel].setOffset(end - getLatestEpochOffset().getOffset()); //channel has all the latest determinants
+		channelOffsets[channel].setEpochStart(getLatestEpochOffset());
+		channelOffsets[channel].setOffset(logOffsetFromLatestEpoch()); //channel has all the latest determinants
 
 		return new VertexCausalLogDelta(vertexBeingLogged, toReturn, offsetToSend);
 	}
