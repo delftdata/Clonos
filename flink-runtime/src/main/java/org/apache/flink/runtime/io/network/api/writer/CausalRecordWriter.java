@@ -62,6 +62,7 @@ public class CausalRecordWriter<T extends IOReadableWritable> extends RecordWrit
 			super.sendToTarget(record, targetChannel);
 	}
 
+	@Override
 	public void broadcastEvent(AbstractEvent event) throws IOException, InterruptedException {
 		LOG.debug("{}: RecordWriter broadcast event {}.", targetPartition.getTaskName(), event);
 		for (int targetChannel = 0; targetChannel < numChannels; targetChannel++) {
@@ -69,7 +70,6 @@ public class CausalRecordWriter<T extends IOReadableWritable> extends RecordWrit
 				CheckpointBarrier toCopy = (CheckpointBarrier) event;
 				CheckpointBarrier copy = new CheckpointBarrier(toCopy.getId(), toCopy.getTimestamp(), toCopy.getCheckpointOptions());
 				causalLoggingManager.enrichWithDeltas(copy, targetChannel);
-				inFlightLogger.logCheckpointBarrier(targetChannel, copy);
 				emitEvent(copy, targetChannel);
 			} else {
 				emitEvent(event, targetChannel);
@@ -77,6 +77,7 @@ public class CausalRecordWriter<T extends IOReadableWritable> extends RecordWrit
 		}
 	}
 
+	@Override
 	public void emitEvent(AbstractEvent event, int targetChannel) throws IOException, InterruptedException {
 		LOG.debug("{}: RecordWriter replay {}.", targetPartition.getTaskName(), event);
 		if(!silenced) {

@@ -166,15 +166,8 @@ public class RecordWriter<T extends IOReadableWritable> {
 	public void broadcastEvent(AbstractEvent event) throws IOException, InterruptedException {
 		LOG.debug("{}: RecordWriter broadcast event {}.", targetPartition.getTaskName(), event);
 
-
-		try (BufferConsumer eventBufferConsumer = EventSerializer.toBufferConsumer(event)) {
-			for (int targetChannel = 0; targetChannel < numChannels; targetChannel++) {
-				RecordSerializer<T> serializer = serializers[targetChannel];
-
-				tryFinishCurrentBufferBuilder(targetChannel, serializer);
-
+		for (int targetChannel = 0; targetChannel < numChannels; targetChannel++)
 			emitEvent(event, targetChannel);
-		}
 	}
 
 	public void emitEvent(AbstractEvent event, int targetChannel) throws IOException, InterruptedException {
