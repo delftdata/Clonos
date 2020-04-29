@@ -398,15 +398,11 @@ public class TaskManagerServices {
 			throw new IllegalArgumentException("The given number of memory bytes (" + networkBuf
 				+ ") corresponds to more than MAX_INT pages.");
 		}
-		final long numNetInFlightBuffersLong = (numNetBuffersLong * 2)/ 3;
 
 		NetworkBufferPool networkBufferPool = new NetworkBufferPool(
-			(int) (numNetBuffersLong - numNetInFlightBuffersLong),
+			(int) (numNetBuffersLong),
 			segmentSize);
 
-		NetworkBufferPool inFlightNetworkBufferPool = new NetworkBufferPool(
-			(int) numNetInFlightBuffersLong,
-			segmentSize);
 
 		ConnectionManager connectionManager;
 		boolean enableCreditBased = false;
@@ -455,7 +451,6 @@ public class TaskManagerServices {
 		// we start the network first, to make sure it can allocate its buffers first
 		return new NetworkEnvironment(
 			networkBufferPool,
-			inFlightNetworkBufferPool,
 			connectionManager,
 			resultPartitionManager,
 			taskEventDispatcher,

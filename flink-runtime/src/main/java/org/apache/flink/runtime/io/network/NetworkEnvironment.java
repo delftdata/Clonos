@@ -58,8 +58,6 @@ public class NetworkEnvironment {
 
 	private final NetworkBufferPool networkBufferPool;
 
-	private final NetworkBufferPool inFlightNetworkBufferPool;
-
 	private final ConnectionManager connectionManager;
 
 	private final ResultPartitionManager resultPartitionManager;
@@ -105,40 +103,8 @@ public class NetworkEnvironment {
 			int networkBuffersPerChannel,
 			int extraNetworkBuffersPerGate,
 			boolean enableCreditBased) {
-		this(networkBufferPool,
-				null,
-				connectionManager,
-				resultPartitionManager,
-				taskEventDispatcher,
-				kvStateRegistry,
-				kvStateServer,
-				kvStateClientProxy,
-				defaultIOMode,
-				partitionRequestInitialBackoff,
-				partitionRequestMaxBackoff,
-				networkBuffersPerChannel,
-				extraNetworkBuffersPerGate,
-				enableCreditBased);
-	}
-
-	public NetworkEnvironment(
-			NetworkBufferPool networkBufferPool,
-			NetworkBufferPool inFlightNetworkBufferPool,
-			ConnectionManager connectionManager,
-			ResultPartitionManager resultPartitionManager,
-			TaskEventDispatcher taskEventDispatcher,
-			KvStateRegistry kvStateRegistry,
-			KvStateServer kvStateServer,
-			KvStateClientProxy kvStateClientProxy,
-			IOMode defaultIOMode,
-			int partitionRequestInitialBackoff,
-			int partitionRequestMaxBackoff,
-			int networkBuffersPerChannel,
-			int extraNetworkBuffersPerGate,
-			boolean enableCreditBased) {
 
 		this.networkBufferPool = checkNotNull(networkBufferPool);
-		this.inFlightNetworkBufferPool = inFlightNetworkBufferPool;
 		this.connectionManager = checkNotNull(connectionManager);
 		this.resultPartitionManager = checkNotNull(resultPartitionManager);
 		this.taskEventDispatcher = checkNotNull(taskEventDispatcher);
@@ -246,9 +212,6 @@ public class NetworkEnvironment {
 			bufferPool = networkBufferPool.createBufferPool(partition.getNumberOfSubpartitions(),
 				maxNumberOfMemorySegments);
 			partition.registerBufferPool(bufferPool);
-
-			// For in-flight log
-			partition.setNetworkBufferPool(inFlightNetworkBufferPool);
 
 			resultPartitionManager.registerResultPartition(partition);
 		} catch (Throwable t) {

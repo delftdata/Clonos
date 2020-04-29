@@ -19,8 +19,6 @@
 package org.apache.flink.runtime.io.network.partition;
 
 import org.apache.flink.api.common.JobID;
-import org.apache.flink.core.memory.MemorySegment;
-import org.apache.flink.runtime.causal.VertexCausalLogDelta;
 import org.apache.flink.runtime.event.*;
 import org.apache.flink.runtime.executiongraph.IntermediateResultPartition;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
@@ -30,7 +28,6 @@ import org.apache.flink.runtime.io.network.buffer.BufferConsumer;
 import org.apache.flink.runtime.io.network.buffer.BufferPool;
 import org.apache.flink.runtime.io.network.buffer.BufferPoolOwner;
 import org.apache.flink.runtime.io.network.buffer.BufferProvider;
-import org.apache.flink.runtime.io.network.buffer.NetworkBufferPool;
 import org.apache.flink.runtime.io.network.partition.consumer.LocalInputChannel;
 import org.apache.flink.runtime.io.network.partition.consumer.RemoteInputChannel;
 import org.apache.flink.runtime.jobgraph.DistributionPattern;
@@ -43,8 +40,6 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.List;
-import java.util.ArrayList;
 
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkElementIndex;
@@ -109,10 +104,6 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 	public final int numTargetKeyGroups;
 
 	private final boolean sendScheduleOrUpdateConsumersMessage;
-
-	private NetworkBufferPool networkBufferPool;
-
-	private int networkBuffersPerSubpartition;
 
 	// - Runtime state --------------------------------------------------------
 
@@ -213,33 +204,6 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 		if (!partitionType.hasBackPressure()) {
 			bufferPool.setBufferPoolOwner(this);
 		}
-	}
-
-	public void setNetworkBufferPool(NetworkBufferPool networkBufferPool) throws IOException {
-		checkState(this.networkBufferPool == null, "Bug in input gate setup logic: global buffer pool has" +
-			"already been set for this input gate.");
-
-		this.networkBufferPool = checkNotNull(networkBufferPool);
-	}
-
-	/**
-	 * Assign the exclusive buffers to ResultPartition directly for credit-based mode. The exclusive buffers will be used and maintained by the InFlightLogger.
-	 *
-	 */
-	public List<MemorySegment> assignExclusiveSegments(int numSegments) {
-		checkState(this.networkBufferPool != null, "Bug in ResultPartition: global buffer pool has" +
-			"not been set for this ResultPartition.");
-
-		LOG.debug("Request {} segments for InFlightLogger of {}.", numSegments, this);
-
-		List<MemorySegment> segments = new ArrayList<>();
-		try {
-			segments = networkBufferPool.requestMemorySegments(numSegments);
-		} catch (IOException e) {
-			LOG.warn("{}", e);
-		}
-
-		return segments;
 	}
 
 	public JobID getJobId() {
