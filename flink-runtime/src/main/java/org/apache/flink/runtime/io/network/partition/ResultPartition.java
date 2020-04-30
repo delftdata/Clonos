@@ -99,8 +99,6 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 
 	private final ResultPartitionConsumableNotifier partitionConsumableNotifier;
 
-	private final AtomicBoolean downstreamFailed = new AtomicBoolean();
-
 	public final int numTargetKeyGroups;
 
 	private final boolean sendScheduleOrUpdateConsumersMessage;
@@ -379,7 +377,6 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 		checkElementIndex(index, subpartitions.length, "Subpartition not found.");
 
 		ResultSubpartitionView readView = subpartitions[index].createReadView(availabilityListener);
-		downstreamFailed.set(false);
 
 		LOG.info("{}: Created/Using {} of {}", owningTaskName, readView, this);
 

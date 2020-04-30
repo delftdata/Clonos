@@ -17,17 +17,17 @@
  */
 package org.apache.flink.runtime.event;
 
-import org.apache.flink.runtime.causal.CausalLoggingManager;
+import org.apache.flink.runtime.causal.ICausalLoggingManager;
 import org.apache.flink.runtime.causal.DeterminantResponseEvent;
 import org.apache.flink.runtime.util.event.EventListener;
 
 public class DeterminantResponseEventListener implements EventListener<TaskEvent> {
 
 	private final ClassLoader userCodeClassLoader;
-	private final CausalLoggingManager causalLoggingManager;
+	private final ICausalLoggingManager causalLoggingManager;
 
 
-	public DeterminantResponseEventListener(ClassLoader userCodeClassLoader, CausalLoggingManager causalLoggingManager) {
+	public DeterminantResponseEventListener(ClassLoader userCodeClassLoader, ICausalLoggingManager causalLoggingManager) {
 		this.userCodeClassLoader = userCodeClassLoader;
 		this.causalLoggingManager = causalLoggingManager;
 	}

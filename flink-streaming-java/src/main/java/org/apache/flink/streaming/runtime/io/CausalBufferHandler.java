@@ -17,7 +17,7 @@
  */
 package org.apache.flink.streaming.runtime.io;
 
-import org.apache.flink.runtime.causal.CausalLoggingManager;
+import org.apache.flink.runtime.causal.ICausalLoggingManager;
 import org.apache.flink.runtime.causal.determinant.OrderDeterminant;
 import org.apache.flink.runtime.io.network.partition.consumer.BufferOrEvent;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
@@ -26,13 +26,15 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.ArrayDeque;
+import java.util.Arrays;
 import java.util.Deque;
+import java.util.stream.Collectors;
 
 public class CausalBufferHandler implements CheckpointBarrierHandler {
 
 	private static final Logger LOG = LoggerFactory.getLogger(CausalBufferHandler.class);
 
-	private CausalLoggingManager causalLoggingManager;
+	private ICausalLoggingManager causalLoggingManager;
 
 	private Deque<BufferOrEvent>[] bufferedBuffersPerChannel;
 
@@ -41,7 +43,7 @@ public class CausalBufferHandler implements CheckpointBarrierHandler {
 	//This is just to reduce the complexity of going over bufferedBuffersPerChannel
 	private int numUnprocessedBuffers;
 
-	public CausalBufferHandler(CausalLoggingManager causalLoggingManager, CheckpointBarrierHandler wrapped, int numInputChannels) {
+	public CausalBufferHandler(ICausalLoggingManager causalLoggingManager, CheckpointBarrierHandler wrapped, int numInputChannels) {
 		this.causalLoggingManager = causalLoggingManager;
 		this.wrapped = wrapped;
 		this.bufferedBuffersPerChannel = new Deque[numInputChannels];
@@ -61,7 +63,7 @@ public class CausalBufferHandler implements CheckpointBarrierHandler {
 				causalLoggingManager.startRecovery();
 			LOG.info("We are recovering! Fetching a determinant from the CausalLogManager");
 			OrderDeterminant determinant = causalLoggingManager.getRecoveryOrderDeterminant();
-			LOG.info("Determinant says {}!", determinant.asOrderDeterminant());
+			LOG.info("Determinant says {}!", determinant);
 			if (bufferedBuffersPerChannel[determinant.getChannel()].isEmpty())
 				toReturn = processUntilFindBufferForChannel(determinant.getChannel());
 			else
@@ -72,7 +74,8 @@ public class CausalBufferHandler implements CheckpointBarrierHandler {
 			}
 			LOG.info("We are not recovering!");
 			if (numUnprocessedBuffers != 0) {
-				LOG.info("Getting an unprocessed buffer from recovery!");
+				LOG.info("Getting an unprocessed buffer from recovery! Unprocessed buffers: {}, bufferedBuffers: {}", numUnprocessedBuffers,
+					"{" + Arrays.asList(bufferedBuffersPerChannel).stream().map(d -> "[" + d.size() + "]").collect(Collectors.joining(", ")) + "}");
 				toReturn = pickUnprocessedBuffer();
 			}else {
 				LOG.info("Getting a buffer from CheckpointBarrierHandler!");
@@ -98,7 +101,7 @@ public class CausalBufferHandler implements CheckpointBarrierHandler {
 		LOG.info("Found no buffered buffers for channel {}. Processing buffers until I find one", channel);
 		while(true){
 			BufferOrEvent newBufferOrEvent = wrapped.getNextNonBlocked();
-			LOG.info("Got a new buffer from channel");
+			LOG.info("Got a new buffer from channel {}", newBufferOrEvent.getChannelIndex());
 			//If this was a BoE for the channel we were looking for, return with it
 			if(newBufferOrEvent.getChannelIndex() == channel) {
 				LOG.info("It is from the expected channel, returning");

@@ -24,7 +24,6 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.SimpleCounter;
 import org.apache.flink.runtime.causal.*;
-import org.apache.flink.runtime.causal.determinant.OrderDeterminant;
 import org.apache.flink.runtime.event.AbstractEvent;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.network.api.DeterminantRequestEvent;
@@ -114,7 +113,7 @@ public class StreamInputProcessor<IN> {
 	private boolean isFinished;
 
 	// ----------- Causal Logging -----------------
-	private CausalLoggingManager causalLoggingManager;
+	private ICausalLoggingManager causalLoggingManager;
 	private InputGate inputGate;
 
 	@SuppressWarnings("unchecked")

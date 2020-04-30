@@ -18,7 +18,7 @@
 package org.apache.flink.streaming.runtime.io;
 
 import org.apache.flink.annotation.Internal;
-import org.apache.flink.runtime.causal.CausalLoggingManager;
+import org.apache.flink.runtime.causal.ICausalLoggingManager;
 import org.apache.flink.runtime.causal.VertexCausalLogDelta;
 import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
@@ -88,7 +88,7 @@ public class BarrierBuffer implements CheckpointBarrierHandler {
 	 * unlimited.
 	 */
 	private final long maxBufferedBytes;
-	private CausalLoggingManager causalLoggingManager;
+	private ICausalLoggingManager causalLoggingManager;
 
 	/**
 	 * The sequence of buffers/events that has been unblocked and must now be consumed before
@@ -167,7 +167,7 @@ public class BarrierBuffer implements CheckpointBarrierHandler {
 		this(inputGate, bufferBlocker, maxBufferedBytes, null);
 	}
 
-	public BarrierBuffer(InputGate inputGate, BufferBlocker bufferBlocker, long maxBufferedBytes, CausalLoggingManager causalLoggingManager) throws IOException {
+	public BarrierBuffer(InputGate inputGate, BufferBlocker bufferBlocker, long maxBufferedBytes, ICausalLoggingManager causalLoggingManager) throws IOException {
 		checkArgument(maxBufferedBytes == -1 || maxBufferedBytes > 0);
 
 		this.inputGate = inputGate;

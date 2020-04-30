@@ -23,7 +23,7 @@ import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.SimpleCounter;
-import org.apache.flink.runtime.causal.CausalLoggingManager;
+import org.apache.flink.runtime.causal.ICausalLoggingManager;
 import org.apache.flink.runtime.causal.VertexCausalLogDelta;
 import org.apache.flink.runtime.event.AbstractEvent;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
@@ -92,7 +92,7 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 
 	private final Object lock;
 
-	private final CausalLoggingManager causalLoggingManager;
+	private final ICausalLoggingManager causalLoggingManager;
 
 	// ---------------- Status and Watermark Valves ------------------
 

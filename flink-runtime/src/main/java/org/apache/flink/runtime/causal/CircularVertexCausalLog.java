@@ -44,7 +44,7 @@ public class CircularVertexCausalLog implements VertexCausalLog {
 
 	private int size;
 
-	private List<CheckpointOffset> epochStartOffsets;
+	private List<EpochStartOffset> epochStartOffsets;
 	private DownstreamChannelOffset[] channelOffsets;
 
 	private VertexId vertexBeingLogged;
@@ -62,7 +62,7 @@ public class CircularVertexCausalLog implements VertexCausalLog {
 
 		this.vertexBeingLogged = vertexBeingLogged;
 
-		CheckpointOffset startEpochOffset = new CheckpointOffset(0l, 0);
+		EpochStartOffset startEpochOffset = new EpochStartOffset(0l, 0);
 		epochStartOffsets.add(startEpochOffset);
 
 		//initialized to 0s
@@ -71,7 +71,6 @@ public class CircularVertexCausalLog implements VertexCausalLog {
 			channelOffsets[i] = new DownstreamChannelOffset(startEpochOffset); //Initialize all downstreams to be at 0
 		}
 	}
-
 
 	@Override
 	public byte[] getDeterminants() {
@@ -108,22 +107,15 @@ public class CircularVertexCausalLog implements VertexCausalLog {
 		return end - getLatestEpochOffset().getOffset();
 	}
 
-
 	@Override
 	public void notifyCheckpointBarrier(long checkpointId) {
-		CheckpointOffset newOffset = new CheckpointOffset(checkpointId, end);
+		EpochStartOffset newOffset = new EpochStartOffset(checkpointId, end);
 		epochStartOffsets.add(newOffset);
-		//for (DownstreamChannelOffset downstreamChannelOffset : channelOffsets) {
-		//	downstreamChannelOffset.setEpochStart(newOffset);
-		//	downstreamChannelOffset.setOffset(0);
-		//}
-		//record current position, as all records pertaining to this checkpoint are going to be between end
-		// and next offsets end
 	}
 
 	@Override
 	public void notifyCheckpointComplete(long checkpointId) throws Exception {
-		CheckpointOffset top;
+		EpochStartOffset top;
 		while (true) {
 			top = epochStartOffsets.get(0);
 
@@ -136,7 +128,6 @@ public class CircularVertexCausalLog implements VertexCausalLog {
 				break;
 		}
 	}
-
 
 	@Override
 	public VertexCausalLogDelta getNextDeterminantsForDownstream(int channel) {
@@ -160,12 +151,12 @@ public class CircularVertexCausalLog implements VertexCausalLog {
 			", start=" + start +
 			", end=" + end +
 			", size=" + size +
-			", offsets=[" + epochStartOffsets.stream().map(Objects::toString).collect(Collectors.toList()) +"]"+
+			", epochStartOffsets=[" + epochStartOffsets.stream().map(Objects::toString).collect(Collectors.toList()) +"]"+
 			", channelOffsets=" + Arrays.toString(channelOffsets) +
 			'}';
 	}
 
-	private CheckpointOffset getLatestEpochOffset() {
+	private EpochStartOffset getLatestEpochOffset() {
 		return epochStartOffsets.get(epochStartOffsets.size() - 1);
 	}
 
@@ -201,13 +192,12 @@ public class CircularVertexCausalLog implements VertexCausalLog {
 		end = size;
 
 		// Since we reset to 0, we need to move the offsets as well.
-		for (CheckpointOffset offset : epochStartOffsets) {
+		for (EpochStartOffset offset : epochStartOffsets) {
 			offset.setOffset((offset.offset + move) % array.length);
 		}
 
 		array = newArray;
 	}
-
 
 	/**
 	 * PRECONDITION: has enough space!
@@ -232,13 +222,13 @@ public class CircularVertexCausalLog implements VertexCausalLog {
 		return array.length - size >= toAdd;
 	}
 
-	private class CheckpointOffset {
+	private class EpochStartOffset {
 		//The checkpoint id that initiates this epoch
 		private long id;
 		//The physical offset in the circular log of the first element after the checkpoint
 		private int offset;
 
-		public CheckpointOffset(long id, int offset) {
+		public EpochStartOffset(long id, int offset) {
 			this.id = id;
 			this.offset = offset;
 		}
@@ -272,22 +262,22 @@ public class CircularVertexCausalLog implements VertexCausalLog {
 	 * Marks the next element to be read by the downstream consumer
 	 */
 	private class DownstreamChannelOffset {
-		// Refers to the checkpoint that starts the epoch the downstream is currently processing
-		private CheckpointOffset epochStart;
+		// Refers to the epoch that the downstream is currently in
+		private EpochStartOffset epochStart;
 
 		// The logical offset from that epoch
 		private int offset;
 
-		public DownstreamChannelOffset(CheckpointOffset epochStart) {
+		public DownstreamChannelOffset(EpochStartOffset epochStart) {
 			this.epochStart = epochStart;
 			this.offset = 0;
 		}
 
-		public CheckpointOffset getEpochStart() {
+		public EpochStartOffset getEpochStart() {
 			return epochStart;
 		}
 
-		public void setEpochStart(CheckpointOffset epochStart) {
+		public void setEpochStart(EpochStartOffset epochStart) {
 			this.epochStart = epochStart;
 		}
 

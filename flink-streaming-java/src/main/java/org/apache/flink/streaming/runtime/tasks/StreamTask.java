@@ -37,7 +37,6 @@ import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 import org.apache.flink.runtime.io.network.partition.ResultPartition;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
-import org.apache.flink.runtime.plugable.DeterminantCarryingSerializationDelegate;
 import org.apache.flink.runtime.plugable.SerializationDelegate;
 import org.apache.flink.runtime.state.*;
 import org.apache.flink.runtime.taskmanager.DispatcherThreadFactory;
@@ -199,7 +198,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 	private final Collection<VertexId> upstreamIDs;
 
-	private final CausalLoggingManager causalLoggingManager;
+	private final ICausalLoggingManager causalLoggingManager;
 
 	// ------------------------------------------------------------------------
 
@@ -249,7 +248,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			this.outputChannelConnectionsFuture = null;
 		}
 
-		this.causalLoggingManager = new MapCausalLoggingManager(vertexId, upstreamIDs,  numDownstreamTasks,this.outputChannelConnectionsFuture);
+		this.causalLoggingManager = new CausalLoggingManager(vertexId, upstreamIDs,  numDownstreamTasks,this.outputChannelConnectionsFuture);
 
 		for(ResultPartition partition : environment.getContainingTask().getProducedPartitions()) {
 			DeterminantResponseEventListener edel = new DeterminantResponseEventListener(environment.getUserClassLoader(), causalLoggingManager);
@@ -700,7 +699,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		return getCausalLoggingManager() != null;
 	}
 
-	public CausalLoggingManager getCausalLoggingManager() {
+	public ICausalLoggingManager getCausalLoggingManager() {
 		return this.causalLoggingManager;
 	}
 
@@ -1305,7 +1304,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	@VisibleForTesting
 	public static <OUT> List<StreamRecordWriter<SerializationDelegate<StreamRecord<OUT>>>> createStreamRecordWriters(
 		StreamConfig configuration,
-		Environment environment, CausalLoggingManager causalLoggingManager) {
+		Environment environment, ICausalLoggingManager causalLoggingManager) {
 		List<StreamRecordWriter<SerializationDelegate<StreamRecord<OUT>>>> streamRecordWriters = new ArrayList<>();
 		List<StreamEdge> outEdgesInOrder = configuration.getOutEdgesInOrder(environment.getUserClassLoader());
 		Map<Integer, StreamConfig> chainedConfigs = configuration.getTransitiveChainedTaskConfigsWithSelf(environment.getUserClassLoader());
@@ -1329,7 +1328,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			int outputIndex,
 			Environment environment,
 			String taskName,
-			long bufferTimeout, CausalLoggingManager causalLoggingManager) {
+			long bufferTimeout, ICausalLoggingManager causalLoggingManager) {
 		@SuppressWarnings("unchecked")
 		StreamPartitioner<OUT> outputPartitioner = (StreamPartitioner<OUT>) edge.getPartitioner();
 

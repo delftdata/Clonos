@@ -17,7 +17,7 @@
 package org.apache.flink.runtime.io.network.api.writer;
 
 import org.apache.flink.core.io.IOReadableWritable;
-import org.apache.flink.runtime.causal.CausalLoggingManager;
+import org.apache.flink.runtime.causal.ICausalLoggingManager;
 import org.apache.flink.runtime.causal.DeterminantCarrier;
 import org.apache.flink.runtime.causal.RandomService;
 import org.apache.flink.runtime.causal.Silenceable;
@@ -33,7 +33,7 @@ import java.io.IOException;
 
 public class CausalRecordWriter<T extends IOReadableWritable> extends RecordWriter<T> implements Silenceable {
 
-	private CausalLoggingManager causalLoggingManager;
+	private ICausalLoggingManager causalLoggingManager;
 
 	private boolean silenced;
 
@@ -41,7 +41,7 @@ public class CausalRecordWriter<T extends IOReadableWritable> extends RecordWrit
 
 	private RandomService randomService;
 
-	public CausalRecordWriter(ResultPartitionWriter writer, ChannelSelector<T> channelSelector, boolean flushAlways, CausalLoggingManager causalLoggingManager) {
+	public CausalRecordWriter(ResultPartitionWriter writer, ChannelSelector<T> channelSelector, boolean flushAlways, ICausalLoggingManager causalLoggingManager) {
 		super(writer, channelSelector, flushAlways);
 		this.causalLoggingManager = causalLoggingManager;
 		this.randomService = causalLoggingManager.getRandomService();

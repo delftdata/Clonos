@@ -22,16 +22,16 @@ import java.util.Random;
 
 public class RandomService {
 
-	private CausalLoggingManager causalLoggingManager;
+	private ICausalLoggingManager causalLoggingManager;
 
 	private Random random;
 
 
-	public RandomService(CausalLoggingManager causalLoggingManager){
+	public RandomService(ICausalLoggingManager causalLoggingManager){
 		this(causalLoggingManager, System.currentTimeMillis());
 	}
 
-	public RandomService(CausalLoggingManager causalLoggingManager, long seed) {
+	public RandomService(ICausalLoggingManager causalLoggingManager, long seed) {
 		this.causalLoggingManager = causalLoggingManager;
 		this.random = new Random(seed);
 	}
