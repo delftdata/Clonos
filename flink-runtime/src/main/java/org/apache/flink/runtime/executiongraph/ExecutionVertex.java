@@ -689,6 +689,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 		priorExecutions.add(currentExecution);
 		currentExecution = firstStandbyExecution;
 
+		//send an RPC to switch execution to running
 		currentExecution.runStandbyExecution();
 
 		boolean updateConsumersOnFailover = true;
@@ -933,24 +934,19 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			serializedTaskInformation = new TaskDeploymentDescriptor.Offloaded<>(taskInformationOrBlobKey.right());
 		}
 
-		LOG.info("Calculating upstream vertices");
-		Collection<VertexId> upstreamVertices = this.jobVertex.getGraph().getUpstreamVertices(this.getJobvertexId());
-		//TODO: fix
-		int numberDirectDownstreamVertexes = (int) this.resultPartitions.values().stream().map(x -> x.getConsumers().stream().flatMap(List::stream).distinct().collect(Collectors.toList())).flatMap(List::stream).distinct().count();
 		return new TaskDeploymentDescriptor(
 			getJobId(),
 			serializedJobInformation,
 			serializedTaskInformation,
 			executionId,
 			targetSlot.getAllocationId(),
-			this.vertexId,
 			subTaskIndex,
 			attemptNumber,
 			targetSlot.getPhysicalSlotNumber(),
 			taskRestore,
 			producedPartitions,
 			consumedPartitions,
-			isStandby, upstreamVertices, numberDirectDownstreamVertexes);
+			isStandby);
 	}
 
 	public CompletableFuture<Void> addStandbyExecution() {

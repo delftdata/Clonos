@@ -153,7 +153,8 @@ public class ExecutionGraphBuilder {
 			jobGraph.getSerializedExecutionConfig(),
 			jobGraph.getJobConfiguration(),
 			jobGraph.getUserJarBlobKeys(),
-			jobGraph.getClasspaths());
+			jobGraph.getClasspaths(),
+			jobGraph.getVerticesSortedTopologicallyFromSources());
 
 		// create a new execution graph, if none exists so far
 		final ExecutionGraph executionGraph;

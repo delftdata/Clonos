@@ -22,12 +22,14 @@ import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.blob.PermanentBlobKey;
+import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.SerializedValue;
 
 import java.io.Serializable;
 import java.net.URL;
 import java.util.Collection;
+import java.util.List;
 
 /**
  * Container class for job information which is stored in the {@link ExecutionGraph}.
@@ -53,21 +55,24 @@ public class JobInformation implements Serializable {
 
 	/** URLs specifying the classpath to add to the class loader */
 	private final Collection<URL> requiredClasspathURLs;
+	private final List<JobVertex> topologicallySortedJobVertexes;
 
 
 	public JobInformation(
-			JobID jobId,
-			String jobName,
-			SerializedValue<ExecutionConfig> serializedExecutionConfig,
-			Configuration jobConfiguration,
-			Collection<PermanentBlobKey> requiredJarFileBlobKeys,
-			Collection<URL> requiredClasspathURLs) {
+		JobID jobId,
+		String jobName,
+		SerializedValue<ExecutionConfig> serializedExecutionConfig,
+		Configuration jobConfiguration,
+		Collection<PermanentBlobKey> requiredJarFileBlobKeys,
+		Collection<URL> requiredClasspathURLs,
+		List<JobVertex> topologicallySortedJobVertexes) {
 		this.jobId = Preconditions.checkNotNull(jobId);
 		this.jobName = Preconditions.checkNotNull(jobName);
 		this.serializedExecutionConfig = Preconditions.checkNotNull(serializedExecutionConfig);
 		this.jobConfiguration = Preconditions.checkNotNull(jobConfiguration);
 		this.requiredJarFileBlobKeys = Preconditions.checkNotNull(requiredJarFileBlobKeys);
 		this.requiredClasspathURLs = Preconditions.checkNotNull(requiredClasspathURLs);
+		this.topologicallySortedJobVertexes = topologicallySortedJobVertexes;
 	}
 
 	public JobID getJobId() {
@@ -94,7 +99,11 @@ public class JobInformation implements Serializable {
 		return requiredClasspathURLs;
 	}
 
-	// ------------------------------------------------------------------------
+	public List<JobVertex> getTopologicallySortedJobVertexes() {
+		return topologicallySortedJobVertexes;
+	}
+
+// ------------------------------------------------------------------------
 
 
 	@Override

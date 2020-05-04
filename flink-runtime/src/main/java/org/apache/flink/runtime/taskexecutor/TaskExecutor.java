@@ -485,7 +485,6 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 				taskInformation,
 				tdd.getExecutionAttemptId(),
 				tdd.getAllocationId(),
-				tdd.getVertexId(),
 				tdd.getSubtaskIndex(),
 				tdd.getAttemptNumber(),
 				tdd.getProducedPartitions(),
@@ -507,7 +506,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 				resultPartitionConsumableNotifier,
 				partitionStateChecker,
 				getRpcService().getExecutor(),
-				tdd.getIsStandby(), tdd.getUptreamVertices(),tdd.getNumberDirectDownstreamVertexes());
+				tdd.getIsStandby(), jobInformation.getTopologicallySortedJobVertexes());
 
 			log.info("Received task {}.", task.getTaskInfo().getTaskNameWithSubtasks());
 

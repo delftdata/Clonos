@@ -34,6 +34,7 @@ import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.network.TaskEventDispatcher;
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
+import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.tasks.InputSplitProvider;
 import org.apache.flink.runtime.memory.MemoryManager;
@@ -56,7 +57,6 @@ public class RuntimeEnvironment implements Environment {
 	private final JobID jobId;
 	private final JobVertexID jobVertexId;
 	private final ExecutionAttemptID executionId;
-	private final VertexId vertexId;
 
 	private final TaskInfo taskInfo;
 
@@ -89,19 +89,17 @@ public class RuntimeEnvironment implements Environment {
 	private final TaskMetricGroup metrics;
 
 	private final Task containingTask;
-	private Collection<VertexId> upstreamVertexIDs;
-	private int numberDirectDownstreamVertexes;
+
+	private final List<JobVertex> topologicallySortedJobVertexes;
 
 	// ------------------------------------------------------------------------
 
 	public RuntimeEnvironment(
 		JobID jobId,
 		JobVertexID jobVertexId,
+		List<JobVertex> topologicallySortedJobVertexes,
 		ExecutionAttemptID executionId,
 		ExecutionConfig executionConfig,
-		VertexId vertexId,
-		Collection<VertexId> upstreamVertexIDs,
-		int numberDirectDownstreamVertexes,
 		TaskInfo taskInfo,
 		Configuration jobConfiguration,
 		Configuration taskConfiguration,
@@ -125,9 +123,6 @@ public class RuntimeEnvironment implements Environment {
 		this.jobId = checkNotNull(jobId);
 		this.jobVertexId = checkNotNull(jobVertexId);
 		this.executionId = checkNotNull(executionId);
-		this.vertexId = checkNotNull(vertexId);
-		this.upstreamVertexIDs = checkNotNull(upstreamVertexIDs);
-		this.numberDirectDownstreamVertexes = checkNotNull(numberDirectDownstreamVertexes);
 		this.taskInfo = checkNotNull(taskInfo);
 		this.executionConfig = checkNotNull(executionConfig);
 		this.jobConfiguration = checkNotNull(jobConfiguration);
@@ -148,6 +143,7 @@ public class RuntimeEnvironment implements Environment {
 		this.taskManagerInfo = checkNotNull(taskManagerInfo);
 		this.containingTask = containingTask;
 		this.metrics = metrics;
+		this.topologicallySortedJobVertexes = topologicallySortedJobVertexes;
 	}
 
 	// ------------------------------------------------------------------------
@@ -267,19 +263,8 @@ public class RuntimeEnvironment implements Environment {
 		return taskEventDispatcher;
 	}
 
-	@Override
-	public VertexId getVertexId() {
-		return vertexId;
-	}
-
-	@Override
-	public Collection<VertexId> getUpstreamVertexIDs() {
-		return upstreamVertexIDs;
-	}
-
-	@Override
-	public int getNumberDirectDownstreamVertexes() {
-		return numberDirectDownstreamVertexes;
+	public List<JobVertex> getTopologicallySortedJobVertexes() {
+		return topologicallySortedJobVertexes;
 	}
 
 	@Override

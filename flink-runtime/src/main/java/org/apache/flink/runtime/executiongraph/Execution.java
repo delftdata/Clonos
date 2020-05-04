@@ -200,8 +200,6 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 	 *             The timestamp that marks the creation of this Execution
 	 * @param rpcTimeout
 	 *             The rpcTimeout for RPC calls like deploy/cancel/stop.
-	 * @param isStandby
-	 *             Whether the task is a standby task for failover purposes.
 	 */
 	public Execution(
 			Executor executor,

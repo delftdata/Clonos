@@ -61,6 +61,8 @@ import org.apache.flink.runtime.io.network.partition.ResultPartitionMetrics;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGateMetrics;
 import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
+import org.apache.flink.runtime.jobgraph.JobGraph;
+import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.apache.flink.runtime.jobgraph.tasks.InputSplitProvider;
@@ -150,9 +152,6 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 	 */
 	private final AllocationID allocationId;
 
-	private final VertexId vertexId;
-	private final Collection<VertexId> upstreamVertexIds;
-	private final int numberDirectDownstreamVertexes;
 
 	/**
 	 * TaskInfo object for this task.
@@ -319,6 +318,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 	 * {@link #asyncCallDispatcher} because user code may dynamically load classes in all callbacks.
 	 */
 	private ClassLoader userCodeClassLoader;
+	private List<JobVertex> topologicallySortedJobVertexes;
 
 	/**
 	 * <p><b>IMPORTANT:</b> This constructor may not start any work that would need to
@@ -351,14 +351,14 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		PartitionProducerStateChecker partitionProducerStateChecker,
 		Executor executor) {
 
-		this(jobInformation, taskInformation, executionAttemptID, slotAllocationId, null,
+		this(jobInformation, taskInformation, executionAttemptID, slotAllocationId,
 			subtaskIndex, attemptNumber, resultPartitionDeploymentDescriptors,
 			inputGateDeploymentDescriptors, targetSlotNumber, memManager,
 			ioManager, networkEnvironment, bcVarManager, taskStateManager,
 			taskManagerActions, inputSplitProvider, checkpointResponder,
 			blobService, libraryCache, fileCache, taskManagerConfig,
 			metricGroup, resultPartitionConsumableNotifier,
-			partitionProducerStateChecker, executor, false, null,0);
+			partitionProducerStateChecker, executor, false, null);
 	}
 
 	public Task(
@@ -388,14 +388,14 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		PartitionProducerStateChecker partitionProducerStateChecker,
 		Executor executor, boolean isStandby) {
 
-		this(jobInformation, taskInformation, executionAttemptID, slotAllocationId, null,
+		this(jobInformation, taskInformation, executionAttemptID, slotAllocationId,
 			subtaskIndex, attemptNumber, resultPartitionDeploymentDescriptors,
 			inputGateDeploymentDescriptors, targetSlotNumber, memManager,
 			ioManager, networkEnvironment, bcVarManager, taskStateManager,
 			taskManagerActions, inputSplitProvider, checkpointResponder,
 			blobService, libraryCache, fileCache, taskManagerConfig,
 			metricGroup, resultPartitionConsumableNotifier,
-			partitionProducerStateChecker, executor, isStandby, null, 0);
+			partitionProducerStateChecker, executor, isStandby, null);
 	}
 
 	public Task(
@@ -403,7 +403,6 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		TaskInformation taskInformation,
 		ExecutionAttemptID executionAttemptID,
 		AllocationID slotAllocationId,
-		VertexId vertexId,
 		int subtaskIndex,
 		int attemptNumber,
 		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
@@ -425,7 +424,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		ResultPartitionConsumableNotifier resultPartitionConsumableNotifier,
 		PartitionProducerStateChecker partitionProducerStateChecker,
 		Executor executor,
-		boolean isStandby, Collection<VertexId> upstreamVertices, int numDirectDownstreamVertexes) {
+		boolean isStandby, List<JobVertex> topologicallySortedJobVertexes) {
 
 
 		Preconditions.checkNotNull(jobInformation);
@@ -445,11 +444,9 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 
 		this.jobId = jobInformation.getJobId();
 		this.jobVertexId = taskInformation.getJobVertexId();
+		this.topologicallySortedJobVertexes = Preconditions.checkNotNull(topologicallySortedJobVertexes);
 		this.executionId = Preconditions.checkNotNull(executionAttemptID);
 		this.allocationId = Preconditions.checkNotNull(slotAllocationId);
-		this.vertexId = Preconditions.checkNotNull(vertexId);
-		this.upstreamVertexIds = Preconditions.checkNotNull(upstreamVertices);
-		this.numberDirectDownstreamVertexes =numDirectDownstreamVertexes;
 
 		this.isStandby = isStandby;
 		if (this.isStandby) {
@@ -803,11 +800,9 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 			Environment env = new RuntimeEnvironment(
 				jobId,
 				jobVertexId,
+				topologicallySortedJobVertexes,
 				executionId,
 				executionConfig,
-				vertexId,
-				upstreamVertexIds,
-				numberDirectDownstreamVertexes,
 				taskInfo,
 				jobConfiguration,
 				taskConfiguration,
@@ -860,21 +855,6 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 				// notify everyone that we switched to running
 				notifyObservers(ExecutionState.RUNNING, null);
 				taskManagerActions.updateTaskExecutionState(new TaskExecutionState(jobId, executionId, ExecutionState.RUNNING));
-			}
-
-			// Subscribe to consumer in-flight log requests
-			for (ResultPartition partition : producedPartitions) {
-				InFlightLogRequestEventListener iflrel =
-						new InFlightLogRequestEventListener(userCodeClassLoader, partition);
-				network.getTaskEventDispatcher().subscribeToEvent(partition.getPartitionId(),
-						iflrel, InFlightLogRequestEvent.class);
-				LOG.info("Set inFlightLogRequestEventListener {} for resultPartition {}.", iflrel, partition);
-
-				InFlightLogPrepareEventListener iflpel =
-						new InFlightLogPrepareEventListener(userCodeClassLoader, partition);
-				network.getTaskEventDispatcher().subscribeToEvent(partition.getPartitionId(),
-						iflpel, InFlightLogPrepareEvent.class);
-				LOG.info("Set inFlightLogPrepareEventListener {} for resultPartition {}.", iflpel, partition);
 			}
 
 			// make sure the user code classloader is accessible thread-locally
@@ -1300,6 +1280,8 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 			}
 			// Invokable should be an instance of an operator class in the hierarchy of StreamTask.
 			invokable.initializeState();
+
+			//todo: the below calls should now go to the recovery manager, who should maintain a set of
 			invokable.updateInFlightLoggerCheckpointId(checkpointId);
 			for (SingleInputGate inputGate : inputGates) {
 				inputGate.updateInFlightLoggerCheckpointId(checkpointId);

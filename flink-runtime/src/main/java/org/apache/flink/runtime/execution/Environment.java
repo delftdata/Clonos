@@ -33,6 +33,7 @@ import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.network.TaskEventDispatcher;
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
+import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.tasks.InputSplitProvider;
 import org.apache.flink.runtime.memory.MemoryManager;
@@ -76,6 +77,8 @@ public interface Environment {
 	 * @return The JobVertexID of this task.
 	 */
 	JobVertexID getJobVertexId();
+
+	List<JobVertex> getTopologicallySortedJobVertexes();
 
 	/**
 	 * Gets the ID of the task execution attempt.
@@ -222,9 +225,4 @@ public interface Environment {
 
 	TaskEventDispatcher getTaskEventDispatcher();
 
-	VertexId getVertexId();
-
-	Collection<VertexId> getUpstreamVertexIDs();
-
-	int getNumberDirectDownstreamVertexes();
 }

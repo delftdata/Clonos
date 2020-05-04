@@ -28,6 +28,7 @@ import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.JobInformation;
 import org.apache.flink.runtime.executiongraph.TaskInformation;
+import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.SerializedValue;
 
@@ -44,22 +45,11 @@ import java.util.Collection;
 public final class TaskDeploymentDescriptor implements Serializable {
 
 	private static final long serialVersionUID = -3233562176034358530L;
-	private final VertexId vertexId;
-	private final Collection<VertexId> uptreamVertices;
-	private final int numberDirectDownstreamVertexes;
 
-	public VertexId getVertexId() {
-		return this.vertexId;
+
+	public boolean isStandby() {
+		return isStandby;
 	}
-
-	public Collection<VertexId> getUptreamVertices() {
-		return uptreamVertices;
-	}
-
-	public int getNumberDirectDownstreamVertexes() {
-		return numberDirectDownstreamVertexes;
-	}
-
 
 	/**
 	 * Wrapper class for serialized values which may be offloaded to the {@link
@@ -165,24 +155,6 @@ public final class TaskDeploymentDescriptor implements Serializable {
 	@Nullable
 	private final JobManagerTaskRestore taskRestore;
 
-	public TaskDeploymentDescriptor(
-		JobID jobId,
-		MaybeOffloaded<JobInformation> serializedJobInformation,
-		MaybeOffloaded<TaskInformation> serializedTaskInformation,
-		ExecutionAttemptID executionAttemptId,
-		AllocationID allocationId,
-		int subtaskIndex,
-		int attemptNumber,
-		int targetSlotNumber,
-		@Nullable JobManagerTaskRestore taskRestore,
-		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
-		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors, boolean isStandby) {
-
-		this(jobId, serializedJobInformation, serializedTaskInformation,
-			executionAttemptId, allocationId, null, subtaskIndex, attemptNumber,
-			targetSlotNumber, taskRestore, resultPartitionDeploymentDescriptors,
-			inputGateDeploymentDescriptors, isStandby, null, 0);
-	}
 
 	public TaskDeploymentDescriptor(
 		JobID jobId,
@@ -198,30 +170,11 @@ public final class TaskDeploymentDescriptor implements Serializable {
 		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors) {
 
 		this(jobId, serializedJobInformation, serializedTaskInformation,
-			executionAttemptId, allocationId, null, subtaskIndex, attemptNumber,
+			executionAttemptId, allocationId, subtaskIndex, attemptNumber,
 			targetSlotNumber, taskRestore, resultPartitionDeploymentDescriptors,
-			inputGateDeploymentDescriptors, false, null, 0);
+			inputGateDeploymentDescriptors, false);
 	}
 
-	public TaskDeploymentDescriptor(
-		JobID jobId,
-		MaybeOffloaded<JobInformation> serializedJobInformation,
-		MaybeOffloaded<TaskInformation> serializedTaskInformation,
-		ExecutionAttemptID executionAttemptId,
-		AllocationID allocationId,
-		VertexId vertexId,
-		int subtaskIndex,
-		int attemptNumber,
-		int targetSlotNumber,
-		@Nullable JobManagerTaskRestore taskRestore,
-		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
-		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors, Collection<VertexId> uptreamVertices) {
-
-		this(jobId, serializedJobInformation, serializedTaskInformation,
-			executionAttemptId, allocationId, vertexId, subtaskIndex, attemptNumber,
-			targetSlotNumber, taskRestore, resultPartitionDeploymentDescriptors,
-			inputGateDeploymentDescriptors, false, uptreamVertices, 0);
-		}
 
 	public TaskDeploymentDescriptor(
 		JobID jobId,
@@ -229,14 +182,12 @@ public final class TaskDeploymentDescriptor implements Serializable {
 		MaybeOffloaded<TaskInformation> serializedTaskInformation,
 		ExecutionAttemptID executionAttemptId,
 		AllocationID allocationId,
-		VertexId vertexId,
 		int subtaskIndex,
 		int attemptNumber,
 		int targetSlotNumber,
 		@Nullable JobManagerTaskRestore taskRestore,
 		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
-		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors,
-		boolean isStandby, Collection<VertexId> uptreamVertices, int numDirectDownstreamVertexes) {
+		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors, boolean isStandby) {
 
 		this.jobId = Preconditions.checkNotNull(jobId);
 
@@ -245,10 +196,7 @@ public final class TaskDeploymentDescriptor implements Serializable {
 
 		this.executionId = Preconditions.checkNotNull(executionAttemptId);
 		this.allocationId = Preconditions.checkNotNull(allocationId);
-		this.vertexId = Preconditions.checkNotNull(vertexId);
 		this.isStandby = isStandby;
-		this.uptreamVertices = Preconditions.checkNotNull(uptreamVertices);
-		this.numberDirectDownstreamVertexes = numDirectDownstreamVertexes;
 
 		Preconditions.checkArgument(0 <= subtaskIndex, "The subtask index must be positive.");
 		this.subtaskIndex = subtaskIndex;
