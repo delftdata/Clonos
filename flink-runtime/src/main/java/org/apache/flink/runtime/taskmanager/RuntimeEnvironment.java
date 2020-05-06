@@ -34,6 +34,7 @@ import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.network.TaskEventDispatcher;
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
+import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
 import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.tasks.InputSplitProvider;
@@ -75,7 +76,7 @@ public class RuntimeEnvironment implements Environment {
 	private final Map<String, Future<Path>> distCacheEntries;
 
 	private final ResultPartitionWriter[] writers;
-	private final InputGate[] inputGates;
+	private final SingleInputGate[] inputGates;
 
 	private final TaskEventDispatcher taskEventDispatcher;
 	
@@ -113,7 +114,7 @@ public class RuntimeEnvironment implements Environment {
 		InputSplitProvider splitProvider,
 		Map<String, Future<Path>> distCacheEntries,
 		ResultPartitionWriter[] writers,
-		InputGate[] inputGates,
+		SingleInputGate[] inputGates,
 		TaskEventDispatcher taskEventDispatcher,
 		CheckpointResponder checkpointResponder,
 		TaskManagerRuntimeInfo taskManagerInfo,
@@ -249,12 +250,12 @@ public class RuntimeEnvironment implements Environment {
 	}
 
 	@Override
-	public InputGate getInputGate(int index) {
+	public SingleInputGate getInputGate(int index) {
 		return inputGates[index];
 	}
 
 	@Override
-	public InputGate[] getAllInputGates() {
+	public SingleInputGate[] getAllInputGates() {
 		return inputGates;
 	}
 

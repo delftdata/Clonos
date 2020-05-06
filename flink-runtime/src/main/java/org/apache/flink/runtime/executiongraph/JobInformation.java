@@ -64,6 +64,15 @@ public class JobInformation implements Serializable {
 		SerializedValue<ExecutionConfig> serializedExecutionConfig,
 		Configuration jobConfiguration,
 		Collection<PermanentBlobKey> requiredJarFileBlobKeys,
+		Collection<URL> requiredClasspathURLs) {
+		this(jobId, jobName, serializedExecutionConfig, jobConfiguration,requiredJarFileBlobKeys,requiredClasspathURLs,null);
+	}
+	public JobInformation(
+		JobID jobId,
+		String jobName,
+		SerializedValue<ExecutionConfig> serializedExecutionConfig,
+		Configuration jobConfiguration,
+		Collection<PermanentBlobKey> requiredJarFileBlobKeys,
 		Collection<URL> requiredClasspathURLs,
 		List<JobVertex> topologicallySortedJobVertexes) {
 		this.jobId = Preconditions.checkNotNull(jobId);
