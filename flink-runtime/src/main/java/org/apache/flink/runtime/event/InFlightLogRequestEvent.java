@@ -20,14 +20,21 @@ package org.apache.flink.runtime.event;
 
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataOutputView;
-import org.apache.flink.runtime.event.TaskEvent;
+import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
+import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
+import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
+import org.apache.flink.util.AbstractID;
 
 import java.io.IOException;
 
 /**
  * Event sent from downstream for replaying in-flight tuples for specific output channel, that is subpartition index, starting from the next appointed checkpoint.
  */
-public class InFlightLogRequestEvent extends InFlightLogEvent {
+public class InFlightLogRequestEvent extends TaskEvent {
+
+	private IntermediateDataSetID intermediateDataSetID;
+	private int subpartitionIndex;
+	private long checkpointId;
 
 	/**
 	 * Default constructor (should only be used for deserialization).
@@ -37,12 +44,55 @@ public class InFlightLogRequestEvent extends InFlightLogEvent {
 		// should only be used for deserialization
 	}
 
-	public InFlightLogRequestEvent(int subpartitionIndex, long checkpointId) {
-		super(subpartitionIndex, checkpointId);
+
+	public InFlightLogRequestEvent(IntermediateDataSetID intermediateDataSetID, int consumedSubpartitionIndex, long finalRestoreStateCheckpointId) {
+		super();
+		this.intermediateDataSetID = intermediateDataSetID;
+		this.subpartitionIndex = consumedSubpartitionIndex;
+		this.checkpointId = finalRestoreStateCheckpointId;
+	}
+
+	public IntermediateDataSetID getIntermediateDataSetID() {
+		return intermediateDataSetID;
+	}
+
+	public int getSubpartitionIndex() {
+		return subpartitionIndex;
+	}
+
+	public long getCheckpointId() {
+		return checkpointId;
+	}
+
+	@Override
+	public void write(final DataOutputView out) throws IOException {
+		out.writeLong(intermediateDataSetID.getUpperPart());
+		out.writeLong(intermediateDataSetID.getLowerPart());
+		out.writeInt(this.subpartitionIndex);
+		out.writeLong(this.checkpointId);
+	}
+
+	@Override
+	public void read(final DataInputView in) throws IOException {
+		long upper = in.readLong();
+		long lower = in.readLong();
+		this.intermediateDataSetID = new IntermediateDataSetID(new AbstractID(lower, upper));
+
+		this.subpartitionIndex = in.readInt();
+		this.checkpointId = in.readLong();
+	}
+
+	@Override
+	public int hashCode() {
+		return this.subpartitionIndex;
 	}
 
 	@Override
 	public String toString() {
-		return String.format("InFlightLogRequestEvent ") + super.toString();
+		return "InFlightLogRequestEvent{" +
+			"intermediateDataSetID=" + intermediateDataSetID +
+			", subpartitionIndex=" + subpartitionIndex +
+			", checkpointId=" + checkpointId +
+			'}';
 	}
 }

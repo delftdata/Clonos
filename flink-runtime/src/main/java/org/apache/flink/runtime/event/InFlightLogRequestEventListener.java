@@ -19,6 +19,7 @@
 package org.apache.flink.runtime.event;
 
 //import org.apache.flink.runtime.event.TaskEvent;
+import org.apache.flink.runtime.causal.recovery.RecoveryManager;
 import org.apache.flink.runtime.io.network.partition.ResultPartition;
 import org.apache.flink.runtime.util.event.EventListener;
 
@@ -29,13 +30,17 @@ import org.slf4j.LoggerFactory;
 /**
  * A listener to in-flight log requests for replay.
  */
-public class InFlightLogRequestEventListener extends InFlightLogEventListener {
+public class InFlightLogRequestEventListener implements EventListener<TaskEvent> {
 
 	private static final Logger LOG = LoggerFactory.getLogger(InFlightLogRequestEventListener.class);
 
+	private final ClassLoader userCodeClassLoader;
+	private final RecoveryManager recoveryManager;
 
-	public InFlightLogRequestEventListener(ClassLoader userCodeClassLoader, ResultPartition toNotify) {
-		super(userCodeClassLoader, toNotify);
+	public InFlightLogRequestEventListener(ClassLoader userCodeClassLoader, RecoveryManager recoveryManager) {
+		this.userCodeClassLoader = userCodeClassLoader;
+		this.recoveryManager = recoveryManager;
+
 	}
 
 	/** Barrier will turn the in-flight log request signal to true */
@@ -43,7 +48,7 @@ public class InFlightLogRequestEventListener extends InFlightLogEventListener {
 	public void onEvent(TaskEvent event) {
 		LOG.info("{} received event {}.", this, event);
 		if (event instanceof InFlightLogRequestEvent) {
-			toNotify.notifyInFlightLogRequestEvent((InFlightLogRequestEvent)event);
+			recoveryManager.notifyInFlightLogRequestEvent((InFlightLogRequestEvent)event);
 		} else {
 			throw new IllegalArgumentException(String.format("Unknown event type: %s.", event));
 		}

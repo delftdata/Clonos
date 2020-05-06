@@ -200,11 +200,6 @@ class SpilledSubpartitionView implements ResultSubpartitionView, NotificationLis
 	}
 
 	@Override
-	public void releaseBuffers() {
-		//todo
-	}
-
-	@Override
 	public boolean isReleased() {
 		return parent.isReleased() || isReleased.get();
 	}

@@ -630,27 +630,6 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		}
 	}
 
-	@Override
-	public CompletableFuture<Acknowledge> ackInFlightLogPrepareRequest(ExecutionAttemptID executionAttemptID, IntermediateDataSetID intermediateDataSetId, ResultPartitionID resultPartitionId, Time timeout) {
-		final Task task = taskSlotTable.getTask(executionAttemptID);
-
-		if (task != null) {
-			try {
-				final SingleInputGate singleInputGate = task.getInputGateById(intermediateDataSetId);
-				log.debug("Deliver ack InFlightLogPrepareRequest to task {} SingleInputGate {}.", task, singleInputGate);
-				CompletableFuture<Acknowledge> ackFuture = singleInputGate.ackInFlightLogPrepareRequest(resultPartitionId);
-				task.checkInputChannelConnectionsComplete();
-				return ackFuture;
-			} catch (Throwable t) {
-				return FutureUtils.completedExceptionally(new TaskException("Cannot ackInFlightLogPrepareRequest to task " + executionAttemptID + '.', t));
-			}
-		} else {
-			final String message = "Cannot find standby task " + executionAttemptID + " to ack InFlightLogPrepareRequest.";
-
-			log.info(message);
-			return FutureUtils.completedExceptionally(new TaskException(message));
-		}
-	}
 
 	// ----------------------------------------------------------------------
 	// Partition lifecycle RPCs

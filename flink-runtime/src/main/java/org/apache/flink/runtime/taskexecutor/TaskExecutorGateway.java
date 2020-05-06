@@ -177,16 +177,6 @@ public interface TaskExecutorGateway extends RpcGateway {
 	 */
 	CompletableFuture<Acknowledge> switchStandbyTaskToRunning(ExecutionAttemptID executionAttemptID, @RpcTimeout Time timeout);
 
-	/**
-	 * Ack InFlightLogPrepareRequest..
-	 *
-	 * @param executionAttemptID identifying the task
-	 * @param intermediateDataSetId identifying the SingleInputGate
-	 * @param resultPartitionId identifying the InputChannel
-	 * @param timeout for the cancel operation
-	 * @return Future acknowledge if the task is successfully canceled
-	 */
-	public CompletableFuture<Acknowledge> ackInFlightLogPrepareRequest(ExecutionAttemptID executionAttemptID, IntermediateDataSetID intermediateDataSetId, ResultPartitionID resultPartitionId, @RpcTimeout Time timeout);
 
 	/**
 	 * Heartbeat request from the job manager.

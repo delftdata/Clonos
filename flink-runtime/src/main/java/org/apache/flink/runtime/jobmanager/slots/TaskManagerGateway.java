@@ -164,17 +164,6 @@ public interface TaskManagerGateway {
 			Time timeout);
 
 	/**
-	 * Ack InFlightLogPrepareRequest..
-	 *
-	 * @param executionAttemptID identifying the task
-	 * @param intermediateDataSetId identifying the SingleInputGate
-	 * @param resultPartitionId identifying the InputChannel
-	 * @param timeout for the cancel operation
-	 * @return Future acknowledge if the task is successfully canceled
-	 */
-	CompletableFuture<Acknowledge> ackInFlightLogPrepareRequest(ExecutionAttemptID executionAttemptID, IntermediateDataSetID intermediateDataSetId, ResultPartitionID resultPartitionId, @RpcTimeout Time timeout);
-
-	/**
 	 * Update the task where the given partitions can be found.
 	 *
 	 * @param executionAttemptID identifying the task

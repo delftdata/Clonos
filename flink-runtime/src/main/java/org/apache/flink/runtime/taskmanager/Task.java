@@ -1327,20 +1327,6 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		}
 	}
 
-	/**
-	 * Check in-flight log prepare request acks by an upstream task to this standby task.
-	 * Once one connection per SingleInputGate is acked and switchStandbyToRunning() has happened then the standby task can run.
-	 *
-	 */
-	public void checkInputChannelConnectionsComplete() {
-		for (SingleInputGate inputGate : inputGates) {
-			if (!inputGate.checkInputChannelConnectionsComplete()) {
-				return;
-			}
-		}
-		invokable.tellInputChannelConnectionsComplete();
-	}
-
 	// ------------------------------------------------------------------------
 	//  State Listeners
 	// ------------------------------------------------------------------------

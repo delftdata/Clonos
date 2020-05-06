@@ -199,16 +199,6 @@ public class ActorTaskManagerGateway implements TaskManagerGateway {
 	}
 
 	@Override
-	public CompletableFuture<Acknowledge> ackInFlightLogPrepareRequest(ExecutionAttemptID executionAttemptID, IntermediateDataSetID intermediateDataSetId, ResultPartitionID resultPartitionId, Time timeout) {
-		scala.concurrent.Future<Acknowledge> ackInFlightLogPrepareRequestResult = actorGateway.ask(
-			new TaskMessages.ackInFlightLogPrepareRequest(executionAttemptID),
-			new FiniteDuration(timeout.getSize(), timeout.getUnit()))
-			.mapTo(ClassTag$.MODULE$.<Acknowledge>apply(Acknowledge.class));
-
-		return FutureUtils.toJava(ackInFlightLogPrepareRequestResult);
-	}
-
-	@Override
 	public CompletableFuture<Acknowledge> updatePartitions(ExecutionAttemptID executionAttemptID, Iterable<PartitionInfo> partitionInfos, Time timeout) {
 		Preconditions.checkNotNull(executionAttemptID);
 		Preconditions.checkNotNull(partitionInfos);

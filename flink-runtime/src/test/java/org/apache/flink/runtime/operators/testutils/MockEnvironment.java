@@ -37,7 +37,9 @@ import org.apache.flink.runtime.io.network.api.writer.RecordCollectingResultPart
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.io.network.partition.consumer.IteratorWrappingTestSingleInputGate;
+import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
 import org.apache.flink.runtime.io.network.util.TestPooledBufferProvider;
+import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.tasks.InputSplitProvider;
 import org.apache.flink.runtime.memory.MemoryManager;
@@ -80,7 +82,7 @@ public class MockEnvironment implements Environment, AutoCloseable {
 
 	private final Configuration taskConfiguration;
 
-	private final List<InputGate> inputs;
+	private final List<SingleInputGate> inputs;
 
 	private final List<ResultPartitionWriter> outputs;
 
@@ -129,7 +131,7 @@ public class MockEnvironment implements Environment, AutoCloseable {
 		this.taskInfo = new TaskInfo(taskName, maxParallelism, subtaskIndex, parallelism, 0);
 		this.jobConfiguration = new Configuration();
 		this.taskConfiguration = taskConfiguration;
-		this.inputs = new LinkedList<InputGate>();
+		this.inputs = new LinkedList<SingleInputGate>();
 		this.outputs = new LinkedList<ResultPartitionWriter>();
 
 		this.memManager = new MemoryManager(memorySize, 1);
@@ -243,13 +245,13 @@ public class MockEnvironment implements Environment, AutoCloseable {
 	}
 
 	@Override
-	public InputGate getInputGate(int index) {
+	public SingleInputGate getInputGate(int index) {
 		return inputs.get(index);
 	}
 
 	@Override
-	public InputGate[] getAllInputGates() {
-		InputGate[] gates = new InputGate[inputs.size()];
+	public SingleInputGate[] getAllInputGates() {
+		SingleInputGate[] gates = new SingleInputGate[inputs.size()];
 		inputs.toArray(gates);
 		return gates;
 	}
@@ -260,23 +262,13 @@ public class MockEnvironment implements Environment, AutoCloseable {
 	}
 
 	@Override
-	public VertexId getVertexId() {
-		return null;
-	}
-
-	@Override
-	public List<VertexId> getUpstreamVertexIDs() {
-		return null;
-	}
-
-	@Override
-	public int getNumberDirectDownstreamVertexes() {
-		return 0;
-	}
-
-	@Override
 	public JobVertexID getJobVertexId() {
 		return jobVertexID;
+	}
+
+	@Override
+	public List<JobVertex> getTopologicallySortedJobVertexes() {
+		return null;
 	}
 
 	@Override

@@ -47,8 +47,6 @@ public interface ResultSubpartitionView {
 
 	void releaseAllResources() throws IOException;
 
-	void releaseBuffers();
-
 	void notifySubpartitionConsumed() throws IOException;
 
 	void sendFailConsumerTrigger(Throwable cause);

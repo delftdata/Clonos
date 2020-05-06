@@ -34,6 +34,8 @@ import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.network.TaskEventDispatcher;
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
+import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
+import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.tasks.InputSplitProvider;
 import org.apache.flink.runtime.memory.MemoryManager;
@@ -108,6 +110,11 @@ public class DummyEnvironment implements Environment {
 	@Override
 	public JobVertexID getJobVertexId() {
 		return jobVertexId;
+	}
+
+	@Override
+	public List<JobVertex> getTopologicallySortedJobVertexes() {
+		return null;
 	}
 
 	@Override
@@ -218,12 +225,12 @@ public class DummyEnvironment implements Environment {
 	}
 
 	@Override
-	public InputGate getInputGate(int index) {
+	public SingleInputGate getInputGate(int index) {
 		return null;
 	}
 
 	@Override
-	public InputGate[] getAllInputGates() {
+	public SingleInputGate[] getAllInputGates() {
 		return null;
 	}
 
@@ -232,20 +239,6 @@ public class DummyEnvironment implements Environment {
 		throw new UnsupportedOperationException();
 	}
 
-	@Override
-	public VertexId getVertexId() {
-		return null;
-	}
-
-	@Override
-	public List<VertexId> getUpstreamVertexIDs() {
-		return null;
-	}
-
-	@Override
-	public int getNumberDirectDownstreamVertexes() {
-		return 0;
-	}
 
 	public void setTaskStateManager(TaskStateManager taskStateManager) {
 		this.taskStateManager = taskStateManager;

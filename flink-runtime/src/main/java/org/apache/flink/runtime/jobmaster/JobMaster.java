@@ -696,28 +696,6 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 		return CompletableFuture.completedFuture(Acknowledge.get());
 	}
 
-	@Override
-	public CompletableFuture<Acknowledge> ackInFlightLogPrepareRequest(
-			final ResultPartitionID resultPartitionId,
-			int subpartitionIndex,
-			final Time timeout) {
-
-		final Execution producerExecution = executionGraph.getRegisteredExecutions().get(resultPartitionId.getProducerId());
-		// If producer failed no need to fail consumer.
-		if (producerExecution == null) {
-			return FutureUtils.completedExceptionally(new Exception(String.format("Producer execution of result partition %s is dead.", resultPartitionId)));
-		}
-
-		final ExecutionVertex producerExecutionVertex = producerExecution.getVertex();
-		final IntermediateResultPartition intermediateResultPartition = producerExecutionVertex.getProducedPartitions().get(resultPartitionId.getPartitionId());
-		final IntermediateDataSetID intermediateDataSetId = intermediateResultPartition.getIntermediateResult().getId();
-
-		final ExecutionVertex consumerVertex = intermediateResultPartition.getConsumers().get(0).get(subpartitionIndex).getTarget();
-		final Execution consumerExecution = consumerVertex.getCurrentExecutionAttempt();
-		log.debug("Producer execution {} sends ack for InFlightLogPrepareRequest sent by consumer Execution {} for subpartition {}, intermediateResultPartition {}, intermediateDataSetId {}.", producerExecution, consumerExecution, subpartitionIndex, intermediateResultPartition, intermediateDataSetId);
-		consumerExecution.ackInFlightLogPrepareRequest(intermediateDataSetId, resultPartitionId);
-		return CompletableFuture.completedFuture(Acknowledge.get());
-	}
 
 	@Override
 	public CompletableFuture<Acknowledge> scheduleOrUpdateConsumers(
