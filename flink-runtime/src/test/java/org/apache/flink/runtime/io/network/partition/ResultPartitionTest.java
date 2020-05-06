@@ -23,6 +23,7 @@ import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.disk.iomanager.IOManagerAsync;
 import org.apache.flink.runtime.io.network.buffer.BufferBuilderTestUtils;
 import org.apache.flink.runtime.io.network.buffer.BufferConsumer;
+import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.taskmanager.TaskActions;
 
 import org.junit.AfterClass;
@@ -215,6 +216,7 @@ public class ResultPartitionTest {
 			"TestTask",
 			mock(TaskActions.class),
 			new JobID(),
+			new IntermediateDataSetID(),
 			new ResultPartitionID(),
 			type,
 			1,

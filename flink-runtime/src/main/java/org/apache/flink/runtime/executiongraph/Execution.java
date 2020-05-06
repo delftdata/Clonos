@@ -1341,35 +1341,6 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 		}
 	}
 
-	/**
-	 * This method delivers an ackInFlightLogPrepareRequest message to the corresponding task.
-	 *
-	 * <p>The dispatch is tried up to NUM_CANCEL_CALL_TRIES times.
-	 */
-	public void ackInFlightLogPrepareRequest(IntermediateDataSetID intermediateDataSetId, ResultPartitionID resultPartitionId) {
-		final LogicalSlot slot = assignedResource;
-
-		LOG.debug("Send ackInFlightLogPrepareRequest to {} at slot {}.", this, slot);
-
-		if (slot != null) {
-			final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
-
-			CompletableFuture<Acknowledge> inFlightLogPrepareRequest = FutureUtils.retry(
-				() -> taskManagerGateway.ackInFlightLogPrepareRequest(attemptId, intermediateDataSetId, resultPartitionId, rpcTimeout),
-				NUM_CANCEL_CALL_TRIES,
-				executor);
-
-			inFlightLogPrepareRequest.whenCompleteAsync(
-				(ack, failure) -> {
-					if (failure != null) {
-						fail(new Exception("Can not ack InFlightLogPrepareRequest to standby task.", failure));
-					} else {
-						LOG.debug("Delivered ackInFlightLogPrepareRequest to TaskManagerGateway for task {}.", this);
-					}
-				},
-				executor);
-		}
-	}
 
 	private void sendFailIntermediateResultPartitionsRpcCall() {
 		final LogicalSlot slot = assignedResource;

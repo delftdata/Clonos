@@ -20,6 +20,7 @@ package org.apache.flink.streaming.runtime.io;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.core.io.IOReadableWritable;
 import org.apache.flink.runtime.causal.ICausalLoggingManager;
+import org.apache.flink.runtime.causal.services.RandomService;
 import org.apache.flink.runtime.io.network.api.writer.CausalRecordWriter;
 import org.apache.flink.runtime.io.network.api.writer.ChannelSelector;
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
@@ -53,15 +54,15 @@ public class StreamRecordWriter<T extends IOReadableWritable> extends CausalReco
 	private Throwable flusherException;
 
 	public StreamRecordWriter(ResultPartitionWriter writer, ChannelSelector<T> channelSelector, long timeout) {
-		this(writer, channelSelector, timeout, null, null);
+		this(writer, channelSelector, timeout, null, null, null);
 	}
 
 	public StreamRecordWriter(
 		ResultPartitionWriter writer,
 		ChannelSelector<T> channelSelector,
 		long timeout,
-		String taskName, ICausalLoggingManager causalLoggingManager) {
-		super(writer, channelSelector, timeout == 0, causalLoggingManager);
+		String taskName, ICausalLoggingManager causalLoggingManager, RandomService randomService) {
+		super(writer, channelSelector, timeout == 0, causalLoggingManager, randomService);
 
 		checkArgument(timeout >= -1);
 

@@ -19,6 +19,7 @@
 package org.apache.flink.runtime.io.network.partition;
 
 import org.apache.flink.api.common.JobID;
+import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 import org.apache.flink.runtime.event.*;
 import org.apache.flink.runtime.executiongraph.IntermediateResultPartition;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
@@ -31,6 +32,7 @@ import org.apache.flink.runtime.io.network.buffer.BufferProvider;
 import org.apache.flink.runtime.io.network.partition.consumer.LocalInputChannel;
 import org.apache.flink.runtime.io.network.partition.consumer.RemoteInputChannel;
 import org.apache.flink.runtime.jobgraph.DistributionPattern;
+import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.taskmanager.TaskActions;
 import org.apache.flink.runtime.taskmanager.TaskManager;
 
@@ -58,7 +60,7 @@ import static org.apache.flink.util.Preconditions.checkState;
  * happens either remotely (see {@link RemoteInputChannel}) or locally (see {@link LocalInputChannel})
  *
  * <h2>Life-cycle</h2>
- *
+ * <p>
  * The life-cycle of each result partition has three (possibly overlapping) phases:
  * <ol>
  * <li><strong>Produce</strong>: </li>
@@ -67,7 +69,7 @@ import static org.apache.flink.util.Preconditions.checkState;
  * </ol>
  *
  * <h2>Lazy deployment and updates of consuming tasks</h2>
- *
+ * <p>
  * Before a consuming task can request the result, it has to be deployed. The time of deployment
  * depends on the PIPELINED vs. BLOCKING characteristic of the result partition. With pipelined
  * results, receivers are deployed as soon as the first buffer is added to the result partition.
@@ -80,19 +82,25 @@ import static org.apache.flink.util.Preconditions.checkState;
 public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 
 	private static final Logger LOG = LoggerFactory.getLogger(ResultPartition.class);
-	
+
 	private final String owningTaskName;
 
 	private final TaskActions taskActions;
 
 	private final JobID jobId;
 
+	private final IntermediateDataSetID intermediateDataSetID;
+
 	private final ResultPartitionID partitionId;
 
-	/** Type of this partition. Defines the concrete subpartition implementation to use. */
+	/**
+	 * Type of this partition. Defines the concrete subpartition implementation to use.
+	 */
 	private final ResultPartitionType partitionType;
 
-	/** The subpartitions of this partition. At least one. */
+	/**
+	 * The subpartitions of this partition. At least one.
+	 */
 	private final ResultSubpartition[] subpartitions;
 
 	private final ResultPartitionManager partitionManager;
@@ -122,10 +130,12 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 
 	private volatile Throwable cause;
 
+
 	public ResultPartition(
 		String owningTaskName,
 		TaskActions taskActions, // actions on the owning task
 		JobID jobId,
+		IntermediateDataSetID intermediateDataSetID,
 		ResultPartitionID partitionId,
 		ResultPartitionType partitionType,
 		int numberOfSubpartitions,
@@ -138,6 +148,7 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 		this.owningTaskName = checkNotNull(owningTaskName);
 		this.taskActions = checkNotNull(taskActions);
 		this.jobId = checkNotNull(jobId);
+		this.intermediateDataSetID = checkNotNull(intermediateDataSetID);
 		this.partitionId = checkNotNull(partitionId);
 		this.partitionType = checkNotNull(partitionType);
 		this.subpartitions = new ResultSubpartition[numberOfSubpartitions];
@@ -173,14 +184,6 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 		LOG.debug("{}: Initialized {}", owningTaskName, this);
 	}
 
-	public void notifyInFlightLogPrepareEvent(InFlightLogPrepareEvent inFlightLogPrepareEvent) {
-		((PipelinedSubpartition)subpartitions[inFlightLogPrepareEvent.getSubpartitionIndex()]).prepareInFlightReplay(inFlightLogPrepareEvent.getCheckpointId());
-	}
-
-	public void notifyInFlightLogRequestEvent(InFlightLogRequestEvent inFlightLogRequestEvent) {
-		((PipelinedSubpartition)subpartitions[inFlightLogRequestEvent.getSubpartitionIndex()]).startInFlightReplay(inFlightLogRequestEvent.getCheckpointId());
-	}
-
 	/**
 	 * Registers a buffer pool with this result partition.
 	 * <p>
@@ -191,7 +194,7 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 	 */
 	public void registerBufferPool(BufferPool bufferPool) {
 		checkArgument(bufferPool.getNumberOfRequiredMemorySegments() >= getNumberOfSubpartitions(),
-				"Bug in result partition setup logic: Buffer pool has not enough guaranteed buffers for this result partition.");
+			"Bug in result partition setup logic: Buffer pool has not enough guaranteed buffers for this result partition.");
 
 		checkState(this.bufferPool == null, "Bug in result partition setup logic: Already registered buffer pool.");
 
@@ -207,6 +210,8 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 	public JobID getJobId() {
 		return jobId;
 	}
+
+
 
 	public ResultPartitionID getPartitionId() {
 		return partitionId;
@@ -232,14 +237,19 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 
 	@Override
 	public void notifyCheckpointBarrier(long checkpointId) {
-		for(ResultSubpartition sb : subpartitions)
+		for (ResultSubpartition sb : subpartitions)
 			sb.notifyCheckpointBarrier(checkpointId);
 	}
 
 	@Override
 	public void notifyCheckpointComplete(long checkpointId) {
-		for(ResultSubpartition sb : subpartitions)
+		for (ResultSubpartition sb : subpartitions)
 			sb.notifyCheckpointComplete(checkpointId);
+	}
+
+	@Override
+	public IntermediateDataSetID getIntermediateDataSetID() {
+		return intermediateDataSetID;
 	}
 
 	public int getNumberOfQueuedBuffers() {
@@ -273,8 +283,7 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 		try {
 			checkInProduceState();
 			subpartition = subpartitions[subpartitionIndex];
-		}
-		catch (Exception ex) {
+		} catch (Exception ex) {
 			bufferConsumer.close();
 			throw ex;
 		}
@@ -314,8 +323,7 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 			}
 
 			success = true;
-		}
-		finally {
+		} finally {
 			if (success) {
 				isFinished = true;
 
@@ -392,6 +400,11 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 		return numTargetKeyGroups;
 	}
 
+	@Override
+	public ResultSubpartition[] getResultSubpartitions() {
+		return subpartitions;
+	}
+
 	/**
 	 * Releases buffers held by this result partition.
 	 *
@@ -415,10 +428,10 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 	@Override
 	public String toString() {
 		return "ResultPartition " + partitionId.toString() +
-				" of task " + owningTaskName + " ["
-				+ partitionType + ", "
-				+ subpartitions.length + " subpartitions, "
-				+ pendingReferences + " pending references]";
+			" of task " + owningTaskName + " ["
+			+ partitionType + ", "
+			+ subpartitions.length + " subpartitions, "
+			+ pendingReferences + " pending references]";
 	}
 
 	// ------------------------------------------------------------------------
@@ -437,8 +450,7 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 				if (pendingReferences.compareAndSet(refCnt, refCnt + subpartitions.length)) {
 					break;
 				}
-			}
-			else {
+			} else {
 				throw new IllegalStateException("Released.");
 			}
 		}
@@ -457,13 +469,12 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 
 		if (refCnt == 0) {
 			partitionManager.onConsumedPartition(this);
-		}
-		else if (refCnt < 0) {
+		} else if (refCnt < 0) {
 			throw new IllegalStateException("All references released.");
 		}
 
 		LOG.debug("{} {}: Received release notification for subpartition {} (reference count now at: {}).",
-				owningTaskName, this, subpartitionIndex, pendingReferences);
+			owningTaskName, this, subpartitionIndex, pendingReferences);
 	}
 
 	ResultSubpartition[] getAllPartitions() {
@@ -485,10 +496,5 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 
 			hasNotifiedPipelinedConsumers = true;
 		}
-	}
-
-	public void ackInFlightLogPrepareRequest(int subpartitionIndex) {
-		LOG.debug("Ack inFlightLogPrepareRequest for subpartition {} of {}", subpartitionIndex, this);
-		partitionConsumableNotifier.ackInFlightLogPrepareRequest(partitionId, subpartitionIndex, taskActions);
 	}
 }

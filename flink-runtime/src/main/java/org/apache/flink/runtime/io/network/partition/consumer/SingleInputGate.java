@@ -21,13 +21,13 @@ package org.apache.flink.runtime.io.network.partition.consumer;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.core.memory.MemorySegment;
+import org.apache.flink.runtime.causal.recovery.RecoveryManager;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.deployment.InputChannelDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.InputGateDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.ResultPartitionLocation;
 import org.apache.flink.runtime.event.AbstractEvent;
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
-import org.apache.flink.runtime.event.InFlightLogPrepareEvent;
 import org.apache.flink.runtime.event.TaskEvent;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.messages.Acknowledge;
@@ -198,17 +198,12 @@ public class SingleInputGate implements InputGate {
 	/* Whether the input gate belongs to a standby task. */
 	private boolean isStandby;
 
-	/** Required to signal a request to upstream(s) for replaying data. */
-	private long latestCompletedCheckpointId;
-
-	/** Future for state snapshots being restored in standby task. */
-	private ArrayList<CompletableFuture<Void>> restoreStateFutures;
-
-	/**
-	 * Futures for acking in-flight log prepare request per channel by upstream.
-	 */
-	private final Map<ResultPartitionID, CompletableFuture<Acknowledge>> ackChannelFutures;
 	private InputChannel[] inputChannelArray;
+
+	private RecoveryManager recoveryManager;
+	public void setRecoveryManager(RecoveryManager recoveryManager){
+		this.recoveryManager = recoveryManager;
+	}
 
 	public SingleInputGate(
 		String owningTaskName,
@@ -242,9 +237,6 @@ public class SingleInputGate implements InputGate {
 		this.isCreditBased = isCreditBased;
 
 		this.isStandby = ((Task) taskActions).getIsStandby();
-		this.latestCompletedCheckpointId = 0;
-		this.restoreStateFutures = new ArrayList<CompletableFuture<Void>>();
-		this.ackChannelFutures = new HashMap<ResultPartitionID, CompletableFuture<Acknowledge>>(numberOfInputChannels);
 	}
 
 	// ------------------------------------------------------------------------
@@ -281,6 +273,10 @@ public class SingleInputGate implements InputGate {
 		return bufferPool;
 	}
 
+	public int getConsumedSubpartitionIndex() {
+		return consumedSubpartitionIndex;
+	}
+
 	@Override
 	public int getPageSize() {
 		if (bufferPool != null) {
@@ -294,6 +290,16 @@ public class SingleInputGate implements InputGate {
 	@Override
 	public InputChannel getInputChannel(int i) {
 		return inputChannelArray[i];
+	}
+
+	@Override
+	public int getAbsoluteChannelIndex(InputGate gate, int channelIndex) {
+		return channelIndex;
+	}
+
+	@Override
+	public SingleInputGate[] getInputGates() {
+		return new SingleInputGate[] {this};
 	}
 
 	public int getNumberOfQueuedBuffers() {
@@ -318,47 +324,6 @@ public class SingleInputGate implements InputGate {
 
 	public String getTaskName() {
 		return owningTaskName;
-	}
-
-	public void updateInFlightLoggerCheckpointId(long checkpointId) {
-		restoreStateFutures.get(0).complete(null);
-		restoreStateFutures.remove(0);
-
-		latestCompletedCheckpointId = checkpointId;
-		LOG.debug("Update InFlightLogger checkpoint id to {}. State restored. Number of restoring states: {}.", checkpointId, restoreStateFutures.size());
-	}
-
-	public void informInFlightLoggerRestoringState(long checkpointId) {
-		restoreStateFutures.add(new CompletableFuture<Void>());
-		LOG.debug("State snapshot of checkpoint id {} is being restored. Number of restoring states: {}.", checkpointId, restoreStateFutures.size());
-	}
-
-	public CompletableFuture<Acknowledge> ackInFlightLogPrepareRequest(ResultPartitionID partitionId) throws Exception {
-		CompletableFuture<Acknowledge> ackChannelFuture = ackChannelFutures.get(partitionId);
-		if (ackChannelFuture == null) {
-			return FutureUtils.completedExceptionally(new Exception(String.format("Ack in-flight log prepare request for partition %s failed. Partition not found in %s", partitionId, this)));
-		}
-		LOG.debug("Delivered ack for InFlightLogPrepareRequest for partitionId {}.", partitionId);
-		ackChannelFuture.complete(Acknowledge.get());
-		return ackChannelFuture;
-	}
-
-	public boolean checkInputChannelConnectionsComplete() {
-		if (ackChannelFutures.size() < numberOfInputChannels) {
-			LOG.debug("Channel connections of {} pending.", owningTaskName);
-			return false;
-		}
-
-		for (CompletableFuture<Acknowledge> ackChannelFuture : ackChannelFutures.values()) {
-			LOG.debug("Channel connection for {} of {}: {}.", this, owningTaskName, ackChannelFuture);
-			if (!ackChannelFuture.isDone() || ackChannelFuture.isCompletedExceptionally()) {
-				return false;
-			}
-		}
-
-		isStandby = false;
-		LOG.debug("Channel connections of {} complete.", owningTaskName);
-		return true;
 	}
 
 	// ------------------------------------------------------------------------
@@ -566,34 +531,9 @@ public class SingleInputGate implements InputGate {
 
 				try {
 					if (isStandby) {
-						LOG.info("{}: send in-flight log request event for subpartition index {} (prepare only).", owningTaskName, consumedSubpartitionIndex);
-						// Just prepare the replay
-						newChannel.sendTaskEvent(new InFlightLogPrepareEvent(consumedSubpartitionIndex, latestCompletedCheckpointId));
-
-						ackChannelFutures.put(newChannel.getPartitionId(), new CompletableFuture<Acknowledge>());
-						CompletableFuture<Acknowledge> ackNewChannelFuture = ackChannelFutures.get(newChannel.getPartitionId());
-
-						final CompletableFuture<Void> allRestoreStateFutures = FutureUtils.waitForAll(restoreStateFutures);
-						if (allRestoreStateFutures.isCompletedExceptionally()) {
-							LOG.warn("Unexpected exception while waiting for restore state procedures to complete.");
-						}
-						LOG.info("{}: any pending state restoration is now complete. Send in-flight log request event for subpartitionIndex {} from channel {} (replay).", owningTaskName, consumedSubpartitionIndex, newChannel);
-						newChannel.sendTaskEvent(new InFlightLogRequestEvent(consumedSubpartitionIndex, latestCompletedCheckpointId));
-
-						ackNewChannelFuture.exceptionally(r -> {
-							LOG.warn("Unexpected exception while waiting for InFlightLogPrepareRequest future to complete.");
-							r.printStackTrace();
-							return Acknowledge.get();
-						}).thenRun(() -> {
-							try {
-								LOG.info("{}: InFlightLogPrepareRequest for subpartitionIndex {} from channel {} acknowledged by upstream.", owningTaskName, consumedSubpartitionIndex, newChannel);
-								newChannel.requestSubpartition(consumedSubpartitionIndex);
-								requestedPartitionsFlag.set(true);
-							} catch (IOException | InterruptedException e) {
-								LOG.error("{}: Request subpartition for input channel {} failed. Ignoring failure and sending fail trigger for producer (chances are it is dead).",
-							owningTaskName, newChannel, e);
-							}
-						});
+						newChannel.requestSubpartition(consumedSubpartitionIndex);
+						requestedPartitionsFlag.set(true);
+						recoveryManager.notifyNewChannel(this, newChannel.getChannelIndex());
 					} else {
 						newChannel.requestSubpartition(consumedSubpartitionIndex);
 						requestedPartitionsFlag.set(true);
@@ -1001,5 +941,14 @@ public class SingleInputGate implements InputGate {
 			numUnknownChannels);
 
 		return inputGate;
+	}
+
+	@Override
+	public String toString() {
+		return "SingleInputGate{" +
+			"consumedResultId=" + consumedResultId +
+			", consumedSubpartitionIndex=" + consumedSubpartitionIndex +
+			", numberOfInputChannels=" + numberOfInputChannels +
+			'}';
 	}
 }

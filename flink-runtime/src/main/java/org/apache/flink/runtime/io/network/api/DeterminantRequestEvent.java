@@ -52,4 +52,11 @@ public class DeterminantRequestEvent extends AbstractEvent {
 	public void read(DataInputView in) throws IOException {
 		this.setFailedVertex(new VertexId(in.readShort()));
 	}
+
+	@Override
+	public String toString() {
+		return "DeterminantRequestEvent{" +
+			"failedVertex=" + failedVertex +
+			'}';
+	}
 }

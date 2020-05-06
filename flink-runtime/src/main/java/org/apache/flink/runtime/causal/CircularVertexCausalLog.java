@@ -1,7 +1,7 @@
 /*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
- * distributed with this work for additional information
+ * distributed with this work for additional debugrmation
  * regarding copyright ownership.  The ASF licenses this file
  * to you under the Apache License, Version 2.0 (the
  * "License"); you may not use this file except in compliance
@@ -97,7 +97,7 @@ public class CircularVertexCausalLog implements VertexCausalLog {
 			grow();
 
 
-		LOG.info("Upstream log delta has {} new determinant bytes", newDeterminantsLength);
+		LOG.debug("Upstream log delta has {} new determinant bytes", newDeterminantsLength);
 		if (newDeterminantsLength > 0)
 			circularCopyIntoLog(vertexCausalLogDelta.rawDeterminants, vertexCausalLogDelta.rawDeterminants.length - newDeterminantsLength);
 

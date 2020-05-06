@@ -503,6 +503,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 				taskNameWithSubtaskAndId,
 				this,
 				jobId,
+				desc.getResultId(),
 				partitionId,
 				desc.getPartitionType(),
 				desc.getNumberOfSubpartitions(),
@@ -1275,17 +1276,12 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 
 		try {
 			long checkpointId = taskRestore.getRestoreCheckpointId();
-			for (SingleInputGate inputGate : inputGates) {
-				inputGate.informInFlightLoggerRestoringState(checkpointId);
-			}
+			invokable.notifyStartedRestoringCheckpoint(checkpointId);
 			// Invokable should be an instance of an operator class in the hierarchy of StreamTask.
 			invokable.initializeState();
 
 			//todo: the below calls should now go to the recovery manager, who should maintain a set of
-			invokable.updateInFlightLoggerCheckpointId(checkpointId);
-			for (SingleInputGate inputGate : inputGates) {
-				inputGate.updateInFlightLoggerCheckpointId(checkpointId);
-			}
+			invokable.notifyCompletedRestoringCheckpoint(checkpointId);
 		} catch (NoSuchMethodException e) {
 			throw new FlinkException("Standby task has no initializeState() method; it is not an instance in the StreamTask hierarchy.", e);
 		} catch (Exception ee) {
@@ -1307,9 +1303,6 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		if (current == ExecutionState.STANDBY) {
 			invokable.switchStandbyToRunning();
 			LOG.debug("Task {} has {} inputGates.", this, inputGates.length);
-			if (inputGates.length == 0) {
-				invokable.tellInputChannelConnectionsComplete();
-			}
 
 			// switch to the RUNNING state, if that fails, we have been canceled/failed in the meantime
 			if (!transitionState(ExecutionState.STANDBY, ExecutionState.RUNNING)) {

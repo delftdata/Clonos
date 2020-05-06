@@ -22,46 +22,69 @@ import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.runtime.event.TaskEvent;
 
 import java.io.IOException;
+import java.util.Arrays;
 
 public class DeterminantResponseEvent extends TaskEvent {
 
-	VertexCausalLogDelta vertexCausalLogDelta;
+	boolean found;
+	VertexId vertexId;
+	byte[] determinants;
 
-	public DeterminantResponseEvent(VertexCausalLogDelta vertexCausalLogDelta) {
-		this.vertexCausalLogDelta = vertexCausalLogDelta;
+	public DeterminantResponseEvent(VertexId vertexId, byte[] determinants) {
+		this.vertexId = vertexId;
+		this.determinants = determinants;
+		this.found = true;
+	}
+	public DeterminantResponseEvent(VertexId vertexId) {
+		this.found = false;
+		this.vertexId =vertexId;
 	}
 
 	public DeterminantResponseEvent() {
 	}
 
-	public VertexCausalLogDelta getVertexCausalLogDelta() {
-		return vertexCausalLogDelta;
-	}
-
-	public void setVertexCausalLogDelta(VertexCausalLogDelta vertexCausalLogDelta) {
-		this.vertexCausalLogDelta = vertexCausalLogDelta;
-	}
 
 	@Override
 	public void write(DataOutputView out) throws IOException {
-		out.writeShort(vertexCausalLogDelta.getVertexId().getVertexId());
-		out.writeInt(vertexCausalLogDelta.getRawDeterminants().length);
-		out.write(vertexCausalLogDelta.getRawDeterminants());
+		out.writeBoolean(found);
+		out.writeShort(vertexId.getVertexId());
+		if(found) {
+			out.writeInt(determinants.length);
+			out.write(determinants);
+		}
 	}
 
 	@Override
 	public void read(DataInputView in) throws IOException {
-		short id = in.readShort();
-		int logDeltaLength = in.readInt();
-		byte[] logDelta = new byte[logDeltaLength];
-		in.read(logDelta);
-		this.vertexCausalLogDelta = new VertexCausalLogDelta(new VertexId(id), logDelta, 0);
+		this.found = in.readBoolean();
+		this.vertexId = new VertexId(in.readShort());
+
+		if(found) {
+			int logDeltaLength = in.readInt();
+			byte[] logDelta = new byte[logDeltaLength];
+			in.read(logDelta);
+			this.determinants = logDelta;
+		}
+
+	}
+
+	public VertexId getVertexId() {
+		return vertexId;
+	}
+
+	public byte[] getDeterminants() {
+		return determinants;
+	}
+
+	public boolean found() {
+		return found;
 	}
 
 	@Override
 	public String toString() {
 		return "DeterminantResponseEvent{" +
-			"vertexCausalLogDelta=" + vertexCausalLogDelta +
+			"vertexId=" + vertexId +
+			", determinants=" + Arrays.toString(determinants) +
 			'}';
 	}
 }

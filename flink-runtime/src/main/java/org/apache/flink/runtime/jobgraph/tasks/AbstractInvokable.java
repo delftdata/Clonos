@@ -101,13 +101,13 @@ public abstract class AbstractInvokable {
 
 	}
 
-	public void updateInFlightLoggerCheckpointId(long checkpointId) {
+	public void notifyStartedRestoringCheckpoint(long checkpointId){
+
+	}
+	public void notifyCompletedRestoringCheckpoint(long checkpointId){
 
 	}
 
-	public void tellInputChannelConnectionsComplete() {
-
-	}
 	/**
 	 * This method is called when a task is canceled either as a result of a user abort or an execution failure. It can
 	 * be overwritten to respond to shut down the user code properly.

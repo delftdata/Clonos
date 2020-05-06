@@ -133,6 +133,7 @@ public class StreamInputProcessor<IN> {
 		this.causalLoggingManager = checkpointedTask.getCausalLoggingManager();
 
 		inputGate = InputGateUtil.createInputGate(inputGates);
+		checkpointedTask.getRecoveryManager().setInputGate(inputGate);
 
 		this.barrierHandler = InputProcessorUtil.createCheckpointBarrierHandler(
 			checkpointedTask, checkpointMode, ioManager, inputGate, taskManagerConfig);
@@ -227,15 +228,7 @@ public class StreamInputProcessor<IN> {
 					currentRecordDeserializer.setNextBuffer(bufferOrEvent.getBuffer());
 				} else {// Event received
 					final AbstractEvent event = bufferOrEvent.getEvent();
-					if (event.getClass() == DeterminantRequestEvent.class) {
-						InputChannel toRespondTo = inputGate.getInputChannel(bufferOrEvent.getChannelIndex());
-						VertexId failedVertex = ((DeterminantRequestEvent)event).getFailedVertex();
-						LOG.info("Received DeterminantRequestEvent from failed vertex {}! Responding", failedVertex);
-						byte[] determinants = this.causalLoggingManager.getDeterminantsOfVertex(failedVertex);
-						//todo if dont have locally, recurr request and make future.
-						toRespondTo.sendTaskEvent(new DeterminantResponseEvent(new VertexCausalLogDelta(failedVertex, determinants,0)));
-					}
-					else if (event.getClass() != EndOfPartitionEvent.class) {
+					if (event.getClass() != EndOfPartitionEvent.class) {
 						throw new IOException("Unexpected event: " + event);
 					}
 				}

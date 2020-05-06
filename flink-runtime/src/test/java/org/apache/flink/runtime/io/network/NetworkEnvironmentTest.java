@@ -308,6 +308,7 @@ public class NetworkEnvironmentTest {
 			"TestTask-" + partitionType + ":" + channels,
 			mock(TaskActions.class),
 			new JobID(),
+			new IntermediateDataSetID(),
 			new ResultPartitionID(),
 			partitionType,
 			channels,

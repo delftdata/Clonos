@@ -70,12 +70,16 @@ public class UnionInputGate implements InputGate, InputGateListener {
 
 	private static final Logger LOG = LoggerFactory.getLogger(UnionInputGate.class);
 
-	/** The input gates to union. */
-	private final InputGate[] inputGates;
+	/**
+	 * The input gates to union.
+	 */
+	private final SingleInputGate[] inputGates;
 
 	private final Set<InputGate> inputGatesWithRemainingData;
 
-	/** Gates, which notified this input gate about available data. */
+	/**
+	 * Gates, which notified this input gate about available data.
+	 */
 	private final ArrayDeque<InputGate> inputGatesWithData = new ArrayDeque<>();
 
 	/**
@@ -83,10 +87,14 @@ public class UnionInputGate implements InputGate, InputGateListener {
 	 */
 	private final Set<InputGate> enqueuedInputGatesWithData = new HashSet<>();
 
-	/** The total number of input channels across all unioned input gates. */
+	/**
+	 * The total number of input channels across all unioned input gates.
+	 */
 	private final int totalNumberOfInputChannels;
 
-	/** Registered listener to forward input gate notifications to. */
+	/**
+	 * Registered listener to forward input gate notifications to.
+	 */
 	private volatile InputGateListener inputGateListener;
 
 	/**
@@ -95,12 +103,14 @@ public class UnionInputGate implements InputGate, InputGateListener {
 	 */
 	private final Map<InputGate, Integer> inputGateToIndexOffsetMap;
 
-	/** Flag indicating whether partitions have been requested. */
+	/**
+	 * Flag indicating whether partitions have been requested.
+	 */
 	private boolean requestedPartitionsFlag;
 
 	private String taskName;
 
-	public UnionInputGate(InputGate... inputGates) {
+	public UnionInputGate(SingleInputGate... inputGates) {
 		this.inputGates = checkNotNull(inputGates);
 		checkArgument(inputGates.length > 1, "Union input gate should union at least two input gates.");
 
@@ -280,8 +290,8 @@ public class UnionInputGate implements InputGate, InputGateListener {
 	@Override
 	public InputChannel getInputChannel(int i) {
 		InputChannel result = null;
-		for(InputGate gate : inputGates){
-			if(gate.getNumberOfInputChannels() <= i)
+		for (InputGate gate : inputGates) {
+			if (gate.getNumberOfInputChannels() <= i)
 				i -= gate.getNumberOfInputChannels();
 			else {
 				result = gate.getInputChannel(i);
@@ -289,6 +299,16 @@ public class UnionInputGate implements InputGate, InputGateListener {
 			}
 		}
 		return result;
+	}
+
+	@Override
+	public int getAbsoluteChannelIndex(InputGate gate, int channelIndex) {
+		return inputGateToIndexOffsetMap.get(gate) + channelIndex;
+	}
+
+	@Override
+	public SingleInputGate[] getInputGates() {
+		return inputGates;
 	}
 
 	@Override

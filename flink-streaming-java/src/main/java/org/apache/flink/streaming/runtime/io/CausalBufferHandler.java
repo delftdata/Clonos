@@ -17,9 +17,16 @@
  */
 package org.apache.flink.streaming.runtime.io;
 
+import org.apache.flink.runtime.causal.DeterminantResponseEvent;
 import org.apache.flink.runtime.causal.ICausalLoggingManager;
+import org.apache.flink.runtime.causal.VertexCausalLogDelta;
+import org.apache.flink.runtime.causal.VertexId;
 import org.apache.flink.runtime.causal.determinant.OrderDeterminant;
+import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
+import org.apache.flink.runtime.event.AbstractEvent;
+import org.apache.flink.runtime.io.network.api.DeterminantRequestEvent;
 import org.apache.flink.runtime.io.network.partition.consumer.BufferOrEvent;
+import org.apache.flink.runtime.io.network.partition.consumer.InputChannel;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,6 +40,7 @@ import java.util.stream.Collectors;
 public class CausalBufferHandler implements CheckpointBarrierHandler {
 
 	private static final Logger LOG = LoggerFactory.getLogger(CausalBufferHandler.class);
+	private final IRecoveryManager recoveryManager;
 
 	private ICausalLoggingManager causalLoggingManager;
 
@@ -43,8 +51,9 @@ public class CausalBufferHandler implements CheckpointBarrierHandler {
 	//This is just to reduce the complexity of going over bufferedBuffersPerChannel
 	private int numUnprocessedBuffers;
 
-	public CausalBufferHandler(ICausalLoggingManager causalLoggingManager, CheckpointBarrierHandler wrapped, int numInputChannels) {
+	public CausalBufferHandler(ICausalLoggingManager causalLoggingManager, IRecoveryManager recoveryManager, CheckpointBarrierHandler wrapped, int numInputChannels) {
 		this.causalLoggingManager = causalLoggingManager;
+		this.recoveryManager = recoveryManager;
 		this.wrapped = wrapped;
 		this.bufferedBuffersPerChannel = new Deque[numInputChannels];
 		for (int i = 0; i < numInputChannels; i++)
@@ -58,20 +67,15 @@ public class CausalBufferHandler implements CheckpointBarrierHandler {
 		//todo should process DeterminantRequestEvents and respond to them
 		LOG.info("Call to getNextNonBlocked");
 		BufferOrEvent toReturn;
-		if (causalLoggingManager.hasDeterminantsToRecoverFrom()) {
-			if(!causalLoggingManager.isRecovering())
-				causalLoggingManager.startRecovery();
-			LOG.info("We are recovering! Fetching a determinant from the CausalLogManager");
-			OrderDeterminant determinant = causalLoggingManager.getRecoveryOrderDeterminant();
-			LOG.info("Determinant says {}!", determinant);
-			if (bufferedBuffersPerChannel[determinant.getChannel()].isEmpty())
-				toReturn = processUntilFindBufferForChannel(determinant.getChannel());
+		if (recoveryManager.isReplaying()) {
+			LOG.info("We are replaying! Fetching a determinant from the CausalLogManager");
+			byte nextChannel = recoveryManager.replayNextChannel();
+			LOG.info("Determinant says next channel is {}!", nextChannel);
+			if (bufferedBuffersPerChannel[nextChannel].isEmpty())
+				toReturn = processUntilFindBufferForChannel(nextChannel);
 			else
-				toReturn = bufferedBuffersPerChannel[determinant.getChannel()].pop();
+				toReturn = bufferedBuffersPerChannel[nextChannel].pop();
 		} else {
-			if(causalLoggingManager.isRecovering()){
-				causalLoggingManager.stopRecovery();
-			}
 			LOG.info("We are not recovering!");
 			if (numUnprocessedBuffers != 0) {
 				LOG.info("Getting an unprocessed buffer from recovery! Unprocessed buffers: {}, bufferedBuffers: {}", numUnprocessedBuffers,
@@ -79,7 +83,17 @@ public class CausalBufferHandler implements CheckpointBarrierHandler {
 				toReturn = pickUnprocessedBuffer();
 			}else {
 				LOG.info("Getting a buffer from CheckpointBarrierHandler!");
-				toReturn = wrapped.getNextNonBlocked();
+				while(true) {
+					toReturn = wrapped.getNextNonBlocked();
+					if (toReturn.isEvent()) {
+						AbstractEvent event = toReturn.getEvent();
+						if (event.getClass() == DeterminantRequestEvent.class) {
+							recoveryManager.notifyDeterminantRequestEvent((DeterminantRequestEvent) event, toReturn.getChannelIndex());
+						}else
+							break;
+					}else
+						break;
+				}
 			}
 		}
 		causalLoggingManager.appendDeterminant(new OrderDeterminant((byte) toReturn.getChannelIndex()));

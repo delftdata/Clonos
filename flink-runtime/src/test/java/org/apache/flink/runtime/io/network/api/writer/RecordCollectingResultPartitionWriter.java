@@ -22,6 +22,7 @@ import org.apache.flink.runtime.io.network.api.serialization.RecordDeserializer;
 import org.apache.flink.runtime.io.network.api.serialization.SpillingAdaptiveSpanningRecordDeserializer;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferProvider;
+import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.types.Record;
 
 import java.io.IOException;
@@ -75,6 +76,11 @@ public class RecordCollectingResultPartitionWriter extends AbstractCollectingRes
 	@Override
 	public void notifyCheckpointComplete(long checkpointId) {
 
+	}
+
+	@Override
+	public IntermediateDataSetID getIntermediateDataSetID() {
+		return null;
 	}
 
 }

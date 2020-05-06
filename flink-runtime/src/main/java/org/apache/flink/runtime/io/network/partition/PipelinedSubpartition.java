@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.io.network.partition;
 
+import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 import org.apache.flink.runtime.inflightlogging.InFlightLog;
 import org.apache.flink.runtime.inflightlogging.SizedListIterator;
 import org.apache.flink.runtime.inflightlogging.SubpartitionInFlightLogger;
@@ -36,7 +37,6 @@ import java.io.IOException;
 import java.util.Deque;
 import java.util.LinkedList;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -45,7 +45,7 @@ import static org.apache.flink.util.Preconditions.checkState;
 /**
  * A pipelined in-memory only subpartition, which can be consumed once.
  */
-class PipelinedSubpartition extends ResultSubpartition {
+public class PipelinedSubpartition extends ResultSubpartition {
 
 	private static final Logger LOG = LoggerFactory.getLogger(PipelinedSubpartition.class);
 
@@ -81,10 +81,10 @@ class PipelinedSubpartition extends ResultSubpartition {
 	@GuardedBy("buffers")
 	private Deque<Long> checkpointIds;
 
-	private boolean isPreparingToReplay;
-	private boolean isReplaying;
+	private AtomicBoolean downstreamFailed;
 
 	private SizedListIterator<Buffer> replayIterator;
+	private IRecoveryManager recoveryManager;
 
 	PipelinedSubpartition(int index, ResultPartition parent) {
 		super(index, parent);
@@ -92,8 +92,11 @@ class PipelinedSubpartition extends ResultSubpartition {
 		this.inFlightLog = new SubpartitionInFlightLogger();
 		this.checkpointIds = new LinkedList<>();
 		this.nextCheckpointId = -1L;
-		this.isPreparingToReplay = false;
-		this.isReplaying = false;
+		this.downstreamFailed = new AtomicBoolean(false);
+	}
+
+	public void setRecoveryManager(IRecoveryManager recoveryManager){
+		this.recoveryManager = recoveryManager;
 	}
 
 	public void notifyCheckpointBarrier(long checkpointId) {
@@ -189,33 +192,19 @@ class PipelinedSubpartition extends ResultSubpartition {
 		}
 	}
 
-	// Release all available buffers. Needed in RunStandbyTaskStrategy for producer whose consumer failed.
-	public void releaseBuffers() {
-		// Release all available buffers
-		synchronized (buffers) {
-			LOG.debug("Release {} buffers of {}.", buffers.size(), this);
-			for (BufferConsumer buffer : buffers) {
-				buffer.close();
-			}
-			buffers.clear();
-			checkpointIds.clear();
-			resetBuffersInBacklog();
-			LOG.debug("Released buffers of {}. Now {} buffers.", this, buffers.size());
-		}
-	}
-
 	public void sendFailConsumerTrigger(Throwable cause) {
+		LOG.info("Sending fail consumer trigger. Setting downstream failed to true");
+		downstreamFailed.set(true);
 		parent.sendFailConsumerTrigger(index, cause);
 	}
 
 	@Nullable
 	BufferAndBacklog pollBuffer() {
-		while (isPreparingToReplay){
-			LOG.debug("Blocked waiting for Start Replay signal");
-		}
+		while(downstreamFailed.get())
+			LOG.info("Polling for next buffer, but downstream is still failed.");
 
-		if (isReplaying) {
-			LOG.debug("We are replaying, get inflight logs next buffer");
+		if (replayIterator != null) {
+			LOG.info("We are replaying, get inflight logs next buffer");
 			return getReplayedBuffer();
 		} else {
 			return getBufferFromQueuedBufferConsumers();
@@ -226,12 +215,12 @@ class PipelinedSubpartition extends ResultSubpartition {
 	private BufferAndBacklog getReplayedBuffer() {
 		synchronized (buffers) {
 			Buffer buffer = replayIterator.next();
-			if (!replayIterator.hasNext()) {
+
+			if (!replayIterator.hasNext())
 				replayIterator = null;
-				isReplaying = false;
-			}
+
 			return new BufferAndBacklog(buffer,
-				(replayIterator != null && replayIterator.hasNext()) || isAvailableUnsafe(),
+				replayIterator != null || isAvailableUnsafe(),
 				getBuffersInBacklog() + (replayIterator != null ? replayIterator.numberRemaining() : 0),
 				_recoveryNextBufferIsEvent());
 		}
@@ -346,12 +335,15 @@ class PipelinedSubpartition extends ResultSubpartition {
 			checkState(!isReleased);
 
 			if (readView == null) {
-				LOG.debug("Creating read view for {} (index: {}) of partition {}.", this, index, parent.getPartitionId());
+				LOG.info("Creating read view for {} (index: {}) of partition {}.", this, index, parent.getPartitionId());
 
 				readView = new PipelinedSubpartitionView(this, availabilityListener);
 			} else {
+				while(!recoveryManager.isRunning())
+					LOG.info("Spin waiting for our recovery to finish, before allowing the update of the read view");
+				// this is where the subpartition is requested.
 				readView.setAvailabilityListener(availabilityListener);
-				LOG.debug("(Re)using read view {} for {} (index: {}) of partition {}.", readView, this, index, parent.getPartitionId());
+				LOG.info("(Re)using read view {} for {} (index: {}) of partition {}.", readView, this, index, parent.getPartitionId());
 			}
 
 			if (!buffers.isEmpty() || (replayIterator != null && replayIterator.numberRemaining() > 0)) {
@@ -405,6 +397,18 @@ class PipelinedSubpartition extends ResultSubpartition {
 		return Math.max(buffers.size(), 0);
 	}
 
+	public void requestReplay(long checkpointId, int ignoreMessages){
+		replayIterator = inFlightLog.getInFlightIterator();
+		LOG.info("Replay has been requested for pipelined subpartition {}, buffers to replay {}. Setting downstreamFailed to false", this, replayIterator.numberRemaining());
+		if(replayIterator.numberRemaining() < ignoreMessages)
+			throw new RuntimeException("Invalid state: pipelined subpartition can replay " + replayIterator.numberRemaining() + " messages, but a replay skipping " + ignoreMessages + " was requested.");
+		for(int i = 0; i < ignoreMessages ; i++)
+			replayIterator.next();
+		if(!replayIterator.hasNext())
+			replayIterator = null;
+		downstreamFailed.set(false);
+	}
+
 	private void maybeNotifyDataAvailable() {
 		// Notify only when we added first finished buffer.
 		if (getNumberOfFinishedBuffers() == 1) {
@@ -427,29 +431,5 @@ class PipelinedSubpartition extends ResultSubpartition {
 
 		// We assume that only last buffer is not finished.
 		return Math.max(0, buffers.size() - 1);
-	}
-
-	public void prepareInFlightReplay(long checkpointId) {
-		isPreparingToReplay = true;
-		LOG.debug("Prepare replay signal");
-		replayIterator = inFlightLog.getInFlightFromCheckpoint(checkpointId);
-		LOG.debug("Prepare replay signal, for checkpoint id {}, buffers to replay {}", checkpointId, replayIterator.numberRemaining());
-		parent.ackInFlightLogPrepareRequest(this.index);
-	}
-
-	public void startInFlightReplay(long checkpointId) {
-		while(!isPreparingToReplay){
-			LOG.debug("Spinning waiting for prepareInFlightReplay Signal");
-		}
-		LOG.debug("Start replay signal");
-		//todo check match on checkpointid
-		if(!replayIterator.hasNext()) {
-			LOG.debug("ReplayIterator does not have next. {}", replayIterator.toString());
-			isReplaying = false;
-		}
-		else
-			isReplaying = true;
-
-		isPreparingToReplay = false;
 	}
 }

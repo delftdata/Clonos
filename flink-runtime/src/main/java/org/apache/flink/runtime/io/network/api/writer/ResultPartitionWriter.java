@@ -21,6 +21,8 @@ package org.apache.flink.runtime.io.network.api.writer;
 import org.apache.flink.runtime.io.network.buffer.BufferConsumer;
 import org.apache.flink.runtime.io.network.buffer.BufferProvider;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
+import org.apache.flink.runtime.io.network.partition.ResultSubpartition;
+import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 
 import java.io.IOException;
 
@@ -36,6 +38,8 @@ public interface ResultPartitionWriter {
 	int getNumberOfSubpartitions();
 
 	int getNumTargetKeyGroups();
+
+	ResultSubpartition[] getResultSubpartitions();
 
 	/**
 	 * Adds the bufferConsumer to the subpartition with the given index.
@@ -69,4 +73,6 @@ public interface ResultPartitionWriter {
     void notifyCheckpointBarrier(long checkpointId);
 
 	void notifyCheckpointComplete(long checkpointId);
+
+    IntermediateDataSetID getIntermediateDataSetID();
 }

@@ -19,8 +19,7 @@ package org.apache.flink.runtime.io.network.api.writer;
 import org.apache.flink.core.io.IOReadableWritable;
 import org.apache.flink.runtime.causal.ICausalLoggingManager;
 import org.apache.flink.runtime.causal.DeterminantCarrier;
-import org.apache.flink.runtime.causal.RandomService;
-import org.apache.flink.runtime.causal.Silenceable;
+import org.apache.flink.runtime.causal.services.RandomService;
 import org.apache.flink.runtime.event.AbstractEvent;
 import org.apache.flink.runtime.io.network.api.CheckpointBarrier;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
@@ -31,21 +30,19 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 
-public class CausalRecordWriter<T extends IOReadableWritable> extends RecordWriter<T> implements Silenceable {
+public class CausalRecordWriter<T extends IOReadableWritable> extends RecordWriter<T> {
 
 	private ICausalLoggingManager causalLoggingManager;
 
-	private boolean silenced;
 
 	private static final Logger LOG = LoggerFactory.getLogger(CausalRecordWriter.class);
 
 	private RandomService randomService;
 
-	public CausalRecordWriter(ResultPartitionWriter writer, ChannelSelector<T> channelSelector, boolean flushAlways, ICausalLoggingManager causalLoggingManager) {
+	public CausalRecordWriter(ResultPartitionWriter writer, ChannelSelector<T> channelSelector, boolean flushAlways, ICausalLoggingManager causalLoggingManager, RandomService randomService) {
 		super(writer, channelSelector, flushAlways);
 		this.causalLoggingManager = causalLoggingManager;
-		this.randomService = causalLoggingManager.getRandomService();
-		this.silenced = false;
+		this.randomService = randomService;
 	}
 
 	@Override
@@ -58,8 +55,7 @@ public class CausalRecordWriter<T extends IOReadableWritable> extends RecordWrit
 		//Essentially the same operation, except if silenced we do not send it out. Additionally, we enrich it with deltas.
 		//Todo this is a really bad cast
 		causalLoggingManager.enrichWithDeltas((DeterminantCarrier) record, targetChannel);
-		if (!silenced)
-			super.sendToTarget(record, targetChannel);
+		super.sendToTarget(record, targetChannel);
 	}
 
 	@Override
@@ -80,28 +76,17 @@ public class CausalRecordWriter<T extends IOReadableWritable> extends RecordWrit
 	@Override
 	public void emitEvent(AbstractEvent event, int targetChannel) throws IOException, InterruptedException {
 		LOG.debug("{}: RecordWriter replay {}.", targetPartition.getTaskName(), event);
-		if(!silenced) {
-			try (BufferConsumer eventBufferConsumer = EventSerializer.toBufferConsumer(event)) {
-				RecordSerializer<T> serializer = serializers[targetChannel];
+		try (BufferConsumer eventBufferConsumer = EventSerializer.toBufferConsumer(event)) {
+			RecordSerializer<T> serializer = serializers[targetChannel];
 
-				tryFinishCurrentBufferBuilder(targetChannel, serializer);
+			tryFinishCurrentBufferBuilder(targetChannel, serializer);
 
-				// retain the buffer so that it can be recycled by each channel of targetPartition
-				targetPartition.addBufferConsumer(eventBufferConsumer.copy(), targetChannel);
+			// retain the buffer so that it can be recycled by each channel of targetPartition
+			targetPartition.addBufferConsumer(eventBufferConsumer.copy(), targetChannel);
 
-				if (flushAlways) {
-					targetPartition.flush(targetChannel);
-				}
+			if (flushAlways) {
+				targetPartition.flush(targetChannel);
 			}
 		}
 	}
-
-	public void silence() {
-		this.silenced = true;
-	}
-
-	public void unsilence() {
-		this.silenced = false;
-	}
-
 }

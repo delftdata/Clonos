@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.io.network.partition.consumer;
 
+import org.apache.flink.runtime.causal.recovery.RecoveryManager;
 import org.apache.flink.runtime.event.TaskEvent;
 
 import java.io.IOException;
@@ -94,4 +95,8 @@ public interface InputGate {
 	int getPageSize();
 
 	InputChannel getInputChannel(int i);
+
+    int getAbsoluteChannelIndex(InputGate gate, int channelIndex);
+
+	SingleInputGate[] getInputGates();
 }

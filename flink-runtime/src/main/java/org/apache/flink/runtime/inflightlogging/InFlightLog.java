@@ -32,10 +32,8 @@ public interface InFlightLog {
 
 	public void logCheckpointBarrier(Buffer buffer, long checkpointId);
 
-	public void clearLog();
-
 	public void notifyCheckpointComplete(long checkpointId);
 
-	public SizedListIterator<Buffer> getInFlightFromCheckpoint(long checkpointId);
+	public SizedListIterator<Buffer> getInFlightIterator();
 
 }

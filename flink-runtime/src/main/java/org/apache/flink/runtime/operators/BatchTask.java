@@ -40,6 +40,7 @@ import org.apache.flink.runtime.io.network.api.reader.MutableRecordReader;
 import org.apache.flink.runtime.io.network.api.writer.ChannelSelector;
 import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
+import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
 import org.apache.flink.runtime.io.network.partition.consumer.UnionInputGate;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.apache.flink.runtime.memory.MemoryManager;
@@ -678,7 +679,7 @@ public class BatchTask<S extends Function, OT> extends AbstractInvokable impleme
 						getEnvironment().getTaskManagerInfo().getTmpDirectories());
 			} else if (groupSize > 1){
 				// union case
-				InputGate[] readers = new InputGate[groupSize];
+				SingleInputGate[] readers = new SingleInputGate[groupSize];
 				for (int j = 0; j < groupSize; ++j) {
 					readers[j] = getEnvironment().getInputGate(currentReaderOffset + j);
 				}
@@ -721,7 +722,7 @@ public class BatchTask<S extends Function, OT> extends AbstractInvokable impleme
 						getEnvironment().getTaskManagerInfo().getTmpDirectories());
 			} else if (groupSize > 1){
 				// union case
-				InputGate[] readers = new InputGate[groupSize];
+				SingleInputGate[] readers = new SingleInputGate[groupSize];
 				for (int j = 0; j < groupSize; ++j) {
 					readers[j] = getEnvironment().getInputGate(currentReaderOffset + j);
 				}

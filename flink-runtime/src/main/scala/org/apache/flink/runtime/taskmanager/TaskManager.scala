@@ -1226,7 +1226,6 @@ class TaskManager(
         taskInformation,
         tdd.getExecutionAttemptId,
         tdd.getAllocationId,
-        tdd.getVertexId,
         tdd.getSubtaskIndex,
         tdd.getAttemptNumber,
         tdd.getProducedPartitions,
@@ -1248,7 +1247,7 @@ class TaskManager(
         resultPartitionConsumableNotifier,
         partitionStateChecker,
         context.dispatcher,
-        tdd.getIsStandby, tdd.getUptreamVertices,tdd.getNumberDirectDownstreamVertexes)
+        tdd.getIsStandby, jobInformation.getTopologicallySortedJobVertexes)
 
       log.info(s"Received task ${task.getTaskInfo.getTaskNameWithSubtasks()}")
 

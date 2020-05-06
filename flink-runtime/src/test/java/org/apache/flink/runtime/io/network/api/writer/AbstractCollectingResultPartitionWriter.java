@@ -22,6 +22,7 @@ import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferConsumer;
 import org.apache.flink.runtime.io.network.buffer.BufferProvider;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
+import org.apache.flink.runtime.io.network.partition.ResultSubpartition;
 
 import javax.annotation.concurrent.ThreadSafe;
 
@@ -56,6 +57,11 @@ public abstract class AbstractCollectingResultPartitionWriter implements ResultP
 	@Override
 	public int getNumberOfSubpartitions() {
 		return 1;
+	}
+
+	@Override
+	public ResultSubpartition[] getResultSubpartitions(){
+		return new ResultSubpartition[0];
 	}
 
 	@Override

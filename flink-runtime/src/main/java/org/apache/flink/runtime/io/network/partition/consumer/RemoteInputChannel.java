@@ -20,7 +20,7 @@ package org.apache.flink.runtime.io.network.partition.consumer;
 
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.core.memory.MemorySegment;
-import org.apache.flink.runtime.event.InFlightLogEvent;
+import org.apache.flink.runtime.event.InFlightLogRequestEvent;
 import org.apache.flink.runtime.event.TaskEvent;
 import org.apache.flink.runtime.io.network.ConnectionID;
 import org.apache.flink.runtime.io.network.ConnectionManager;
@@ -240,12 +240,12 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 	public void sendTaskEvent(TaskEvent event) throws IOException, InterruptedException {
 		LOG.debug("Send task event {} from channel {}.", event, this);
 		checkState(!isReleased.get(), "Tried to send task event to producer after channel has been released.");
-		checkState(subpartitionRequested.get() || event instanceof InFlightLogEvent, "Tried to send task event to producer before requesting a queue.");
+		checkState(subpartitionRequested.get() || event instanceof InFlightLogRequestEvent, "Tried to send task event to producer before requesting a queue.");
 
 		checkError();
 
 		// If subpartition not yet requested, i.e. partitionRequestClient == null, allow only InFLightLogEvent to go through
-		if (partitionRequestClient == null && event instanceof InFlightLogEvent) {
+		if (partitionRequestClient == null && event instanceof InFlightLogRequestEvent) {
 			// Create a client
 			partitionRequestClient = connectionManager
 				.createPartitionRequestClient(connectionId);

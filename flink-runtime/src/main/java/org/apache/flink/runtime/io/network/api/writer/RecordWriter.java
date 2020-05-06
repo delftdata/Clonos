@@ -108,6 +108,10 @@ public class RecordWriter<T extends IOReadableWritable> {
 		}
 	}
 
+	public ResultPartitionWriter getResultPartition(){
+		return targetPartition;
+	}
+
 
 	public void emit(T record) throws IOException, InterruptedException {
 		for (int targetChannel : channelSelector.selectChannels(record, numChannels)) {

@@ -23,21 +23,27 @@
  *
  */
 
-package org.apache.flink.runtime.causal;
+package org.apache.flink.runtime.causal.services;
 
+import org.apache.flink.runtime.causal.ICausalLoggingManager;
 import org.apache.flink.runtime.causal.determinant.TimestampDeterminant;
+import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 
 public class TimeService {
 
-	private final ICausalLoggingManager causalLoggingManager;
+	private ICausalLoggingManager causalLoggingManager;
+	private IRecoveryManager recoveryManager;
 
-	public TimeService(ICausalLoggingManager causalLoggingManager){
+	public TimeService(ICausalLoggingManager causalLoggingManager, IRecoveryManager recoveryManager){
 		this.causalLoggingManager = causalLoggingManager;
+		this.recoveryManager = recoveryManager;
 	}
 
 	public long currentTimeMillis(){
-		if(causalLoggingManager.hasDeterminantsToRecoverFrom())
-			return  causalLoggingManager.getTimestampDeterminant().getTimestamp();
+		while (!(recoveryManager.isRunning() || recoveryManager.isReplaying())); //Spin
+
+		if(recoveryManager.isReplaying())
+			return  recoveryManager.replayNextTimestamp();
 
 		long timestamp = System.currentTimeMillis();
 		causalLoggingManager.appendDeterminant(new TimestampDeterminant(timestamp));

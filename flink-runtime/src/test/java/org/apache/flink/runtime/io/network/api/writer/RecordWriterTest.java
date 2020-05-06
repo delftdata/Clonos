@@ -35,8 +35,10 @@ import org.apache.flink.runtime.io.network.buffer.BufferConsumer;
 import org.apache.flink.runtime.io.network.buffer.BufferProvider;
 import org.apache.flink.runtime.io.network.buffer.BufferRecycler;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
+import org.apache.flink.runtime.io.network.partition.ResultSubpartition;
 import org.apache.flink.runtime.io.network.partition.consumer.BufferOrEvent;
 import org.apache.flink.runtime.io.network.util.TestPooledBufferProvider;
+import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.types.IntValue;
 import org.apache.flink.util.XORShiftRandom;
 
@@ -416,6 +418,11 @@ public class RecordWriterTest {
 		}
 
 		@Override
+		public IntermediateDataSetID getIntermediateDataSetID() {
+			return null;
+		}
+
+		@Override
 		public BufferProvider getBufferProvider() {
 			return bufferProvider;
 		}
@@ -433,6 +440,11 @@ public class RecordWriterTest {
 		@Override
 		public int getNumTargetKeyGroups() {
 			return 1;
+		}
+
+		@Override
+		public ResultSubpartition[] getResultSubpartitions() {
+			return new ResultSubpartition[0];
 		}
 
 		@Override
@@ -488,6 +500,11 @@ public class RecordWriterTest {
 		}
 
 		@Override
+		public IntermediateDataSetID getIntermediateDataSetID() {
+			return null;
+		}
+
+		@Override
 		public BufferProvider getBufferProvider() {
 			return bufferProvider;
 		}
@@ -505,6 +522,11 @@ public class RecordWriterTest {
 		@Override
 		public int getNumTargetKeyGroups() {
 			return 1;
+		}
+
+		@Override
+		public ResultSubpartition[] getResultSubpartitions() {
+			return new ResultSubpartition[0];
 		}
 
 		@Override

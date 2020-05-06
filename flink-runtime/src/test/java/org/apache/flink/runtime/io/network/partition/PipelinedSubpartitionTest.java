@@ -558,8 +558,7 @@ public class PipelinedSubpartitionTest extends SubpartitionTestBase {
 		partition.pollBuffer();
 		partition.pollBuffer();
 		partition.pollBuffer();
-		partition.prepareInFlightReplay(1);
-		partition.startInFlightReplay(1);
+		partition.requestReplay(1,0);
 		assertEquals(300, partition.pollBuffer().buffer().getSize());
 		assertEquals(400, partition.pollBuffer().buffer().getSize());
 		assertEquals(50, partition.pollBuffer().buffer().getSize());

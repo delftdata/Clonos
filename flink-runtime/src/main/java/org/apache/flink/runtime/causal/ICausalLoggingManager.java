@@ -17,13 +17,11 @@
  */
 package org.apache.flink.runtime.causal;
 
-import org.apache.flink.runtime.causal.determinant.Determinant;
-import org.apache.flink.runtime.causal.determinant.OrderDeterminant;
-import org.apache.flink.runtime.causal.determinant.RNGDeterminant;
-import org.apache.flink.runtime.causal.determinant.TimestampDeterminant;
+import org.apache.flink.runtime.causal.determinant.*;
 import org.apache.flink.runtime.state.CheckpointListener;
 
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -48,29 +46,7 @@ public interface ICausalLoggingManager extends CheckpointListener {
 
 	void notifyCheckpointBarrier(long checkpointId);
 
+	DeterminantEncodingStrategy getDeterminantEncodingStrategy();
 
-	//============== Services to simplify usage
-
-    RandomService getRandomService();
-	TimeService getTimeService();
-
-	//============= Recovery Manager
-
-	void registerSilenceable(Silenceable silenceable);
-
-	void notifyDeterminantResponseEvent(DeterminantResponseEvent determinantResponseEvent);
-
-	boolean hasDeterminantsToRecoverFrom();
-
-	OrderDeterminant getRecoveryOrderDeterminant();
-
-	RNGDeterminant getRecoveryRNGDeterminant();
-
-	void stopRecovery();
-
-	void startRecovery();
-
-	boolean isRecovering();
-
-	TimestampDeterminant getTimestampDeterminant();
+	VertexId getVertexId();
 }
