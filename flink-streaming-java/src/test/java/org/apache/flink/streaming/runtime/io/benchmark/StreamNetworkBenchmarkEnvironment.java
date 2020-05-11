@@ -234,7 +234,7 @@ public class StreamNetworkBenchmarkEnvironment<T extends IOReadableWritable> {
 			NetworkEnvironment environment,
 			final int channels) throws IOException {
 
-		InputGate[] gates = new InputGate[channels];
+		SingleInputGate[] gates = new SingleInputGate[channels];
 		for (int channel = 0; channel < channels; ++channel) {
 			int finalChannel = channel;
 			InputChannelDeploymentDescriptor[] channelDescriptors = Arrays.stream(partitionIds)
@@ -304,7 +304,5 @@ public class StreamNetworkBenchmarkEnvironment<T extends IOReadableWritable> {
 		@Override
 		public void requestFailConsumer(ResultPartitionID partitionId, int subpartitionIndex, Throwable cause, TaskActions taskActions) {}
 
-		@Override
-		public void ackInFlightLogPrepareRequest(ResultPartitionID resultPartitionId, int subpartitionIndex, TaskActions taskActions) {}
 	}
 }

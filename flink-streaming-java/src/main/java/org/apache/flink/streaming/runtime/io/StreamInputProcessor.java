@@ -35,6 +35,7 @@ import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.partition.consumer.BufferOrEvent;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannel;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
+import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
 import org.apache.flink.runtime.metrics.groups.OperatorMetricGroup;
 import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
 import org.apache.flink.runtime.plugable.DeserializationDelegate;
@@ -118,7 +119,7 @@ public class StreamInputProcessor<IN> {
 
 	@SuppressWarnings("unchecked")
 	public StreamInputProcessor(
-		InputGate[] inputGates,
+		SingleInputGate[] inputGates,
 		TypeSerializer<IN> inputSerializer,
 		StreamTask<?, ?> checkpointedTask,
 		CheckpointingMode checkpointMode,

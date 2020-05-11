@@ -273,8 +273,10 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		}
 
 		for(ResultPartition partition : environment.getContainingTask().getProducedPartitions()) {
-			for(ResultSubpartition subpartition : partition.getResultSubpartitions())
-				((PipelinedSubpartition)subpartition).setRecoveryManager(recoveryManager);
+			for(ResultSubpartition subpartition : partition.getResultSubpartitions()) {
+				((PipelinedSubpartition) subpartition).setRecoveryManager(recoveryManager);
+				((PipelinedSubpartition) subpartition).setCausalLoggingManager(causalLoggingManager);
+			}
 			DeterminantResponseEventListener edel = new DeterminantResponseEventListener(environment.getUserClassLoader(), recoveryManager);
 			environment.getTaskEventDispatcher().subscribeToEvent(partition.getPartitionId(), edel, DeterminantResponseEvent.class);
 			LOG.info("Set DeterminantResponseEventListener {} for resultPartition {}.", edel, partition);

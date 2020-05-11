@@ -19,6 +19,7 @@ package org.apache.flink.streaming.runtime.io;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
+import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
 import org.apache.flink.runtime.io.network.partition.consumer.UnionInputGate;
 
 import java.util.ArrayList;
@@ -33,14 +34,14 @@ import java.util.List;
 @Internal
 public class InputGateUtil {
 
-	public static InputGate createInputGate(Collection<InputGate> inputGates1, Collection<InputGate> inputGates2) {
-		List<InputGate> gates = new ArrayList<InputGate>(inputGates1.size() + inputGates2.size());
+	public static InputGate createInputGate(Collection<SingleInputGate> inputGates1, Collection<SingleInputGate> inputGates2) {
+		List<SingleInputGate> gates = new ArrayList<SingleInputGate>(inputGates1.size() + inputGates2.size());
 		gates.addAll(inputGates1);
 		gates.addAll(inputGates2);
-		return createInputGate(gates.toArray(new InputGate[gates.size()]));
+		return createInputGate(gates.toArray(new SingleInputGate[gates.size()]));
 	}
 
-	public static InputGate createInputGate(InputGate[] inputGates) {
+	public static InputGate createInputGate(SingleInputGate[] inputGates) {
 		if (inputGates.length <= 0) {
 			throw new RuntimeException("No such input gate.");
 		}

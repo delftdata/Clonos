@@ -21,6 +21,7 @@ import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
+import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
 import org.apache.flink.runtime.metrics.MetricNames;
 import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.api.graph.StreamEdge;
@@ -68,14 +69,14 @@ public class TwoInputStreamTask<IN1, IN2, OUT> extends StreamTask<OUT, TwoInputS
 
 		int numberOfInputs = configuration.getNumberOfInputs();
 
-		ArrayList<InputGate> inputList1 = new ArrayList<InputGate>();
-		ArrayList<InputGate> inputList2 = new ArrayList<InputGate>();
+		ArrayList<SingleInputGate> inputList1 = new ArrayList<SingleInputGate>();
+		ArrayList<SingleInputGate> inputList2 = new ArrayList<SingleInputGate>();
 
 		List<StreamEdge> inEdges = configuration.getInPhysicalEdges(userClassLoader);
 
 		for (int i = 0; i < numberOfInputs; i++) {
 			int inputType = inEdges.get(i).getTypeNumber();
-			InputGate reader = getEnvironment().getInputGate(i);
+			SingleInputGate reader = getEnvironment().getInputGate(i);
 			switch (inputType) {
 				case 1:
 					inputList1.add(reader);

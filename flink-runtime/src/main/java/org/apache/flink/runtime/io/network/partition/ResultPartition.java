@@ -130,7 +130,20 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 
 	private volatile Throwable cause;
 
-
+	public ResultPartition(
+		String owningTaskName,
+		TaskActions taskActions, // actions on the owning task
+		JobID jobId,
+		ResultPartitionID partitionId,
+		ResultPartitionType partitionType,
+		int numberOfSubpartitions,
+		int numTargetKeyGroups,
+		ResultPartitionManager partitionManager,
+		ResultPartitionConsumableNotifier partitionConsumableNotifier,
+		IOManager ioManager,
+		boolean sendScheduleOrUpdateConsumersMessage) {
+		this(owningTaskName, taskActions, jobId, new IntermediateDataSetID(), partitionId, partitionType,numberOfSubpartitions,numTargetKeyGroups,partitionManager,partitionConsumableNotifier,ioManager,sendScheduleOrUpdateConsumersMessage);
+	}
 	public ResultPartition(
 		String owningTaskName,
 		TaskActions taskActions, // actions on the owning task

@@ -67,7 +67,6 @@ public abstract class InputChannel {
 	/** The current backoff (in ms) */
 	private int currentBackoff;
 
-	protected boolean afterUpstreamFailure;
 
 	protected InputChannel(
 			SingleInputGate inputGate,
@@ -94,7 +93,6 @@ public abstract class InputChannel {
 
 		this.numBytesIn = numBytesIn;
 
-		this.afterUpstreamFailure = false;
 	}
 
 	// ------------------------------------------------------------------------
@@ -109,9 +107,6 @@ public abstract class InputChannel {
 		return partitionId;
 	}
 
-	protected void isAfterUpstreamFailure() {
-		afterUpstreamFailure = true;
-	}
 
 	/**
 	 * Notifies the owning {@link SingleInputGate} that this channel became non-empty.

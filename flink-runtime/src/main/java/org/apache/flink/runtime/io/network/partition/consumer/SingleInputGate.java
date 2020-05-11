@@ -525,9 +525,9 @@ public class SingleInputGate implements InputGate {
 
 				LOG.debug("{}: Input channel {} has been updated to {}.", owningTaskName, current, newChannel);
 
+
 				inputChannels.put(partitionId, newChannel);
 				inputChannelArray[newChannel.getChannelIndex()] = newChannel;
-				newChannel.isAfterUpstreamFailure();
 
 				try {
 					if (isStandby) {

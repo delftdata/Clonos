@@ -25,10 +25,7 @@ import org.apache.flink.runtime.io.network.api.CheckpointBarrier;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferPool;
 import org.apache.flink.runtime.io.network.buffer.NetworkBufferPool;
-import org.apache.flink.runtime.io.network.partition.consumer.BufferOrEvent;
-import org.apache.flink.runtime.io.network.partition.consumer.InputChannel;
-import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
-import org.apache.flink.runtime.io.network.partition.consumer.InputGateListener;
+import org.apache.flink.runtime.io.network.partition.consumer.*;
 
 import org.junit.Test;
 
@@ -198,6 +195,16 @@ public class BarrierBufferMassiveRandomTest {
 		@Override
 		public InputChannel getInputChannel(int i) {
 			return null;
+		}
+
+		@Override
+		public int getAbsoluteChannelIndex(InputGate gate, int channelIndex) {
+			return 0;
+		}
+
+		@Override
+		public SingleInputGate[] getInputGates() {
+			return new SingleInputGate[0];
 		}
 	}
 }

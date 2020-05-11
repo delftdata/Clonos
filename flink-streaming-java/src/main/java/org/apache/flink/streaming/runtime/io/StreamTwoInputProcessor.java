@@ -136,8 +136,8 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 
 	@SuppressWarnings("unchecked")
 	public StreamTwoInputProcessor(
-			Collection<InputGate> inputGates1,
-			Collection<InputGate> inputGates2,
+			Collection<SingleInputGate> inputGates1,
+			Collection<SingleInputGate> inputGates2,
 			TypeSerializer<IN1> inputSerializer1,
 			TypeSerializer<IN2> inputSerializer2,
 			TwoInputStreamTask<IN1, IN2, ?> checkpointedTask,
