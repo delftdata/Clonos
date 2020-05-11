@@ -26,7 +26,6 @@
 package org.apache.flink.runtime.causal.recovery;
 
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
-import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -40,14 +39,16 @@ public class WaitingConnectionsState extends AbstractState{
 	public WaitingConnectionsState(RecoveryManager context) {
 		super(context);
 		channelsReestablishmentStatus = new Boolean[context.inputGate.getNumberOfInputChannels()];
+		for(int i = 0; i < channelsReestablishmentStatus.length ; i++)
+			channelsReestablishmentStatus[i] = Boolean.FALSE;
 		LOG.info("Waiting for new connections!");
 	}
 
 
 	@Override
-	public void notifyNewChannel(InputGate gate, int channelIndex) {
+	public void notifyNewChannel(InputGate gate, int channelIndex, int numberOfBuffersRemoved) {
 		LOG.info("Got Notified of new channel for gate {}, index {}. New channelsReestablishmentStatus={}", gate, channelIndex, Arrays.toString(channelsReestablishmentStatus));
-		channelsReestablishmentStatus[context.inputGate.getAbsoluteChannelIndex(gate, channelIndex)] = true;
+		channelsReestablishmentStatus[context.inputGate.getAbsoluteChannelIndex(gate, channelIndex)] = Boolean.TRUE;
 
 		if(Arrays.stream(channelsReestablishmentStatus).allMatch(x -> x)){
 			State newState = new WaitingDeterminantsState(context);

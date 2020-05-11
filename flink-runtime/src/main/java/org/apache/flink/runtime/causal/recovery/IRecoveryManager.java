@@ -29,6 +29,7 @@ import org.apache.flink.runtime.causal.DeterminantResponseEvent;
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
 import org.apache.flink.runtime.io.network.api.DeterminantRequestEvent;
 import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
+import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 
@@ -37,7 +38,7 @@ import java.util.List;
 public interface IRecoveryManager {
 
 
-	void notifyNewChannel(InputGate inputGate, int channelIndex);
+	void notifyNewChannel(InputGate gate, int channelIndex, int numberOfBuffersRemoved);
 
 	void notifyInFlightLogRequestEvent(InFlightLogRequestEvent e);
 
@@ -79,4 +80,5 @@ public interface IRecoveryManager {
 
 	long replayNextTimestamp();
 
+    ResultPartitionWriter getPartitionByIntermediateDataSetID(IntermediateDataSetID intermediateDataSetID);
 }

@@ -29,6 +29,7 @@ import org.apache.flink.runtime.causal.DeterminantResponseEvent;
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
 import org.apache.flink.runtime.io.network.api.DeterminantRequestEvent;
 import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
+import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -82,7 +83,8 @@ public class WaitingDeterminantsState extends AbstractState {
 				this.determinants = e.getDeterminants();
 
 			if (numResponsesReceived == context.vertexGraphInformation.getNumberOfDirectDownstreamNeighbours()) {
-				while (context.isRestoringState()) ; //spin waiting
+				while (context.isRestoringState())
+					LOG.info("Ready to replay, but waiting for restore state to finish"); //spin waiting
 				context.setState(new ReplayingState(context, determinants));
 			}
 
@@ -90,25 +92,16 @@ public class WaitingDeterminantsState extends AbstractState {
 			super.notifyDeterminantResponseEvent(e);
 	}
 
-	//@Override
-	//public void notifyDeterminantRequestEvent(DeterminantRequestEvent e) {
-
-	//}
-
-	//@Override
-	//public void notifyNewChannel(InputChannel channel) {
-
-	//}
-
-
-	//@Override
-	//public void notifyInFlightLogRequestEvent(InFlightLogRequestEvent e) {
-
-	//}
-
-	//@Override
-	//public void notifyStartRecovery() {
-
-	//}
+	@Override
+	public void notifyNewChannel(InputGate gate, int channelIndex, int numberOfBuffersRemoved){
+		//we got notified of a new input channel while we were recovering
+		//This means that  we now have to wait for the upstream to finish recovering before we do.
+		//todo do we have to purge the input gate or channel?
+		try {
+			gate.getInputChannel(channelIndex).sendTaskEvent(new InFlightLogRequestEvent(((SingleInputGate)gate).getConsumedResultId(), ((SingleInputGate) gate).getConsumedSubpartitionIndex(), context.finalRestoredCheckpointId));
+		} catch (IOException | InterruptedException e) {
+			e.printStackTrace();
+		}
+	}
 
 }

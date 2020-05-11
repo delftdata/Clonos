@@ -36,7 +36,7 @@ public interface State {
 
 	void notifyDeterminantRequestEvent(DeterminantRequestEvent e,int channelRequestArrivedFrom);
 
-	void notifyNewChannel(InputGate inputGate, int channelIndex);
+	void notifyNewChannel(InputGate inputGate, int channelIndex, int numberOfBuffersRemoved);
 
 	void notifyInFlightLogRequestEvent(InFlightLogRequestEvent e);
 

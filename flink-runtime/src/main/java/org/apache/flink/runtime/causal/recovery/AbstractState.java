@@ -25,13 +25,15 @@
 
 package org.apache.flink.runtime.causal.recovery;
 
-import com.esotericsoftware.minlog.Log;
 import org.apache.flink.runtime.causal.DeterminantResponseEvent;
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
 import org.apache.flink.runtime.io.network.api.DeterminantRequestEvent;
+import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
 
 public abstract class AbstractState implements State {
 
@@ -45,14 +47,18 @@ public abstract class AbstractState implements State {
 
 
 	@Override
-	public void notifyNewChannel(InputGate gate, int channelIndex){
-		LOG.info("Unexpected notification NewChannel in state " + this.getClass());
-
+	public void notifyNewChannel(InputGate gate, int channelIndex, int numberOfBuffersRemoved){
+		//we got notified of a new input channel while we were recovering.
+		//This means that  we now have to wait for the upstream to finish recovering before we do.
+		//Furthermore, if we have already sent an inflight log request for this channel, we now have to send it again.
+		LOG.info("Got notified of unexpected NewChannel event, while in state " + this.getClass());
 	}
 
 	@Override
 	public void notifyInFlightLogRequestEvent(InFlightLogRequestEvent e) {
-		LOG.info("Unexpected notification InFlightLogRequest in state " + this.getClass());
+		//we got an inflight log request while still recovering. Since we must finish recovery first before
+		//answering, we store it, and when we enter the running state we immediately process it.
+		context.unansweredInFlighLogRequests.add(e);
 	}
 
 	@Override
@@ -75,13 +81,36 @@ public abstract class AbstractState implements State {
 	@Override
 	public void notifyDeterminantResponseEvent(DeterminantResponseEvent e) {
 		LOG.info("Received a DeterminantResponseEvent, but am not recovering: {}", e);
-		//throw new RuntimeException("Unexpected notification DeterminantResponseEvent in state " + this.getClass());
+		RecoveryManager.UnansweredDeterminantRequest udr = context.unansweredDeterminantRequests.get(e.getVertexId());
+		if(udr != null) {
+			udr.incResponsesReceived();
+			if (e.getDeterminants().length > udr.determinants.length)
+				udr.setDeterminants(e.getDeterminants());
+
+			if (udr.getNumResponsesReceived() == context.vertexGraphInformation.getNumberOfDirectDownstreamNeighbours()) {
+				context.unansweredDeterminantRequests.remove(e.getVertexId());
+				try {
+					context.inputGate.getInputChannel(udr.getRequestingChannel()).sendTaskEvent(new DeterminantResponseEvent(udr.getVertexId(), udr.getDeterminants()));
+				} catch (IOException | InterruptedException ex) {
+					ex.printStackTrace();
+				}
+			}
+		} else
+			LOG.info("Do not know whta this determinant response event refers to...");
 
 	}
 
 	@Override
 	public void notifyDeterminantRequestEvent(DeterminantRequestEvent e,int channelRequestArrivedFrom) {
-		LOG.info("Unexpected notification DeterminantRequestEvent in state " + this.getClass());
+		context.unansweredDeterminantRequests.put(e.getFailedVertex(), new RecoveryManager.UnansweredDeterminantRequest(e.getFailedVertex(), channelRequestArrivedFrom));
+		for (RecordWriter recordWriter : context.recordWriters) {
+			LOG.info("Recurring determinant request to RecordWriter {}", recordWriter);
+			try {
+				recordWriter.broadcastEvent(e);
+			} catch (IOException | InterruptedException ex) {
+				ex.printStackTrace();
+			}
+		}
 	}
 
 	@Override

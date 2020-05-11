@@ -18,6 +18,9 @@
 
 package org.apache.flink.runtime.io.network.partition;
 
+import org.apache.flink.runtime.causal.CausalLoggingManager;
+import org.apache.flink.runtime.causal.ICausalLoggingManager;
+import org.apache.flink.runtime.causal.determinant.BufferBuiltDeterminant;
 import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 import org.apache.flink.runtime.inflightlogging.InFlightLog;
 import org.apache.flink.runtime.inflightlogging.SizedListIterator;
@@ -71,6 +74,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 	// ------------------------------------------------------------------------
 
 	private InFlightLog inFlightLog;
+	private ICausalLoggingManager causalLoggingManager;
 
 	private long nextCheckpointId;
 
@@ -95,8 +99,12 @@ public class PipelinedSubpartition extends ResultSubpartition {
 		this.downstreamFailed = new AtomicBoolean(false);
 	}
 
-	public void setRecoveryManager(IRecoveryManager recoveryManager){
+	public void setRecoveryManager(IRecoveryManager recoveryManager) {
 		this.recoveryManager = recoveryManager;
+	}
+
+	public void setCausalLoggingManager(ICausalLoggingManager causalLoggingManager) {
+		this.causalLoggingManager = causalLoggingManager;
 	}
 
 	public void notifyCheckpointBarrier(long checkpointId) {
@@ -200,8 +208,11 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 	@Nullable
 	BufferAndBacklog pollBuffer() {
-		while(downstreamFailed.get())
+		LOG.info("Call to pollBuffer");
+		if (downstreamFailed.get()) {
 			LOG.info("Polling for next buffer, but downstream is still failed.");
+			return null;
+		}
 
 		if (replayIterator != null) {
 			LOG.info("We are replaying, get inflight logs next buffer");
@@ -249,6 +260,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 				BufferConsumer bufferConsumer = buffers.peek();
 				checkpointId = checkpointIds.peek();
 
+				causalLoggingManager.appendDeterminant(new BufferBuiltDeterminant(parent.getIntermediateDataSetID(), (byte) index));
 				buffer = bufferConsumer.build();
 
 
@@ -281,10 +293,10 @@ public class PipelinedSubpartition extends ResultSubpartition {
 			}
 
 
-			LOG.debug("Done getting buffer from queue\n\tbuffers: {}\n\tcheckpo: {}", "[" + buffers.stream().map(x->"*").collect(Collectors.joining(", ")) + "]", "[" + checkpointIds.stream().map(x->x+"").collect(Collectors.joining(", ") )+ "]");
+			LOG.debug("Done getting buffer from queue\n\tbuffers: {}\n\tcheckpo: {}", "[" + buffers.stream().map(x -> "*").collect(Collectors.joining(", ")) + "]", "[" + checkpointIds.stream().map(x -> x + "").collect(Collectors.joining(", ")) + "]");
 			updateStatistics(buffer);
 			logBuffer(buffer, checkpointId);
-			LOG.debug("POST LOG\n\tbuffers: {}\n\tcheckpo: {}", "[" + buffers.stream().map(x->"*").collect(Collectors.joining(", ")) + "]", "[" + checkpointIds.stream().map(x->x+"").collect(Collectors.joining(", ") )+ "]");
+			LOG.debug("POST LOG\n\tbuffers: {}\n\tcheckpo: {}", "[" + buffers.stream().map(x -> "*").collect(Collectors.joining(", ")) + "]", "[" + checkpointIds.stream().map(x -> x + "").collect(Collectors.joining(", ")) + "]");
 			// Do not report last remaining buffer on buffers as available to read (assuming it's unfinished).
 			// It will be reported for reading either on flush or when the number of buffers in the queue
 			// will be 2 or more.
@@ -339,9 +351,6 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 				readView = new PipelinedSubpartitionView(this, availabilityListener);
 			} else {
-				while(!recoveryManager.isRunning())
-					LOG.info("Spin waiting for our recovery to finish, before allowing the update of the read view");
-				// this is where the subpartition is requested.
 				readView.setAvailabilityListener(availabilityListener);
 				LOG.info("(Re)using read view {} for {} (index: {}) of partition {}.", readView, this, index, parent.getPartitionId());
 			}
@@ -397,14 +406,14 @@ public class PipelinedSubpartition extends ResultSubpartition {
 		return Math.max(buffers.size(), 0);
 	}
 
-	public void requestReplay(long checkpointId, int ignoreMessages){
+	public void requestReplay(long checkpointId, int ignoreMessages) {
 		replayIterator = inFlightLog.getInFlightIterator();
-		LOG.info("Replay has been requested for pipelined subpartition {}, buffers to replay {}. Setting downstreamFailed to false", this, replayIterator.numberRemaining());
-		if(replayIterator.numberRemaining() < ignoreMessages)
+		LOG.info("Replay has been requested for pipelined subpartition {}, skipping {} buffers, buffers to replay {}. Setting downstreamFailed to false", this, ignoreMessages, replayIterator.numberRemaining());
+		if (replayIterator.numberRemaining() < ignoreMessages)
 			throw new RuntimeException("Invalid state: pipelined subpartition can replay " + replayIterator.numberRemaining() + " messages, but a replay skipping " + ignoreMessages + " was requested.");
-		for(int i = 0; i < ignoreMessages ; i++)
+		for (int i = 0; i < ignoreMessages; i++)
 			replayIterator.next();
-		if(!replayIterator.hasNext())
+		if (!replayIterator.hasNext())
 			replayIterator = null;
 		downstreamFailed.set(false);
 	}
@@ -431,5 +440,11 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 		// We assume that only last buffer is not finished.
 		return Math.max(0, buffers.size() - 1);
+	}
+
+	public void buildAndLogBuffer() {
+		LOG.info("building buffer and discarding result");
+		//Get and log the next buffer, but discard the result, do not send it downstream.
+		getBufferFromQueuedBufferConsumers();
 	}
 }

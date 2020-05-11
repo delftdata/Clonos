@@ -35,6 +35,7 @@ public class InFlightLogRequestEvent extends TaskEvent {
 	private IntermediateDataSetID intermediateDataSetID;
 	private int subpartitionIndex;
 	private long checkpointId;
+	private int numberOfBuffersToSkip;
 
 	/**
 	 * Default constructor (should only be used for deserialization).
@@ -46,10 +47,15 @@ public class InFlightLogRequestEvent extends TaskEvent {
 
 
 	public InFlightLogRequestEvent(IntermediateDataSetID intermediateDataSetID, int consumedSubpartitionIndex, long finalRestoreStateCheckpointId) {
+		this(intermediateDataSetID, consumedSubpartitionIndex, finalRestoreStateCheckpointId, 0);
+	}
+
+	public InFlightLogRequestEvent(IntermediateDataSetID intermediateDataSetID, int consumedSubpartitionIndex, long finalRestoreStateCheckpointId, int numberOfBuffersToSkip) {
 		super();
 		this.intermediateDataSetID = intermediateDataSetID;
 		this.subpartitionIndex = consumedSubpartitionIndex;
 		this.checkpointId = finalRestoreStateCheckpointId;
+		this.numberOfBuffersToSkip = numberOfBuffersToSkip;
 	}
 
 	public IntermediateDataSetID getIntermediateDataSetID() {
@@ -64,12 +70,17 @@ public class InFlightLogRequestEvent extends TaskEvent {
 		return checkpointId;
 	}
 
+	public int getNumberOfBuffersToSkip(){
+		return numberOfBuffersToSkip;
+	}
+
 	@Override
 	public void write(final DataOutputView out) throws IOException {
 		out.writeLong(intermediateDataSetID.getUpperPart());
 		out.writeLong(intermediateDataSetID.getLowerPart());
 		out.writeInt(this.subpartitionIndex);
 		out.writeLong(this.checkpointId);
+		out.writeInt(numberOfBuffersToSkip);
 	}
 
 	@Override
@@ -80,11 +91,7 @@ public class InFlightLogRequestEvent extends TaskEvent {
 
 		this.subpartitionIndex = in.readInt();
 		this.checkpointId = in.readLong();
-	}
-
-	@Override
-	public int hashCode() {
-		return this.subpartitionIndex;
+		this.numberOfBuffersToSkip = in.readInt();
 	}
 
 	@Override
@@ -93,6 +100,7 @@ public class InFlightLogRequestEvent extends TaskEvent {
 			"intermediateDataSetID=" + intermediateDataSetID +
 			", subpartitionIndex=" + subpartitionIndex +
 			", checkpointId=" + checkpointId +
+			", numberBuffersSkip=" + numberOfBuffersToSkip +
 			'}';
 	}
 }

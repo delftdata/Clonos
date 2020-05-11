@@ -83,7 +83,7 @@ public class SubpartitionInFlightLogger implements InFlightLog {
 
 	@Override
 	public SizedListIterator<Buffer> getInFlightIterator() {
-		//The lower network stack recycles buffers, so for each replay, we must
+		//The lower network stack recycles buffers, so for each replay, we must increase reference counts
 		synchronized (slicedLog) {
 			increaseReferenceCounts(slicedLog.firstKey());
 			return new ReplayIterator(slicedLog.firstKey(), slicedLog);
@@ -112,10 +112,10 @@ public class SubpartitionInFlightLogger implements InFlightLog {
 				this.startKey = lastCompletedCheckpointOfFailed;
 				this.currentKey = lastCompletedCheckpointOfFailed;
 				this.logToReplay = logToReplay.tailMap(lastCompletedCheckpointOfFailed);
-				LOG.debug(" Getting iterator for checkpoint id {} with log state {} and sublog state {}", currentKey, representLogAsString(logToReplay), representLogAsString(this.logToReplay));
+				LOG.info(" Getting iterator for checkpoint id {} with log state {} and sublog state {}", currentKey, representLogAsString(logToReplay), representLogAsString(this.logToReplay));
 				this.currentIterator = this.logToReplay.get(currentKey).listIterator();
 				numberOfBuffersLeft = this.logToReplay.values().stream().mapToInt(List::size).sum(); //add up the sizes
-				LOG.debug("State of log: {}\nlog tailmap {}\nIterator creation {}: ", representLogAsString(logToReplay), representLogAsString(this.logToReplay), this.toString());
+				LOG.info("State of log: {}\nlog tailmap {}\nIterator creation {}: ", representLogAsString(logToReplay), representLogAsString(this.logToReplay), this.toString());
 		}
 
 		private void advanceToNextNonEmptyIteratorIfNeeded() {

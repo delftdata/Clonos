@@ -28,6 +28,7 @@ package org.apache.flink.runtime.causal.recovery;
 import org.apache.flink.runtime.causal.CausalLoggingManager;
 import org.apache.flink.runtime.causal.DeterminantResponseEvent;
 import org.apache.flink.runtime.causal.VertexGraphInformation;
+import org.apache.flink.runtime.causal.VertexId;
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
 import org.apache.flink.runtime.io.network.api.DeterminantRequestEvent;
 import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
@@ -37,9 +38,7 @@ import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
 public class RecoveryManager implements IRecoveryManager{
@@ -50,8 +49,9 @@ public class RecoveryManager implements IRecoveryManager{
 	final CompletableFuture<Void> readyToReplayFuture;
 	final CausalLoggingManager causalLoggingManager;
 
-	final Map<Integer, DeterminantRequestEvent> inputChannelToUnansweredDeterminantRequestEvent;
-	final Map<Integer, InFlightLogRequestEvent> outputChannelToUnansweredInFlightLogRequestEvent;
+	final Map<VertexId, UnansweredDeterminantRequest> unansweredDeterminantRequests;
+
+	final Queue<InFlightLogRequestEvent> unansweredInFlighLogRequests;
 
 	final Map<Long, Boolean> incompleteStateRestorations;
 
@@ -68,8 +68,9 @@ public class RecoveryManager implements IRecoveryManager{
 		this.readyToReplayFuture = readyToReplayFuture;
 		this.vertexGraphInformation = vertexGraphInformation;
 
-		this.inputChannelToUnansweredDeterminantRequestEvent = new HashMap<>();
-		this.outputChannelToUnansweredInFlightLogRequestEvent = new HashMap<>();
+		this.unansweredInFlighLogRequests = new LinkedList<>();
+		this.unansweredDeterminantRequests = new HashMap<>();
+
 		this.incompleteStateRestorations = new HashMap<>();
 
 		this.finalRestoredCheckpointId = 0;
@@ -96,44 +97,44 @@ public class RecoveryManager implements IRecoveryManager{
 //====================== State Machine Messages ========================================
 
 	@Override
-	public void notifyStartRecovery(){
+	public synchronized void notifyStartRecovery(){
 		this.currentState.notifyStartRecovery();
 	}
 
 	@Override
-	public void notifyDeterminantResponseEvent(DeterminantResponseEvent e) {
+	public synchronized void notifyDeterminantResponseEvent(DeterminantResponseEvent e) {
 		this.currentState.notifyDeterminantResponseEvent(e);
 	}
 
 	@Override
-	public void notifyDeterminantRequestEvent(DeterminantRequestEvent e,int channelRequestArrivedFrom) {
+	public synchronized void notifyDeterminantRequestEvent(DeterminantRequestEvent e,int channelRequestArrivedFrom) {
 		this.currentState.notifyDeterminantRequestEvent(e, channelRequestArrivedFrom);
 	}
 
 	@Override
-	public void notifyStateRestorationStart(long checkpointId) {
+	public synchronized void notifyStateRestorationStart(long checkpointId) {
 		this.currentState.notifyStateRestorationStart(checkpointId);
 	}
 
 	@Override
-	public void notifyStateRestorationComplete(long checkpointId) {
+	public synchronized void notifyStateRestorationComplete(long checkpointId) {
 		this.currentState.notifyStateRestorationComplete(checkpointId);
 	}
 
 
 	@Override
-	public void notifyNewChannel(InputGate gate, int channelIndex) {
-		this.currentState.notifyNewChannel(gate, channelIndex);
+	public synchronized void notifyNewChannel(InputGate gate, int channelIndex, int numberOfBuffersRemoved) {
+		this.currentState.notifyNewChannel(gate, channelIndex, numberOfBuffersRemoved);
 	}
 
 	@Override
-	public void notifyInFlightLogRequestEvent(InFlightLogRequestEvent e) {
+	public synchronized void notifyInFlightLogRequestEvent(InFlightLogRequestEvent e) {
 		this.currentState.notifyInFlightLogRequestEvent(e);
 	}
 
 
 	@Override
-	public void setState(State state) {
+	public synchronized void setState(State state) {
 		this.currentState = state;
 	}
 
@@ -173,4 +174,49 @@ public class RecoveryManager implements IRecoveryManager{
 	public long replayNextTimestamp() {
 		return currentState.replayNextTimestamp();
 	}
+
+	@Override
+	public ResultPartitionWriter getPartitionByIntermediateDataSetID(IntermediateDataSetID intermediateDataSetID) {
+		return intermediateDataSetIDResultPartitionMap.get(intermediateDataSetID);
+	}
+
+	public static class UnansweredDeterminantRequest {
+		private int numResponsesReceived;
+		byte[] determinants;
+		VertexId vertexId;
+		int requestingChannel;
+
+		public UnansweredDeterminantRequest(VertexId vertexId, int requestingChannel){
+			this.vertexId = vertexId;
+			this.determinants = new byte[0];
+			this.numResponsesReceived = 0;
+			this.requestingChannel = requestingChannel;
+		}
+
+		public int getNumResponsesReceived() {
+			return numResponsesReceived;
+		}
+
+		public byte[] getDeterminants() {
+			return determinants;
+		}
+
+		public VertexId getVertexId() {
+			return vertexId;
+		}
+
+		public int getRequestingChannel() {
+			return requestingChannel;
+		}
+
+		public void incResponsesReceived() {
+			numResponsesReceived++;
+		}
+
+		public void setDeterminants(byte[] determinants) {
+			this.determinants = determinants;
+		}
+	}
+
+
 }

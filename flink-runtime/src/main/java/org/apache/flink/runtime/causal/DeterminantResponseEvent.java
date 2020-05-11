@@ -26,18 +26,12 @@ import java.util.Arrays;
 
 public class DeterminantResponseEvent extends TaskEvent {
 
-	boolean found;
 	VertexId vertexId;
 	byte[] determinants;
 
 	public DeterminantResponseEvent(VertexId vertexId, byte[] determinants) {
 		this.vertexId = vertexId;
 		this.determinants = determinants;
-		this.found = true;
-	}
-	public DeterminantResponseEvent(VertexId vertexId) {
-		this.found = false;
-		this.vertexId =vertexId;
 	}
 
 	public DeterminantResponseEvent() {
@@ -46,25 +40,19 @@ public class DeterminantResponseEvent extends TaskEvent {
 
 	@Override
 	public void write(DataOutputView out) throws IOException {
-		out.writeBoolean(found);
 		out.writeShort(vertexId.getVertexId());
-		if(found) {
-			out.writeInt(determinants.length);
-			out.write(determinants);
-		}
+		out.writeInt(determinants.length);
+		out.write(determinants);
 	}
 
 	@Override
 	public void read(DataInputView in) throws IOException {
-		this.found = in.readBoolean();
 		this.vertexId = new VertexId(in.readShort());
 
-		if(found) {
-			int logDeltaLength = in.readInt();
-			byte[] logDelta = new byte[logDeltaLength];
-			in.read(logDelta);
-			this.determinants = logDelta;
-		}
+		int logDeltaLength = in.readInt();
+		byte[] logDelta = new byte[logDeltaLength];
+		in.read(logDelta);
+		this.determinants = logDelta;
 
 	}
 
@@ -74,10 +62,6 @@ public class DeterminantResponseEvent extends TaskEvent {
 
 	public byte[] getDeterminants() {
 		return determinants;
-	}
-
-	public boolean found() {
-		return found;
 	}
 
 	@Override

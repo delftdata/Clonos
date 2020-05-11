@@ -106,6 +106,7 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 	/** The number of available buffers that have not been announced to the producer yet. */
 	private final AtomicInteger unannouncedCredit = new AtomicInteger(0);
 
+
 	/** The number of required buffers that equals to sender's backlog plus initial credit. */
 	@GuardedBy("bufferQueue")
 	private int numRequiredBuffers;
@@ -113,6 +114,8 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 	/** The tag indicates whether this channel is waiting for additional floating buffers from the buffer pool. */
 	@GuardedBy("bufferQueue")
 	private boolean isWaitingForFloatingBuffers;
+
+	private int numBuffersRemoved;
 
 	public RemoteInputChannel(
 		SingleInputGate inputGate,
@@ -139,6 +142,8 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 
 		this.connectionId = checkNotNull(connectionId);
 		this.connectionManager = checkNotNull(connectionManager);
+		this.numBuffersRemoved = 0;
+
 	}
 
 	/**
@@ -221,11 +226,7 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 			remaining = receivedBuffers.size();
 		}
 
-		if (afterUpstreamFailure) {
-			LOG.debug("{}: Set afterUpstreamFailure=true to {}.", this, next);
-			next.isAfterUpstreamFailure();
-			afterUpstreamFailure = false;
-		}
+		numBuffersRemoved++;
 
 		numBytesIn.inc(next.getSizeUnsafe());
 		LOG.debug("{} getNextBuffer() returns next buffer of size {}, memory segment hash {}; remaining buffers: {}.", this, next.getSizeUnsafe(), System.identityHashCode(next.getMemorySegment()), remaining);
@@ -736,5 +737,9 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 		releaseAllResources();
 		return new LocalInputChannel(inputGate, channelIndex, newPartitionId,
 				partitionManager, taskEventDispatcher, initialBackoff, maxBackoff, metrics);
+	}
+
+	public int getNumberOfBuffersRemoved(){
+		return numBuffersRemoved;
 	}
 }

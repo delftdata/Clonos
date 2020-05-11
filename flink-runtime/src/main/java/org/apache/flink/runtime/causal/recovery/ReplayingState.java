@@ -26,8 +26,16 @@
 package org.apache.flink.runtime.causal.recovery;
 
 import org.apache.flink.runtime.causal.determinant.*;
+import org.apache.flink.runtime.event.InFlightLogRequestEvent;
+import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
+import org.apache.flink.runtime.io.network.partition.consumer.RemoteInputChannel;
+import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
+import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.LinkedList;
+import java.util.Queue;
 
 /**
  * In this state we do the actual process of recovery. Once done transition to {@link RunningState}
@@ -43,65 +51,89 @@ public class ReplayingState extends AbstractState {
 	ByteBuffer recoveryBuffer;
 	DeterminantEncodingStrategy determinantEncodingStrategy;
 	Determinant nextDeterminant;
+	Queue<NonMainThreadDeterminant> toProcess;
 
 	public ReplayingState(RecoveryManager context, byte[] determinantsToRecoverFrom) {
 		super(context);
-		context.readyToReplayFuture.complete(null);//allow task to start running
 
 		determinantEncodingStrategy = context.causalLoggingManager.getDeterminantEncodingStrategy();
 		recoveryBuffer = ByteBuffer.wrap(determinantsToRecoverFrom);
 
-		if(determinantsToRecoverFrom.length == 0)
-			context.setState(new RunningState(context));
-
-		nextDeterminant = determinantEncodingStrategy.decodeNext(recoveryBuffer);
-		processTimerDeterminants();
+		toProcess = new LinkedList<>();
+		fillQueue();
+		context.readyToReplayFuture.complete(null);//allow task to start running
 	}
 
-	private void processTimerDeterminants() {
-		while (nextDeterminant instanceof TimerTriggerDeterminant) {
-			//todo do something
+	@Override
+	public void notifyNewChannel(InputGate gate, int channelIndex, int numberOfBuffersRemoved){
+		//we got notified of a new input channel while we were replaying
+		//This means that  we now have to wait for the upstream to finish recovering before we do.
+		//Furthermore, we have to resend the inflight log request, and ask to skip X buffers
+		//todo perhaps we can actually count the buffers here?? check this
+		IntermediateDataSetID intermediateDataSetID = ((SingleInputGate)gate).getConsumedResultId();
+		int subpartitionIndex = ((SingleInputGate) gate).getConsumedSubpartitionIndex();
 
-			prepareNextDeterminant();
+		try {
+			((RemoteInputChannel)gate.getInputChannel(channelIndex)).sendTaskEvent(new InFlightLogRequestEvent(intermediateDataSetID, subpartitionIndex, context.finalRestoredCheckpointId, numberOfBuffersRemoved));
+		} catch (IOException | InterruptedException e) {
+			e.printStackTrace();
 		}
+		LOG.info("Got notified of unexpected NewChannel event, while in state " + this.getClass());
 	}
+
 
 	//===================
 
 	@Override
 	public int replayRandomInt() {
+		drainQueue();
 		if(!(nextDeterminant instanceof RNGDeterminant))
 			throw new RuntimeException("Unexpected Determinant type: Expected RNG, but got: " + nextDeterminant);
 
 		int toReturn = ((RNGDeterminant) nextDeterminant).getNumber();
-		prepareNextDeterminant();
+		fillQueue();
 		return toReturn;
 	}
 
 	@Override
 	public byte replayNextChannel() {
+		drainQueue();
 		if(!(nextDeterminant instanceof OrderDeterminant))
 			throw new RuntimeException("Unexpected Determinant type: Expected Order, but got: " + nextDeterminant);
 
 		byte toReturn = ((OrderDeterminant) nextDeterminant).getChannel();
-		prepareNextDeterminant();
+		fillQueue();
 		return toReturn;
 	}
 
 	@Override
 	public long replayNextTimestamp() {
+		drainQueue();
 		if(!(nextDeterminant instanceof TimestampDeterminant))
 			throw new RuntimeException("Unexpected Determinant type: Expected Timestamp, but got: " + nextDeterminant);
 
 		long toReturn = ((TimestampDeterminant) nextDeterminant).getTimestamp();
-		prepareNextDeterminant();
+		fillQueue();
 		return toReturn;
 	}
 
-	private void prepareNextDeterminant(){
+	private void drainQueue(){
+		while(!toProcess.isEmpty())
+			toProcess.poll().process(context);
+	}
+
+	private void fillQueue(){
 		nextDeterminant = determinantEncodingStrategy.decodeNext(recoveryBuffer);
-		if(nextDeterminant == null)
+		//We must synchronously process the non main thread determinants
+		while (nextDeterminant instanceof NonMainThreadDeterminant) {
+			toProcess.add((NonMainThreadDeterminant) nextDeterminant);
+			nextDeterminant = determinantEncodingStrategy.decodeNext(recoveryBuffer);
+		}
+
+		if(nextDeterminant == null) {
+			drainQueue();
 			context.setState(new RunningState(context));
+		}
 	}
 
 	@Override

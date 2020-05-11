@@ -31,7 +31,6 @@ public interface DeterminantEncodingStrategy {
 
 	List<Determinant> decode(byte[] determinant);
 
-
 	Determinant decodeNext(ByteBuffer buffer);
 
 }

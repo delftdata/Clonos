@@ -16,5 +16,11 @@
  */
 package org.apache.flink.runtime.causal.determinant;
 
-public class TimerTriggerDeterminant extends Determinant {
+import org.apache.flink.runtime.causal.recovery.RecoveryManager;
+
+public class TimerTriggerDeterminant extends NonMainThreadDeterminant {
+	@Override
+	public void process(RecoveryManager recoveryManager) {
+
+	}
 }

@@ -49,16 +49,20 @@ public class RunningState extends AbstractState {
 
 	public RunningState(RecoveryManager context) {
 		super(context);
+		while (!context.unansweredInFlighLogRequests.isEmpty()) {
+			InFlightLogRequestEvent request = context.unansweredInFlighLogRequests.poll();
+			((PipelinedSubpartition) context.intermediateDataSetIDResultPartitionMap.get(request.getIntermediateDataSetID()).getResultSubpartitions()[request.getSubpartitionIndex()]).requestReplay(request.getCheckpointId(), request.getNumberOfBuffersToSkip());
+		}
 	}
 
 
 	@Override
-	public void notifyInFlightLogRequestEvent(InFlightLogRequestEvent e){
+	public void notifyInFlightLogRequestEvent(InFlightLogRequestEvent e) {
 		LOG.info("Received an InflightLogRequest {}", e);
-		LOG.info("Registered result partition datasetIDs: {}" , context.intermediateDataSetIDResultPartitionMap.keySet().stream().map(Objects::toString).collect(Collectors.joining(", ")));
+		LOG.info("Registered result partition datasetIDs: {}", context.intermediateDataSetIDResultPartitionMap.keySet().stream().map(Objects::toString).collect(Collectors.joining(", ")));
 		ResultPartitionWriter resultPartition = context.intermediateDataSetIDResultPartitionMap.get(e.getIntermediateDataSetID());
 		LOG.info("Result partition to request replay from: {}", resultPartition);
-		((PipelinedSubpartition)resultPartition.getResultSubpartitions()[e.getSubpartitionIndex()]).requestReplay(e.getCheckpointId(), 0);
+		((PipelinedSubpartition) resultPartition.getResultSubpartitions()[e.getSubpartitionIndex()]).requestReplay(e.getCheckpointId(), e.getNumberOfBuffersToSkip());
 	}
 
 	@Override
@@ -67,8 +71,9 @@ public class RunningState extends AbstractState {
 		//Since we are in running state, we can simply reply
 		VertexId vertex = e.getFailedVertex();
 		try {
-			//todo: have only one input gate
-			context.inputGate.sendTaskEvent(new DeterminantResponseEvent(vertex, context.causalLoggingManager.getDeterminantsOfVertex(vertex)));
+			DeterminantResponseEvent responseEvent = new DeterminantResponseEvent(vertex, context.causalLoggingManager.getDeterminantsOfVertex(vertex));
+			LOG.info("Responding with: {}", responseEvent);
+			context.inputGate.sendTaskEvent(responseEvent);
 		} catch (IOException | InterruptedException ex) {
 			ex.printStackTrace();
 		}

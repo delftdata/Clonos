@@ -1,7 +1,7 @@
 /*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
- * distributed with this work for additional debugrmation
+ * distributed with this work for additional information
  * regarding copyright ownership.  The ASF licenses this file
  * to you under the Apache License, Version 2.0 (the
  * "License"); you may not use this file except in compliance
@@ -47,7 +47,7 @@ public class CausalLoggingManager implements ICausalLoggingManager {
 	}
 
 	public CausalLoggingManager(VertexId myVertexId, Collection<VertexId> upstreamVertexIds, int numDownstreamChannels) {
-		LOG.debug("Creating new CausalLoggingManager for id {}, with upstreams {} and {} downstream channels", myVertexId, String.join(", ", upstreamVertexIds.stream().map(Object::toString).collect(Collectors.toList())), numDownstreamChannels);
+		LOG.info("Creating new CausalLoggingManager for id {}, with upstreams {} and {} downstream channels", myVertexId, String.join(", ", upstreamVertexIds.stream().map(Object::toString).collect(Collectors.toList())), numDownstreamChannels);
 		this.determinantLogs = new HashMap<>();
 		this.myVertexId = myVertexId;
 
@@ -74,8 +74,8 @@ public class CausalLoggingManager implements ICausalLoggingManager {
 
 
 	@Override
-	public void appendDeterminant(Determinant determinant) {
-		LOG.debug("Appending determinant {}", determinant);
+	public synchronized void appendDeterminant(Determinant determinant) {
+		LOG.info("Appending determinant {}", determinant);
 		this.determinantLogs.get(this.myVertexId).appendDeterminants(
 			this.determinantEncodingStrategy.encode(determinant)
 		);
@@ -83,19 +83,19 @@ public class CausalLoggingManager implements ICausalLoggingManager {
 
 	@Override
 	public void processCausalLogDelta(VertexCausalLogDelta d) {
-		LOG.debug("Processing UpstreamCausalLogDelta {}", d);
-		LOG.debug("Determinant log pre processing: {}", this.determinantLogs.get(d.vertexId));
+		LOG.info("Processing UpstreamCausalLogDelta {}", d);
+		LOG.info("Determinant log pre processing: {}", this.determinantLogs.get(d.vertexId));
 		this.determinantLogs.get(d.vertexId).processUpstreamVertexCausalLogDelta(d);
-		LOG.debug("Determinant log post processing: {}", this.determinantLogs.get(d.vertexId));
+		LOG.info("Determinant log post processing: {}", this.determinantLogs.get(d.vertexId));
 	}
 
 	@Override
-	public void notifyCheckpointBarrier(long checkpointId) {
-		LOG.debug("Processing checkpoint barrier {}", checkpointId);
+	public synchronized void notifyCheckpointBarrier(long checkpointId) {
+		LOG.info("Processing checkpoint barrier {}", checkpointId);
 		for (VertexCausalLog log : determinantLogs.values()) {
-			LOG.debug("Determinant log pre processing: {}", log);
+			LOG.info("Determinant log pre processing: {}", log);
 			log.notifyCheckpointBarrier(checkpointId);
-			LOG.debug("Determinant log post processing: {}", log);
+			LOG.info("Determinant log post processing: {}", log);
 		}
 	}
 
@@ -115,29 +115,29 @@ public class CausalLoggingManager implements ICausalLoggingManager {
 	}
 
 	@Override
-	public void enrichWithDeltas(DeterminantCarrier record, int targetChannel) {
+	public synchronized void enrichWithDeltas(DeterminantCarrier record, int targetChannel) {
 		record.enrich(this.getNextDeterminantsForDownstream(targetChannel));
 	}
 
 	@Override
-	public void notifyCheckpointComplete(long checkpointId) throws Exception {
-		LOG.debug("Processing checkpoint complete notification for id {}", checkpointId);
+	public synchronized void notifyCheckpointComplete(long checkpointId) throws Exception {
+		LOG.info("Processing checkpoint complete notification for id {}", checkpointId);
 		for (VertexCausalLog log : determinantLogs.values()) {
-			LOG.debug("Determinant log pre processing: {}", log);
+			LOG.info("Determinant log pre processing: {}", log);
 			log.notifyCheckpointComplete(checkpointId);
-			LOG.debug("Determinant log post processing: {}", log);
+			LOG.info("Determinant log post processing: {}", log);
 		}
 	}
 
 	private List<VertexCausalLogDelta> getNextDeterminantsForDownstream(int channel) {
-		LOG.debug("Getting deltas to send to downstream channel {}", channel);
+		LOG.info("Getting deltas to send to downstream channel {}", channel);
 		List<VertexCausalLogDelta> results = new LinkedList<>();
 		for (VertexId key : this.determinantLogs.keySet()) {
-			LOG.debug("Determinant log pre processing: {}", determinantLogs.get(key));
+			LOG.info("Determinant log pre processing: {}", determinantLogs.get(key));
 			VertexCausalLogDelta vertexCausalLogDelta = determinantLogs.get(key).getNextDeterminantsForDownstream(channel);
 			if (vertexCausalLogDelta.rawDeterminants.length != 0)
 				results.add(vertexCausalLogDelta);
-			LOG.debug("Determinant log post processing: {}", determinantLogs.get(key));
+			LOG.info("Determinant log post processing: {}", determinantLogs.get(key));
 		}
 		return results;
 	}

@@ -23,6 +23,7 @@ public abstract class Determinant {
 	public static final byte TIMESTAMP_DETERMINANT_TAG = 1;
 	public static final byte RANDOMEMIT_DETERMINANT_TAG = 2;
 	public static final byte RNG_DETERMINANT_TAG = 3;
+	public static final byte BUFFER_BUILT_TAG = 4;
 
 
 	public boolean isOrderDeterminant() {
@@ -55,5 +56,13 @@ public abstract class Determinant {
 
 	public RNGDeterminant asRNGDeterminant() {
 		return (RNGDeterminant) this;
+	}
+
+	public boolean isBufferBuiltDeterminant() {
+		return getClass() == BufferBuiltDeterminant.class;
+	}
+
+	public BufferBuiltDeterminant asBufferBuiltDeterminant() {
+		return (BufferBuiltDeterminant) this;
 	}
 }

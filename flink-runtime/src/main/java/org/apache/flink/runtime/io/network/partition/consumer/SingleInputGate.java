@@ -533,7 +533,8 @@ public class SingleInputGate implements InputGate {
 					if (isStandby) {
 						newChannel.requestSubpartition(consumedSubpartitionIndex);
 						requestedPartitionsFlag.set(true);
-						recoveryManager.notifyNewChannel(this, newChannel.getChannelIndex());
+						int numberOfBuffersRemoved = ((RemoteInputChannel)current).getNumberOfBuffersRemoved();
+						recoveryManager.notifyNewChannel(this, newChannel.getChannelIndex(),numberOfBuffersRemoved);
 					} else {
 						newChannel.requestSubpartition(consumedSubpartitionIndex);
 						requestedPartitionsFlag.set(true);

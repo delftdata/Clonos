@@ -32,9 +32,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.ArrayDeque;
-import java.util.Arrays;
-import java.util.Deque;
+import java.util.*;
 import java.util.stream.Collectors;
 
 public class CausalBufferHandler implements CheckpointBarrierHandler {
@@ -44,7 +42,7 @@ public class CausalBufferHandler implements CheckpointBarrierHandler {
 
 	private ICausalLoggingManager causalLoggingManager;
 
-	private Deque<BufferOrEvent>[] bufferedBuffersPerChannel;
+	private Queue<BufferOrEvent>[] bufferedBuffersPerChannel;
 
 	private CheckpointBarrierHandler wrapped;
 
@@ -55,26 +53,32 @@ public class CausalBufferHandler implements CheckpointBarrierHandler {
 		this.causalLoggingManager = causalLoggingManager;
 		this.recoveryManager = recoveryManager;
 		this.wrapped = wrapped;
-		this.bufferedBuffersPerChannel = new Deque[numInputChannels];
+		this.bufferedBuffersPerChannel = new LinkedList[numInputChannels];
 		for (int i = 0; i < numInputChannels; i++)
-			bufferedBuffersPerChannel[i] = new ArrayDeque<>();
+			bufferedBuffersPerChannel[i] = new LinkedList<>();
 		numUnprocessedBuffers = 0;
 	}
 
 
 	@Override
 	public BufferOrEvent getNextNonBlocked() throws Exception {
-		//todo should process DeterminantRequestEvents and respond to them
 		LOG.info("Call to getNextNonBlocked");
-		BufferOrEvent toReturn;
+		BufferOrEvent toReturn = null;
 		if (recoveryManager.isReplaying()) {
-			LOG.info("We are replaying! Fetching a determinant from the CausalLogManager");
-			byte nextChannel = recoveryManager.replayNextChannel();
-			LOG.info("Determinant says next channel is {}!", nextChannel);
-			if (bufferedBuffersPerChannel[nextChannel].isEmpty())
-				toReturn = processUntilFindBufferForChannel(nextChannel);
-			else
-				toReturn = bufferedBuffersPerChannel[nextChannel].pop();
+			while(toReturn == null) {
+				LOG.info("We are replaying! Fetching a determinant from the CausalLogManager");
+				byte nextChannel = recoveryManager.replayNextChannel();
+				LOG.info("Determinant says next channel is {}!", nextChannel);
+				if (bufferedBuffersPerChannel[nextChannel].isEmpty())
+					toReturn = processUntilFindBufferForChannel(nextChannel);
+				else {
+					toReturn = bufferedBuffersPerChannel[nextChannel].poll();
+					numUnprocessedBuffers--;
+				}
+			if(toReturn.isEvent() && toReturn.getEvent().getClass() == DeterminantRequestEvent.class)
+				toReturn = null; //skip, as it has already been processed.
+
+			}
 		} else {
 			LOG.info("We are not recovering!");
 			if (numUnprocessedBuffers != 0) {
@@ -102,10 +106,10 @@ public class CausalBufferHandler implements CheckpointBarrierHandler {
 
 	private BufferOrEvent pickUnprocessedBuffer() {
 		//todo improve runtime complexity
-		for(Deque<BufferOrEvent> deque : bufferedBuffersPerChannel) {
-			if(!deque.isEmpty()) {
+		for(Queue<BufferOrEvent> queue : bufferedBuffersPerChannel) {
+			if(!queue.isEmpty()) {
 				numUnprocessedBuffers--;
-				return deque.pop();
+				return queue.poll();
 			}
 		}
 		return null;//unrecheable
@@ -124,7 +128,7 @@ public class CausalBufferHandler implements CheckpointBarrierHandler {
 
 			LOG.info("It is not from the expected channel, continuing");
 			//Otherwise, append it to the correct queue and try again
-			bufferedBuffersPerChannel[newBufferOrEvent.getChannelIndex()].push(newBufferOrEvent);
+			bufferedBuffersPerChannel[newBufferOrEvent.getChannelIndex()].add(newBufferOrEvent);
 			numUnprocessedBuffers++;
 		}
 	}
@@ -141,8 +145,8 @@ public class CausalBufferHandler implements CheckpointBarrierHandler {
 
 	@Override
 	public boolean isEmpty() {
-		for (Deque deque : bufferedBuffersPerChannel)
-			if (!deque.isEmpty())
+		for (Queue qeque : bufferedBuffersPerChannel)
+			if (!qeque.isEmpty())
 				return false;
 
 		return wrapped.isEmpty();
