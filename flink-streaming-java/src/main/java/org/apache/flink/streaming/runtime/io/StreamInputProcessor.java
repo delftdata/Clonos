@@ -26,14 +26,12 @@ import org.apache.flink.metrics.SimpleCounter;
 import org.apache.flink.runtime.causal.*;
 import org.apache.flink.runtime.event.AbstractEvent;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
-import org.apache.flink.runtime.io.network.api.DeterminantRequestEvent;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
 import org.apache.flink.runtime.io.network.api.serialization.RecordDeserializer;
 import org.apache.flink.runtime.io.network.api.serialization.RecordDeserializer.DeserializationResult;
 import org.apache.flink.runtime.io.network.api.serialization.SpillingAdaptiveSpanningRecordDeserializer;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.partition.consumer.BufferOrEvent;
-import org.apache.flink.runtime.io.network.partition.consumer.InputChannel;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
 import org.apache.flink.runtime.metrics.groups.OperatorMetricGroup;
@@ -114,7 +112,7 @@ public class StreamInputProcessor<IN> {
 	private boolean isFinished;
 
 	// ----------- Causal Logging -----------------
-	private ICausalLoggingManager causalLoggingManager;
+	private IJobCausalLoggingManager causalLoggingManager;
 	private InputGate inputGate;
 
 	@SuppressWarnings("unchecked")
@@ -131,7 +129,7 @@ public class StreamInputProcessor<IN> {
 		TaskIOMetricGroup metrics,
 		WatermarkGauge watermarkGauge) throws IOException {
 
-		this.causalLoggingManager = checkpointedTask.getCausalLoggingManager();
+		this.causalLoggingManager = checkpointedTask.getJobCausalLoggingManager();
 
 		inputGate = InputGateUtil.createInputGate(inputGates);
 		checkpointedTask.getRecoveryManager().setInputGate(inputGate);
@@ -189,9 +187,6 @@ public class StreamInputProcessor<IN> {
 
 				if (result.isFullRecord()) {
 					StreamElement recordOrMark = deserializationDelegate.getInstance();
-					LOG.info("Received new record, processing attached deltas!");
-					for (VertexCausalLogDelta d : recordOrMark.getLogDeltas())
-						this.causalLoggingManager.processCausalLogDelta(d);
 
 					if (recordOrMark.isWatermark()) {
 						// handle watermark

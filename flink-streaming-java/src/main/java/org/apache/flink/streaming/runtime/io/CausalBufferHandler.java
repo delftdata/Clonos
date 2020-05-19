@@ -17,16 +17,12 @@
  */
 package org.apache.flink.streaming.runtime.io;
 
-import org.apache.flink.runtime.causal.DeterminantResponseEvent;
-import org.apache.flink.runtime.causal.ICausalLoggingManager;
-import org.apache.flink.runtime.causal.VertexCausalLogDelta;
-import org.apache.flink.runtime.causal.VertexId;
+import org.apache.flink.runtime.causal.IJobCausalLoggingManager;
 import org.apache.flink.runtime.causal.determinant.OrderDeterminant;
 import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 import org.apache.flink.runtime.event.AbstractEvent;
 import org.apache.flink.runtime.io.network.api.DeterminantRequestEvent;
 import org.apache.flink.runtime.io.network.partition.consumer.BufferOrEvent;
-import org.apache.flink.runtime.io.network.partition.consumer.InputChannel;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,7 +36,7 @@ public class CausalBufferHandler implements CheckpointBarrierHandler {
 	private static final Logger LOG = LoggerFactory.getLogger(CausalBufferHandler.class);
 	private final IRecoveryManager recoveryManager;
 
-	private ICausalLoggingManager causalLoggingManager;
+	private IJobCausalLoggingManager causalLoggingManager;
 
 	private Queue<BufferOrEvent>[] bufferedBuffersPerChannel;
 
@@ -49,7 +45,7 @@ public class CausalBufferHandler implements CheckpointBarrierHandler {
 	//This is just to reduce the complexity of going over bufferedBuffersPerChannel
 	private int numUnprocessedBuffers;
 
-	public CausalBufferHandler(ICausalLoggingManager causalLoggingManager, IRecoveryManager recoveryManager, CheckpointBarrierHandler wrapped, int numInputChannels) {
+	public CausalBufferHandler(IJobCausalLoggingManager causalLoggingManager, IRecoveryManager recoveryManager, CheckpointBarrierHandler wrapped, int numInputChannels) {
 		this.causalLoggingManager = causalLoggingManager;
 		this.recoveryManager = recoveryManager;
 		this.wrapped = wrapped;

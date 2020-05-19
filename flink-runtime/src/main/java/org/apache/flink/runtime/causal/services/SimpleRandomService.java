@@ -25,31 +25,23 @@
 
 package org.apache.flink.runtime.causal.services;
 
-import org.apache.flink.runtime.causal.IJobCausalLoggingManager;
-import org.apache.flink.runtime.causal.determinant.TimestampDeterminant;
-import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
+import org.apache.flink.util.XORShiftRandom;
 
-public class TimeService {
+import java.util.Random;
 
-	private IJobCausalLoggingManager causalLoggingManager;
-	private IRecoveryManager recoveryManager;
+public class SimpleRandomService implements RandomService {
 
-	public TimeService(IJobCausalLoggingManager causalLoggingManager, IRecoveryManager recoveryManager){
-		this.causalLoggingManager = causalLoggingManager;
-		this.recoveryManager = recoveryManager;
+
+	protected final Random rng = new XORShiftRandom();
+
+
+	@Override
+	public int nextInt() {
+		return rng.nextInt();
 	}
 
-	public long currentTimeMillis(){
-		while (!(recoveryManager.isRunning() || recoveryManager.isReplaying())); //Spin
-
-		if(recoveryManager.isReplaying())
-			return  recoveryManager.replayNextTimestamp();
-
-		long timestamp = System.currentTimeMillis();
-		causalLoggingManager.appendDeterminant(new TimestampDeterminant(timestamp));
-		return timestamp;
+	@Override
+	public int nextInt(int maxExclusive) {
+		return rng.nextInt(maxExclusive);
 	}
-
-
-
 }

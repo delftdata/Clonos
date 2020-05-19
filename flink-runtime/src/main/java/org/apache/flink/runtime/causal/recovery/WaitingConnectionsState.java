@@ -25,32 +25,64 @@
 
 package org.apache.flink.runtime.causal.recovery;
 
+import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
+import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
+import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
+import java.util.stream.Stream;
 
 public class WaitingConnectionsState extends AbstractState{
 
 	private static final Logger LOG = LoggerFactory.getLogger(WaitingConnectionsState.class);
-	Boolean[] channelsReestablishmentStatus;
+	Boolean[] inputChannelsReestablishmentStatus;
+
+	Map<IntermediateDataSetID, Boolean[]> outputChannelsReestablishmentStatus;
+
 
 	public WaitingConnectionsState(RecoveryManager context) {
 		super(context);
-		channelsReestablishmentStatus = new Boolean[context.inputGate.getNumberOfInputChannels()];
-		for(int i = 0; i < channelsReestablishmentStatus.length ; i++)
-			channelsReestablishmentStatus[i] = Boolean.FALSE;
+
+		inputChannelsReestablishmentStatus = new Boolean[context.inputGate.getNumberOfInputChannels()];
+		Arrays.fill(inputChannelsReestablishmentStatus, Boolean.FALSE);
+
+		outputChannelsReestablishmentStatus = new HashMap<>();
+		for(RecordWriter recordWriter :context.recordWriters) {
+			Boolean[] array = new Boolean[recordWriter.getResultPartition().getNumberOfSubpartitions()];
+			Arrays.fill(array,Boolean.FALSE);
+			outputChannelsReestablishmentStatus.put(recordWriter.getResultPartition().getIntermediateDataSetID(), array);
+		}
+
+
+
 		LOG.info("Waiting for new connections!");
 	}
 
 
 	@Override
-	public void notifyNewChannel(InputGate gate, int channelIndex, int numberOfBuffersRemoved) {
-		LOG.info("Got Notified of new channel for gate {}, index {}. New channelsReestablishmentStatus={}", gate, channelIndex, Arrays.toString(channelsReestablishmentStatus));
-		channelsReestablishmentStatus[context.inputGate.getAbsoluteChannelIndex(gate, channelIndex)] = Boolean.TRUE;
+	public void notifyNewInputChannel(InputGate gate, int channelIndex, int numberOfBuffersRemoved) {
+		LOG.info("Got Notified of new input channel for gate {}, index {}.", gate, channelIndex);
+		inputChannelsReestablishmentStatus[context.inputGate.getAbsoluteChannelIndex(gate, channelIndex)] = Boolean.TRUE;
 
-		if(Arrays.stream(channelsReestablishmentStatus).allMatch(x -> x)){
+		checkConnectionsComplete();
+	}
+
+
+	@Override
+	public void notifyNewOutputChannel(IntermediateDataSetID intermediateDataSetID, int subpartitionIndex){
+		LOG.info("Got Notified of new output channel for intermediateDataSet {} index {}.", intermediateDataSetID, subpartitionIndex);
+		outputChannelsReestablishmentStatus.get(intermediateDataSetID)[subpartitionIndex] = true;
+		checkConnectionsComplete();
+	}
+
+	private void checkConnectionsComplete() {
+		Stream<Boolean> channelStatus = Arrays.stream(inputChannelsReestablishmentStatus);
+		for(Boolean[] booleans : outputChannelsReestablishmentStatus.values())
+			channelStatus = Stream.concat(channelStatus, Arrays.stream(booleans));
+		if(channelStatus.allMatch(x -> x)){
 			State newState = new WaitingDeterminantsState(context);
 			context.setState(newState);
 		}
@@ -59,7 +91,7 @@ public class WaitingConnectionsState extends AbstractState{
 	@Override
 	public String toString() {
 		return "WaitingConnectionsState{" +
-			"channelsReestablishmentStatus=" + Arrays.toString(channelsReestablishmentStatus) +
+			"channelsReestablishmentStatus=" + Arrays.toString(inputChannelsReestablishmentStatus) +
 			'}';
 	}
 }

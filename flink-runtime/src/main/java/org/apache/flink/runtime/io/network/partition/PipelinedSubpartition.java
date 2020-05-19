@@ -18,8 +18,7 @@
 
 package org.apache.flink.runtime.io.network.partition;
 
-import org.apache.flink.runtime.causal.CausalLoggingManager;
-import org.apache.flink.runtime.causal.ICausalLoggingManager;
+import org.apache.flink.runtime.causal.IJobCausalLoggingManager;
 import org.apache.flink.runtime.causal.determinant.BufferBuiltDeterminant;
 import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 import org.apache.flink.runtime.inflightlogging.InFlightLog;
@@ -74,7 +73,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 	// ------------------------------------------------------------------------
 
 	private InFlightLog inFlightLog;
-	private ICausalLoggingManager causalLoggingManager;
+	private IJobCausalLoggingManager causalLoggingManager;
 
 	private long nextCheckpointId;
 
@@ -87,8 +86,9 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 	private AtomicBoolean downstreamFailed;
 
-	private SizedListIterator<Buffer> replayIterator;
+	private SizedListIterator<Buffer> inflightReplayIterator;
 	private IRecoveryManager recoveryManager;
+	private boolean logNext = true;
 
 	PipelinedSubpartition(int index, ResultPartition parent) {
 		super(index, parent);
@@ -103,7 +103,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 		this.recoveryManager = recoveryManager;
 	}
 
-	public void setCausalLoggingManager(ICausalLoggingManager causalLoggingManager) {
+	public void setCausalLoggingManager(IJobCausalLoggingManager causalLoggingManager) {
 		this.causalLoggingManager = causalLoggingManager;
 	}
 
@@ -129,7 +129,18 @@ public class PipelinedSubpartition extends ResultSubpartition {
 				return;
 			}
 			flushRequested = !buffers.isEmpty();
+			if (recoveryManager.isRunning())
+				notifyDataAvailable();
+		}
+	}
+
+	public void forceFlushOfDeterminantRequest() {
+		synchronized (buffers) {
+			if (buffers.isEmpty()) {
+				return;
+			}
 			notifyDataAvailable();
+			logNext = false;
 		}
 	}
 
@@ -161,7 +172,8 @@ public class PipelinedSubpartition extends ResultSubpartition {
 				isFinished = true;
 				flush();
 			} else {
-				maybeNotifyDataAvailable();
+				if (recoveryManager.isRunning())
+					maybeNotifyDataAvailable();
 			}
 		}
 
@@ -208,13 +220,13 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 	@Nullable
 	BufferAndBacklog pollBuffer() {
-		LOG.info("Call to pollBuffer");
+		//LOG.info("Call to pollBuffer");
 		if (downstreamFailed.get()) {
 			LOG.info("Polling for next buffer, but downstream is still failed.");
 			return null;
 		}
 
-		if (replayIterator != null) {
+		if (inflightReplayIterator != null) {
 			LOG.info("We are replaying, get inflight logs next buffer");
 			return getReplayedBuffer();
 		} else {
@@ -225,23 +237,23 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 	private BufferAndBacklog getReplayedBuffer() {
 		synchronized (buffers) {
-			Buffer buffer = replayIterator.next();
+			Buffer buffer = inflightReplayIterator.next();
 
-			if (!replayIterator.hasNext())
-				replayIterator = null;
+			if (!inflightReplayIterator.hasNext())
+				inflightReplayIterator = null;
 
 			return new BufferAndBacklog(buffer,
-				replayIterator != null || isAvailableUnsafe(),
-				getBuffersInBacklog() + (replayIterator != null ? replayIterator.numberRemaining() : 0),
+				inflightReplayIterator != null || isAvailableUnsafe(),
+				getBuffersInBacklog() + (inflightReplayIterator != null ? inflightReplayIterator.numberRemaining() : 0),
 				_recoveryNextBufferIsEvent());
 		}
 	}
 
 	private boolean _recoveryNextBufferIsEvent() {
 		boolean isNextAnEvent;
-		if (replayIterator != null && replayIterator.hasNext()) {
-			isNextAnEvent = !replayIterator.next().isBuffer();
-			replayIterator.previous(); //return to previous position
+		if (inflightReplayIterator != null && inflightReplayIterator.hasNext()) {
+			isNextAnEvent = !inflightReplayIterator.next().isBuffer();
+			inflightReplayIterator.previous(); //return to previous position
 		} else
 			isNextAnEvent = _nextBufferIsEvent();
 		return isNextAnEvent;
@@ -256,12 +268,16 @@ public class PipelinedSubpartition extends ResultSubpartition {
 				flushRequested = false;
 			}
 
+			if (buffers.isEmpty())
+				LOG.info("Call to getBufferFromQueued, but no buffer consumers to close");
 			while (!buffers.isEmpty()) {
 				BufferConsumer bufferConsumer = buffers.peek();
 				checkpointId = checkpointIds.peek();
 
-				causalLoggingManager.appendDeterminant(new BufferBuiltDeterminant(parent.getIntermediateDataSetID(), (byte) index));
+				//I feel like these two statements should be synchornized on a lock.
 				buffer = bufferConsumer.build();
+				if (logNext)
+					causalLoggingManager.appendDeterminant(new BufferBuiltDeterminant(parent.getIntermediateDataSetID(), (byte) index, buffer.readableBytes()));
 
 
 				checkState(bufferConsumer.isFinished() || buffers.size() == 1,
@@ -295,17 +311,20 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 			LOG.debug("Done getting buffer from queue\n\tbuffers: {}\n\tcheckpo: {}", "[" + buffers.stream().map(x -> "*").collect(Collectors.joining(", ")) + "]", "[" + checkpointIds.stream().map(x -> x + "").collect(Collectors.joining(", ")) + "]");
 			updateStatistics(buffer);
-			logBuffer(buffer, checkpointId);
+			BufferAndBacklog result;
+			if (logNext) {
+				logBuffer(buffer, checkpointId);
+				result = new BufferAndBacklog(buffer, isAvailableUnsafe(), getBuffersInBacklog(), _nextBufferIsEvent());
+			} else {
+				result = new BufferAndBacklog(buffer, false, getBuffersInBacklog(), _nextBufferIsEvent());
+				logNext = true;
+			}
 			LOG.debug("POST LOG\n\tbuffers: {}\n\tcheckpo: {}", "[" + buffers.stream().map(x -> "*").collect(Collectors.joining(", ")) + "]", "[" + checkpointIds.stream().map(x -> x + "").collect(Collectors.joining(", ")) + "]");
 			// Do not report last remaining buffer on buffers as available to read (assuming it's unfinished).
 			// It will be reported for reading either on flush or when the number of buffers in the queue
 			// will be 2 or more.
 			LOG.debug("{}:{}: Polled buffer {} (hash: {}, memorySegment hash: {}). Buffers available for dispatch: {}.", parent, this, buffer, System.identityHashCode(buffer), System.identityHashCode(buffer.getMemorySegment()), getBuffersInBacklog());
-			return new BufferAndBacklog(
-				buffer,
-				isAvailableUnsafe(),
-				getBuffersInBacklog(),
-				_nextBufferIsEvent());
+			return result;
 		}
 	}
 
@@ -355,8 +374,11 @@ public class PipelinedSubpartition extends ResultSubpartition {
 				LOG.info("(Re)using read view {} for {} (index: {}) of partition {}.", readView, this, index, parent.getPartitionId());
 			}
 
-			if (!buffers.isEmpty() || (replayIterator != null && replayIterator.numberRemaining() > 0)) {
+			//If we are recovering, when we conclude, we must notify of data availability.
+			if (!buffers.isEmpty() && recoveryManager.isRunning()) {
 				notifyDataAvailable();
+			} else if (recoveryManager.isWaitingConnections()) {
+				recoveryManager.notifyNewOutputChannel(this.parent.getIntermediateDataSetID(), this.index);
 			}
 		}
 
@@ -407,14 +429,14 @@ public class PipelinedSubpartition extends ResultSubpartition {
 	}
 
 	public void requestReplay(long checkpointId, int ignoreMessages) {
-		replayIterator = inFlightLog.getInFlightIterator();
-		LOG.info("Replay has been requested for pipelined subpartition {}, skipping {} buffers, buffers to replay {}. Setting downstreamFailed to false", this, ignoreMessages, replayIterator.numberRemaining());
-		if (replayIterator.numberRemaining() < ignoreMessages)
-			throw new RuntimeException("Invalid state: pipelined subpartition can replay " + replayIterator.numberRemaining() + " messages, but a replay skipping " + ignoreMessages + " was requested.");
+		inflightReplayIterator = inFlightLog.getInFlightIterator();
+		LOG.info("Replay has been requested for pipelined subpartition {}, skipping {} buffers, buffers to replay {}. Setting downstreamFailed to false", this, ignoreMessages, inflightReplayIterator.numberRemaining());
+		if (inflightReplayIterator.numberRemaining() < ignoreMessages)
+			throw new RuntimeException("Invalid state: pipelined subpartition can replay " + inflightReplayIterator.numberRemaining() + " messages, but a replay skipping " + ignoreMessages + " was requested.");
 		for (int i = 0; i < ignoreMessages; i++)
-			replayIterator.next();
-		if (!replayIterator.hasNext())
-			replayIterator = null;
+			inflightReplayIterator.next();
+		if (!inflightReplayIterator.hasNext())
+			inflightReplayIterator = null;
 		downstreamFailed.set(false);
 	}
 
@@ -425,7 +447,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 		}
 	}
 
-	private void notifyDataAvailable() {
+	public void notifyDataAvailable() {
 		if (readView != null) {
 			readView.notifyDataAvailable();
 		}
@@ -442,9 +464,58 @@ public class PipelinedSubpartition extends ResultSubpartition {
 		return Math.max(0, buffers.size() - 1);
 	}
 
-	public void buildAndLogBuffer() {
+	public void buildAndLogBuffer(int bufferSize) {
 		LOG.info("building buffer and discarding result");
-		//Get and log the next buffer, but discard the result, do not send it downstream.
-		getBufferFromQueuedBufferConsumers();
+
+		synchronized (buffers) {
+			Buffer buffer = null;
+			long checkpointId = 0;
+
+			if (buffers.isEmpty()) {
+				flushRequested = false;
+			}
+
+			if (buffers.isEmpty()) {
+				LOG.info("Call to buildAndLogBuffer, but no buffer consumers to close. Appending determinant and returning. This should indicate that the buffer which was built was the checkpoint barrier that started this epoch.");
+				causalLoggingManager.appendDeterminant(new BufferBuiltDeterminant(parent.getIntermediateDataSetID(), (byte) index, bufferSize));
+				return;
+			}else {
+				BufferConsumer bufferConsumer = buffers.peek();
+				checkpointId = checkpointIds.peek();
+
+				//This assumes that the input buffers which are before this close in the determinant log have been
+				// fully processed, thus the bufferconsumer will have this amount of data.
+				//I feel like these two statements should be synchornized on a lock.
+				causalLoggingManager.appendDeterminant(new BufferBuiltDeterminant(parent.getIntermediateDataSetID(), (byte) index, bufferSize));
+				buffer = bufferConsumer.build(bufferSize);
+
+
+				checkState(bufferConsumer.isFinished() || buffers.size() == 1,
+					"When there are multiple buffers, an unfinished bufferConsumer can not be at the head of the buffers queue.");
+
+				if (buffers.size() == 1) {
+					// turn off flushRequested flag if we drained all of the available data
+					flushRequested = false;
+				}
+
+				if (bufferConsumer.isFinished()) {
+					buffers.pop().close();
+					checkpointIds.pop();
+					decreaseBuffersInBacklogUnsafe(bufferConsumer.isBuffer());
+				}
+
+				if (buffer.readableBytes() <= 0) {
+					buffer.recycleBuffer();
+					buffer = null;
+				}
+
+			}
+			if(buffer != null) {
+				updateStatistics(buffer);
+				logBuffer(buffer, checkpointId);
+			}
+		}
+
+
 	}
 }

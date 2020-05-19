@@ -20,14 +20,10 @@ package org.apache.flink.runtime.io.network.api;
 
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataOutputView;
-import org.apache.flink.runtime.causal.DeterminantCarrier;
-import org.apache.flink.runtime.causal.VertexCausalLog;
-import org.apache.flink.runtime.causal.VertexCausalLogDelta;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.event.RuntimeEvent;
 
 import java.io.IOException;
-import java.util.List;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -46,22 +42,16 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  *
  * <p>The checkpoint barrier IDs are strictly monotonous increasing.
  */
-public class CheckpointBarrier extends RuntimeEvent implements DeterminantCarrier {
+public class CheckpointBarrier extends RuntimeEvent {
 
 	private final long id;
 	private final long timestamp;
 	private final CheckpointOptions checkpointOptions;
 
-	private List<VertexCausalLogDelta> vertexCausalLogDeltas;
-
 	public CheckpointBarrier(long id, long timestamp, CheckpointOptions checkpointOptions) {
 		this.id = id;
 		this.timestamp = timestamp;
 		this.checkpointOptions = checkNotNull(checkpointOptions);
-	}
-	public CheckpointBarrier(long id, long timestamp, CheckpointOptions checkpointOptions, List<VertexCausalLogDelta> vertexCausalLogDeltas) {
-		this(id, timestamp,checkpointOptions);
-		this.vertexCausalLogDeltas = vertexCausalLogDeltas;
 	}
 
 	public long getId() {
@@ -124,13 +114,4 @@ public class CheckpointBarrier extends RuntimeEvent implements DeterminantCarrie
 		return String.format("CheckpointBarrier %d @ %d Options: %s", id, timestamp, checkpointOptions);
 	}
 
-	@Override
-	public void enrich(List<VertexCausalLogDelta> logDeltaList) {
-		this.vertexCausalLogDeltas = logDeltaList;
-	}
-
-	@Override
-	public List<VertexCausalLogDelta> getLogDeltas() {
-		return vertexCausalLogDeltas;
-	}
 }

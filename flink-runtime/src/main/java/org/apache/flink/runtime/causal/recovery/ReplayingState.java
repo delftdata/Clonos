@@ -52,24 +52,26 @@ public class ReplayingState extends AbstractState {
 	DeterminantEncodingStrategy determinantEncodingStrategy;
 	Determinant nextDeterminant;
 	Queue<NonMainThreadDeterminant> toProcess;
+	private boolean isDone;
 
 	public ReplayingState(RecoveryManager context, byte[] determinantsToRecoverFrom) {
 		super(context);
 
-		determinantEncodingStrategy = context.causalLoggingManager.getDeterminantEncodingStrategy();
+		determinantEncodingStrategy = context.jobCausalLoggingManager.getDeterminantEncodingStrategy();
 		recoveryBuffer = ByteBuffer.wrap(determinantsToRecoverFrom);
 
 		toProcess = new LinkedList<>();
+		isDone = false;
 		fillQueue();
+
 		context.readyToReplayFuture.complete(null);//allow task to start running
 	}
 
 	@Override
-	public void notifyNewChannel(InputGate gate, int channelIndex, int numberOfBuffersRemoved){
+	public void notifyNewInputChannel(InputGate gate, int channelIndex, int numberOfBuffersRemoved){
 		//we got notified of a new input channel while we were replaying
 		//This means that  we now have to wait for the upstream to finish recovering before we do.
 		//Furthermore, we have to resend the inflight log request, and ask to skip X buffers
-		//todo perhaps we can actually count the buffers here?? check this
 		IntermediateDataSetID intermediateDataSetID = ((SingleInputGate)gate).getConsumedResultId();
 		int subpartitionIndex = ((SingleInputGate) gate).getConsumedSubpartitionIndex();
 
@@ -118,8 +120,10 @@ public class ReplayingState extends AbstractState {
 	}
 
 	private void drainQueue(){
-		while(!toProcess.isEmpty())
+		while(!toProcess.isEmpty()) {
+			LOG.info("Processing off main thread determinant {}", toProcess.peek());
 			toProcess.poll().process(context);
+		}
 	}
 
 	private void fillQueue(){
@@ -131,9 +135,19 @@ public class ReplayingState extends AbstractState {
 		}
 
 		if(nextDeterminant == null) {
-			drainQueue();
-			context.setState(new RunningState(context));
+			//we cant immediately drain the queue. We need to return the determinant first, then process it and end the replay
+			isDone = true;
+
 		}
+	}
+
+	public boolean isDone(){
+		return isDone;
+	}
+
+	public void finish(){
+		drainQueue();
+		context.setState(new RunningState(context));
 	}
 
 	@Override

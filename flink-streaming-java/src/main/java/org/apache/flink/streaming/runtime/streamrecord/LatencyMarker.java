@@ -19,11 +19,7 @@
 package org.apache.flink.streaming.runtime.streamrecord;
 
 import org.apache.flink.annotation.PublicEvolving;
-import org.apache.flink.runtime.causal.VertexCausalLogDelta;
 import org.apache.flink.runtime.jobgraph.OperatorID;
-
-import java.util.LinkedList;
-import java.util.List;
 
 /**
  * Special record type carrying a timestamp of its creation time at a source operator
@@ -48,11 +44,6 @@ public final class LatencyMarker extends StreamElement {
 	 * Creates a latency mark with the given timestamp.
 	 */
 	public LatencyMarker(long markedTime, OperatorID operatorId, int subtaskIndex) {
-		this(markedTime, operatorId, subtaskIndex, new LinkedList<>());
-	}
-
-	public LatencyMarker(long markedTime, OperatorID operatorId, int subtaskIndex, List<VertexCausalLogDelta> logDeltas) {
-		super(logDeltas);
 		this.markedTime = markedTime;
 		this.operatorId = operatorId;
 		this.subtaskIndex = subtaskIndex;

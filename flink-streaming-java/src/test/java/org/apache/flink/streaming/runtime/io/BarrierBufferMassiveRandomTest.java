@@ -17,6 +17,7 @@
 
 package org.apache.flink.streaming.runtime.io;
 
+import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.event.TaskEvent;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
@@ -205,6 +206,11 @@ public class BarrierBufferMassiveRandomTest {
 		@Override
 		public SingleInputGate[] getInputGates() {
 			return new SingleInputGate[0];
+		}
+
+		@Override
+		public JobID getJobID() {
+			return null;
 		}
 	}
 }

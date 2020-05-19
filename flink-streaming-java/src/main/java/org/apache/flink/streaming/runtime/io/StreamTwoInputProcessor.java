@@ -23,8 +23,7 @@ import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.SimpleCounter;
-import org.apache.flink.runtime.causal.ICausalLoggingManager;
-import org.apache.flink.runtime.causal.VertexCausalLogDelta;
+import org.apache.flink.runtime.causal.IJobCausalLoggingManager;
 import org.apache.flink.runtime.event.AbstractEvent;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
@@ -92,7 +91,7 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 
 	private final Object lock;
 
-	private final ICausalLoggingManager causalLoggingManager;
+	private final IJobCausalLoggingManager causalLoggingManager;
 
 	// ---------------- Status and Watermark Valves ------------------
 
@@ -168,7 +167,7 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 		this.recordWriterOutputs = recordWriterOutputs;
 
 		this.lock = checkNotNull(lock);
-		causalLoggingManager = checkpointedTask.getCausalLoggingManager();
+		causalLoggingManager = checkpointedTask.getJobCausalLoggingManager();
 
 		StreamElementSerializer<IN1> ser1 = new StreamElementSerializer<>(inputSerializer1);
 		this.deserializationDelegate1 = new NonReusingDeserializationDelegate<>(ser1);
@@ -239,8 +238,6 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 				if (result.isFullRecord()) {
 					if (currentChannel < numInputChannels1) {
 						StreamElement recordOrWatermark = deserializationDelegate1.getInstance();
-						for (VertexCausalLogDelta d : recordOrWatermark.getLogDeltas())
-							causalLoggingManager.processCausalLogDelta(d);
 						if (recordOrWatermark.isWatermark()) {
 							statusWatermarkValve1.inputWatermark(recordOrWatermark.asWatermark(), currentChannel);
 							continue;
@@ -266,8 +263,6 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 						}
 					} else {
 						StreamElement recordOrWatermark = deserializationDelegate2.getInstance();
-						for (VertexCausalLogDelta d : recordOrWatermark.getLogDeltas())
-							causalLoggingManager.processCausalLogDelta(d);
 						if (recordOrWatermark.isWatermark()) {
 							statusWatermarkValve2.inputWatermark(recordOrWatermark.asWatermark(), currentChannel - numInputChannels1);
 							continue;

@@ -19,34 +19,16 @@
 package org.apache.flink.streaming.runtime.streamrecord;
 
 import org.apache.flink.annotation.Internal;
-import org.apache.flink.runtime.causal.DeterminantCarrier;
-import org.apache.flink.runtime.causal.VertexCausalLogDelta;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatus;
-
-import java.util.List;
 
 /**
  * An element in a data stream. Can be a record or a Watermark.
  */
 @Internal
-public abstract class StreamElement implements DeterminantCarrier {
-
-	private List<VertexCausalLogDelta> logDeltas;
+public abstract class StreamElement {
 
 	public StreamElement() {
-	}
-
-	public StreamElement(List<VertexCausalLogDelta> logDeltas) {
-		this.logDeltas = logDeltas;
-	}
-
-	public List<VertexCausalLogDelta> getLogDeltas() {
-		return logDeltas;
-	}
-
-	public void enrich(List<VertexCausalLogDelta> logDeltaList){
-		this.logDeltas = logDeltaList;
 	}
 
 	/**

@@ -18,8 +18,6 @@
 package org.apache.flink.streaming.runtime.io;
 
 import org.apache.flink.annotation.Internal;
-import org.apache.flink.runtime.causal.ICausalLoggingManager;
-import org.apache.flink.runtime.causal.VertexCausalLogDelta;
 import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
 import org.apache.flink.runtime.checkpoint.decline.AlignmentLimitExceededException;
@@ -88,7 +86,6 @@ public class BarrierBuffer implements CheckpointBarrierHandler {
 	 * unlimited.
 	 */
 	private final long maxBufferedBytes;
-	private ICausalLoggingManager causalLoggingManager;
 
 	/**
 	 * The sequence of buffers/events that has been unblocked and must now be consumed before
@@ -162,12 +159,7 @@ public class BarrierBuffer implements CheckpointBarrierHandler {
 	 * @param maxBufferedBytes The maximum bytes to be buffered before the checkpoint aborts.
 	 * @throws IOException Thrown, when the spilling to temp files cannot be initialized.
 	 */
-	public BarrierBuffer(InputGate inputGate, BufferBlocker bufferBlocker, long maxBufferedBytes)
-		throws IOException {
-		this(inputGate, bufferBlocker, maxBufferedBytes, null);
-	}
-
-	public BarrierBuffer(InputGate inputGate, BufferBlocker bufferBlocker, long maxBufferedBytes, ICausalLoggingManager causalLoggingManager) throws IOException {
+	public BarrierBuffer(InputGate inputGate, BufferBlocker bufferBlocker, long maxBufferedBytes) throws IOException {
 		checkArgument(maxBufferedBytes == -1 || maxBufferedBytes > 0);
 
 		this.inputGate = inputGate;
@@ -177,7 +169,6 @@ public class BarrierBuffer implements CheckpointBarrierHandler {
 
 		this.bufferBlocker = checkNotNull(bufferBlocker);
 		this.queuedBuffered = new ArrayDeque<BufferOrEventSequence>();
-		this.causalLoggingManager = causalLoggingManager;
 
 	}
 
@@ -261,9 +252,6 @@ public class BarrierBuffer implements CheckpointBarrierHandler {
 	}
 
 	private void processBarrier(CheckpointBarrier receivedBarrier, int channelIndex) throws Exception {
-		if (causalLoggingManager != null)
-			for (VertexCausalLogDelta v : receivedBarrier.getLogDeltas())
-				this.causalLoggingManager.processCausalLogDelta(v);
 		final long barrierId = receivedBarrier.getId();
 
 		// fast path for single channel cases

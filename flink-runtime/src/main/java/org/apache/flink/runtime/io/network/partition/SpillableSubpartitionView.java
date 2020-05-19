@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.io.network.partition;
 
+import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.io.disk.iomanager.BufferFileWriter;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
@@ -258,6 +259,11 @@ class SpillableSubpartitionView implements ResultSubpartitionView {
 		} // else: spilled
 
 		return spilledView.isAvailable();
+	}
+
+	@Override
+	public JobID getJobID() {
+		return this.parent.getJobID();
 	}
 
 	@Override

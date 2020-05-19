@@ -28,7 +28,9 @@ package org.apache.flink.runtime.causal.recovery;
 import org.apache.flink.runtime.causal.DeterminantResponseEvent;
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
 import org.apache.flink.runtime.io.network.api.DeterminantRequestEvent;
+import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
+import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 
 public interface State {
 
@@ -36,7 +38,9 @@ public interface State {
 
 	void notifyDeterminantRequestEvent(DeterminantRequestEvent e,int channelRequestArrivedFrom);
 
-	void notifyNewChannel(InputGate inputGate, int channelIndex, int numberOfBuffersRemoved);
+	void notifyNewInputChannel(InputGate inputGate, int channelIndex, int numberOfBuffersRemoved);
+
+	void notifyNewOutputChannel(IntermediateDataSetID intermediateDataSetID, int subpartitionIndex);
 
 	void notifyInFlightLogRequestEvent(InFlightLogRequestEvent e);
 

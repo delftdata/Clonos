@@ -541,6 +541,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 
 		invokableHasBeenCanceled = new AtomicBoolean(false);
 
+
 		// finally, create the executing thread, but do not start it
 		executingThread = new Thread(TASK_THREADS_GROUP, this, taskNameWithSubtask);
 	}
@@ -556,6 +557,14 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 
 	public JobVertexID getJobVertexId() {
 		return jobVertexId;
+	}
+
+	public List<JobVertex> getTopologicallySortedJobVertexes(){
+		return topologicallySortedJobVertexes;
+	}
+
+	public int getSubtaskIndex(){
+		return this.taskInfo.getIndexOfThisSubtask();
 	}
 
 	public ExecutionAttemptID getExecutionId() {
@@ -819,6 +828,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 				producedPartitions,
 				inputGates,
 				network.getTaskEventDispatcher(),
+				network.getTmCausalLog().getCausalLoggingManagerOfJob(jobId),
 				checkpointResponder,
 				taskManagerConfig,
 				metrics,

@@ -29,7 +29,10 @@ import org.apache.flink.runtime.causal.DeterminantResponseEvent;
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
 import org.apache.flink.runtime.io.network.api.DeterminantRequestEvent;
 import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
+import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
+import org.apache.flink.runtime.jobgraph.IntermediateDataSet;
+import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -47,11 +50,17 @@ public abstract class AbstractState implements State {
 
 
 	@Override
-	public void notifyNewChannel(InputGate gate, int channelIndex, int numberOfBuffersRemoved){
+	public void notifyNewInputChannel(InputGate gate, int channelIndex, int numberOfBuffersRemoved){
 		//we got notified of a new input channel while we were recovering.
 		//This means that  we now have to wait for the upstream to finish recovering before we do.
 		//Furthermore, if we have already sent an inflight log request for this channel, we now have to send it again.
-		LOG.info("Got notified of unexpected NewChannel event, while in state " + this.getClass());
+		LOG.info("Got notified of unexpected NewInputChannel event, while in state " + this.getClass());
+	}
+
+	@Override
+	public void notifyNewOutputChannel(IntermediateDataSetID intermediateDataSetID, int subpartitionIndex){
+		LOG.info("Got notified of unexpected NewOutputChannel event, while in state " + this.getClass());
+
 	}
 
 	@Override

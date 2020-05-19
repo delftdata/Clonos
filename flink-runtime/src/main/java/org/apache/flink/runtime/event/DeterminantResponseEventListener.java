@@ -17,7 +17,6 @@
  */
 package org.apache.flink.runtime.event;
 
-import org.apache.flink.runtime.causal.ICausalLoggingManager;
 import org.apache.flink.runtime.causal.DeterminantResponseEvent;
 import org.apache.flink.runtime.causal.recovery.RecoveryManager;
 import org.apache.flink.runtime.util.event.EventListener;

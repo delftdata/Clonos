@@ -17,6 +17,7 @@
  */
 package org.apache.flink.runtime.causal;
 
+import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
 import org.junit.Test;
 
 import java.util.Arrays;
@@ -38,13 +39,14 @@ public class VertexCausalLogTests {
 	public void growthTest() {
 
 
-		VertexCausalLog log = new CircularVertexCausalLog(1, new VertexId((short) 0));
-
+		CausalLog log = new CircularCausalLog(1, new VertexId((short) 0));
+		InputChannelID downstreamConsumer = new InputChannelID();
+		log.registerDownstreamConsumer(downstreamConsumer);
 		for (int i = 0; i < 3; i++)
 			log.appendDeterminants(test_sentence_small.getBytes()); //36 bytes. Causes one growth
 
 		String expectedResult = test_sentence_small + test_sentence_small + test_sentence_small;
-		assert (new String(log.getNextDeterminantsForDownstream(0).rawDeterminants).equals(expectedResult));
+		assert (new String(log.getNextDeterminantsForDownstream(downstreamConsumer).rawDeterminants).equals(expectedResult));
 
 	}
 
@@ -53,7 +55,7 @@ public class VertexCausalLogTests {
 	public void checkpointBarrierTest() throws Exception {
 
 
-		VertexCausalLog log = new CircularVertexCausalLog(2, new VertexId((short) 0));
+		CausalLog log = new CircularCausalLog(2, new VertexId((short) 0));
 
 		for (int i = 0; i < 2; i++)
 			log.appendDeterminants(test_sentence_small.getBytes());
@@ -74,25 +76,33 @@ public class VertexCausalLogTests {
 	public void emptyStartStateTest() {
 
 		VertexId trackedVertex = new VertexId((short) 0);
-		VertexCausalLog log = new CircularVertexCausalLog(3, trackedVertex);
+		CausalLog log = new CircularCausalLog(3, trackedVertex);
+		InputChannelID downstreamConsumer = new InputChannelID();
+		log.registerDownstreamConsumer(downstreamConsumer);
 
-		assert (log.getNextDeterminantsForDownstream(0).equals(new VertexCausalLogDelta(trackedVertex, new byte[0], 0)));
+		assert (log.getNextDeterminantsForDownstream(downstreamConsumer).equals(new CausalLogDelta(trackedVertex, new byte[0], 0)));
 
 	}
 
 	@Test
 	public void correctDownstreamTrackingTest() {
 		VertexId trackedVertex = new VertexId((short) 0);
-		VertexCausalLog log = new CircularVertexCausalLog(3, trackedVertex);
+		CausalLog log = new CircularCausalLog(3, trackedVertex);
+		InputChannelID downstreamConsumer1 = new InputChannelID();
+		InputChannelID downstreamConsumer2 = new InputChannelID();
+		InputChannelID downstreamConsumer3 = new InputChannelID();
+		log.registerDownstreamConsumer(downstreamConsumer1);
+		log.registerDownstreamConsumer(downstreamConsumer2);
+		log.registerDownstreamConsumer(downstreamConsumer3);
 
 		log.appendDeterminants(test_sentence_small.getBytes());
 		log.appendDeterminants(test_sentence_small.getBytes());
-		log.getNextDeterminantsForDownstream(0);
+		log.getNextDeterminantsForDownstream(downstreamConsumer1);
 		log.appendDeterminants(test_sentence_small.getBytes());
 
-		assert (log.getNextDeterminantsForDownstream(1).equals(new VertexCausalLogDelta(trackedVertex, (test_sentence_small + test_sentence_small + test_sentence_small).getBytes(), 0)));
-		assert (log.getNextDeterminantsForDownstream(0).equals(new VertexCausalLogDelta(trackedVertex, test_sentence_small.getBytes(), test_sentence_small.getBytes().length * 2)));
-		assert (log.getNextDeterminantsForDownstream(2).equals(new VertexCausalLogDelta(trackedVertex, (test_sentence_small + test_sentence_small + test_sentence_small).getBytes(), 0)));
+		assert (log.getNextDeterminantsForDownstream(downstreamConsumer2).equals(new CausalLogDelta(trackedVertex, (test_sentence_small + test_sentence_small + test_sentence_small).getBytes(), 0)));
+		assert (log.getNextDeterminantsForDownstream(downstreamConsumer1).equals(new CausalLogDelta(trackedVertex, test_sentence_small.getBytes(), test_sentence_small.getBytes().length * 2)));
+		assert (log.getNextDeterminantsForDownstream(downstreamConsumer3).equals(new CausalLogDelta(trackedVertex, (test_sentence_small + test_sentence_small + test_sentence_small).getBytes(), 0)));
 	}
 
 	/**
@@ -108,37 +118,48 @@ public class VertexCausalLogTests {
 
 		VertexId trackedVertex = new VertexId((short) 0);
 
-		VertexCausalLog src = new CircularVertexCausalLog(2, trackedVertex);
-		VertexCausalLog mid0 = new CircularVertexCausalLog(1, trackedVertex);
-		VertexCausalLog mid1 = new CircularVertexCausalLog(1, trackedVertex);
-		VertexCausalLog sink = new CircularVertexCausalLog(0, trackedVertex);
+		CausalLog src = new CircularCausalLog(trackedVertex);
+		InputChannelID downstreamConsumerOfSrc1 = new InputChannelID();
+		src.registerDownstreamConsumer(downstreamConsumerOfSrc1);
+		InputChannelID downstreamConsumerOfSrc2 = new InputChannelID();
+		src.registerDownstreamConsumer(downstreamConsumerOfSrc2);
+
+		CausalLog mid0 = new CircularCausalLog( trackedVertex);
+		InputChannelID downstreamConsumerOfMid0 = new InputChannelID();
+		mid0.registerDownstreamConsumer(downstreamConsumerOfMid0);
+
+		CausalLog mid1 = new CircularCausalLog( trackedVertex);
+		InputChannelID downstreamConsumerOfMid1 = new InputChannelID();
+		mid1.registerDownstreamConsumer(downstreamConsumerOfMid1);
+
+		CausalLog sink = new CircularCausalLog( trackedVertex);
 
 		src.appendDeterminants(test_sentence_small.getBytes());
 		src.notifyCheckpointBarrier(1);
 
-		VertexCausalLogDelta delta0 = src.getNextDeterminantsForDownstream(0);
+		CausalLogDelta delta0 = src.getNextDeterminantsForDownstream(downstreamConsumerOfSrc1);
 
 		mid0.processUpstreamVertexCausalLogDelta(delta0);
 		mid0.notifyCheckpointBarrier(1);
 
-		VertexCausalLogDelta delta1 = src.getNextDeterminantsForDownstream(1);
+		CausalLogDelta delta1 = src.getNextDeterminantsForDownstream(downstreamConsumerOfSrc2);
 		mid1.processUpstreamVertexCausalLogDelta(delta1);
 		mid1.notifyCheckpointBarrier(1);
 
-		VertexCausalLogDelta deltaSinkFrom0 = mid0.getNextDeterminantsForDownstream(0);
+		CausalLogDelta deltaSinkFrom0 = mid0.getNextDeterminantsForDownstream(downstreamConsumerOfMid0);
 		sink.processUpstreamVertexCausalLogDelta(deltaSinkFrom0);
-		VertexCausalLogDelta deltaSinkFrom1 = mid1.getNextDeterminantsForDownstream(0);
+		CausalLogDelta deltaSinkFrom1 = mid1.getNextDeterminantsForDownstream(downstreamConsumerOfMid1);
 		sink.processUpstreamVertexCausalLogDelta(deltaSinkFrom0);
 		sink.notifyCheckpointBarrier(1);
 
 		src.appendDeterminants(test_sentence_small.getBytes());
 
-		delta0 = src.getNextDeterminantsForDownstream(0);
+		delta0 = src.getNextDeterminantsForDownstream(downstreamConsumerOfSrc1);
 		mid0.processUpstreamVertexCausalLogDelta(delta0);
 
 		src.appendDeterminants(test_sentence_small.getBytes());
 
-		delta0 = src.getNextDeterminantsForDownstream(0);
+		delta0 = src.getNextDeterminantsForDownstream(downstreamConsumerOfSrc1);
 		mid0.processUpstreamVertexCausalLogDelta(delta0);
 
 		src.notifyCheckpointComplete(1);
@@ -146,15 +167,15 @@ public class VertexCausalLogTests {
 		mid1.notifyCheckpointComplete(1);
 		sink.notifyCheckpointComplete(1);
 
-		delta1 = src.getNextDeterminantsForDownstream(1);
+		delta1 = src.getNextDeterminantsForDownstream(downstreamConsumerOfSrc2);
 		mid1.processUpstreamVertexCausalLogDelta(delta1);
 
-		deltaSinkFrom1 = mid1.getNextDeterminantsForDownstream(0);
+		deltaSinkFrom1 = mid1.getNextDeterminantsForDownstream(downstreamConsumerOfMid1);
 		sink.processUpstreamVertexCausalLogDelta(deltaSinkFrom1);
 
 		System.out.println(sink);
 
-		deltaSinkFrom0 = mid0.getNextDeterminantsForDownstream(0);
+		deltaSinkFrom0 = mid0.getNextDeterminantsForDownstream(downstreamConsumerOfMid0);
 		sink.processUpstreamVertexCausalLogDelta(deltaSinkFrom0);
 
 
@@ -172,7 +193,7 @@ public class VertexCausalLogTests {
 	@Test
 	public void checkpointOnly() throws Exception {
 		VertexId trackedVertex = new VertexId((short) 0);
-		VertexCausalLog log = new CircularVertexCausalLog(2, trackedVertex);
+		CausalLog log = new CircularCausalLog(2, trackedVertex);
 
 		log.notifyCheckpointBarrier(1);
 		log.notifyCheckpointBarrier(2);
@@ -183,7 +204,7 @@ public class VertexCausalLogTests {
 	@Test
 	public void correctOffsetTrackingTest() throws Exception {
 		VertexId trackedVertex = new VertexId((short) 0);
-		VertexCausalLog log = new CircularVertexCausalLog(3, trackedVertex);
+		CausalLog log = new CircularCausalLog(3, trackedVertex);
 
 		log.appendDeterminants(test_sentence_small.getBytes());
 		log.appendDeterminants(test_sentence_small.getBytes());
@@ -199,7 +220,7 @@ public class VertexCausalLogTests {
 	@Test
 	public void performanceTest() throws InterruptedException {
 		AtomicInteger count = new AtomicInteger(0);
-		VertexCausalLog log = new CircularVertexCausalLog(1024, new VertexId((short) 0));
+		CausalLog log = new CircularCausalLog(1024, new VertexId((short) 0));
 
 		Thread generator = new Thread(new Runnable() {
 			@Override

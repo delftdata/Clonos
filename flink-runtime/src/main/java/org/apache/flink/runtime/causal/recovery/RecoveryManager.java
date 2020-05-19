@@ -25,14 +25,13 @@
 
 package org.apache.flink.runtime.causal.recovery;
 
-import org.apache.flink.runtime.causal.CausalLoggingManager;
+import org.apache.flink.runtime.causal.JobCausalLoggingManager;
 import org.apache.flink.runtime.causal.DeterminantResponseEvent;
 import org.apache.flink.runtime.causal.VertexGraphInformation;
 import org.apache.flink.runtime.causal.VertexId;
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
 import org.apache.flink.runtime.io.network.api.DeterminantRequestEvent;
 import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
-import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.slf4j.Logger;
@@ -47,7 +46,7 @@ public class RecoveryManager implements IRecoveryManager{
 
 	final VertexGraphInformation vertexGraphInformation;
 	final CompletableFuture<Void> readyToReplayFuture;
-	final CausalLoggingManager causalLoggingManager;
+	final JobCausalLoggingManager jobCausalLoggingManager;
 
 	final Map<VertexId, UnansweredDeterminantRequest> unansweredDeterminantRequests;
 
@@ -61,10 +60,18 @@ public class RecoveryManager implements IRecoveryManager{
 
 	long finalRestoredCheckpointId;
 
-	Map<IntermediateDataSetID, ResultPartitionWriter> intermediateDataSetIDResultPartitionMap;
+	Map<IntermediateDataSetID, RecordWriter> intermediateDataSetIDToRecordWriter;
 
-	public RecoveryManager(CausalLoggingManager causalLoggingManager, CompletableFuture<Void> readyToReplayFuture, VertexGraphInformation vertexGraphInformation) {
-		this.causalLoggingManager = causalLoggingManager;
+
+	public static final SinkRecoveryStrategy sinkRecoveryStrategy = SinkRecoveryStrategy.TRANSACTIONAL;
+
+	public static enum SinkRecoveryStrategy{
+		TRANSACTIONAL,
+		KAFKA
+	}
+
+	public RecoveryManager(JobCausalLoggingManager jobCausalLoggingManager, CompletableFuture<Void> readyToReplayFuture, VertexGraphInformation vertexGraphInformation) {
+		this.jobCausalLoggingManager = jobCausalLoggingManager;
 		this.readyToReplayFuture = readyToReplayFuture;
 		this.vertexGraphInformation = vertexGraphInformation;
 
@@ -79,14 +86,14 @@ public class RecoveryManager implements IRecoveryManager{
 
 		LOG.info("Starting recovery manager in state {}", currentState);
 
-		this.intermediateDataSetIDResultPartitionMap = new HashMap<>();
+		this.intermediateDataSetIDToRecordWriter = new HashMap<>();
 	}
 
 	public void setRecordWriters(List<RecordWriter> recordWriters) {
 		this.recordWriters = recordWriters;
 
 		for(RecordWriter recordWriter : recordWriters){
-			this.intermediateDataSetIDResultPartitionMap.put(recordWriter.getResultPartition().getIntermediateDataSetID(), recordWriter.getResultPartition());
+			this.intermediateDataSetIDToRecordWriter.put(recordWriter.getResultPartition().getIntermediateDataSetID(), recordWriter);
 		}
 	}
 
@@ -124,7 +131,12 @@ public class RecoveryManager implements IRecoveryManager{
 
 	@Override
 	public synchronized void notifyNewChannel(InputGate gate, int channelIndex, int numberOfBuffersRemoved) {
-		this.currentState.notifyNewChannel(gate, channelIndex, numberOfBuffersRemoved);
+		this.currentState.notifyNewInputChannel(gate, channelIndex, numberOfBuffersRemoved);
+	}
+
+	@Override
+	public synchronized void notifyNewOutputChannel(IntermediateDataSetID intermediateDataSetID, int index) {
+		this.currentState.notifyNewOutputChannel(intermediateDataSetID, index);
 	}
 
 	@Override
@@ -134,24 +146,36 @@ public class RecoveryManager implements IRecoveryManager{
 
 
 	@Override
-	public synchronized void setState(State state) {
+	public void setState(State state) {
 		this.currentState = state;
 	}
 
 	//============== Check state ==========================
 	@Override
 	public boolean isRunning() {
+		//todo figure out a way to fix this spaghetti code
+		if(currentState instanceof ReplayingState && ((ReplayingState) currentState).isDone())
+			((ReplayingState) currentState).finish();
+
 		return currentState instanceof RunningState;
 	}
 
 	@Override
 	public boolean isReplaying() {
+		//todo figure out a way to fix this spaghetti code
+		if(currentState instanceof ReplayingState && ((ReplayingState) currentState).isDone())
+			((ReplayingState) currentState).finish();
 		return currentState instanceof ReplayingState;
 	}
 
 	@Override
 	public boolean isRestoringState() {
 		return !incompleteStateRestorations.isEmpty();
+	}
+
+	@Override
+	public boolean isWaitingConnections() {
+		return currentState instanceof WaitingConnectionsState;
 	}
 
 	@Override
@@ -176,8 +200,8 @@ public class RecoveryManager implements IRecoveryManager{
 	}
 
 	@Override
-	public ResultPartitionWriter getPartitionByIntermediateDataSetID(IntermediateDataSetID intermediateDataSetID) {
-		return intermediateDataSetIDResultPartitionMap.get(intermediateDataSetID);
+	public RecordWriter getRecordWriterByIntermediateDataSetID(IntermediateDataSetID intermediateDataSetID) {
+		return intermediateDataSetIDToRecordWriter.get(intermediateDataSetID);
 	}
 
 	public static class UnansweredDeterminantRequest {

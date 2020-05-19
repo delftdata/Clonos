@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.io.network.partition.consumer;
 
+import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.event.TaskEvent;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
 
@@ -110,6 +111,8 @@ public class UnionInputGate implements InputGate, InputGateListener {
 
 	private String taskName;
 
+	private JobID jobId;
+
 	public UnionInputGate(SingleInputGate... inputGates) {
 		this.inputGates = checkNotNull(inputGates);
 		checkArgument(inputGates.length > 1, "Union input gate should union at least two input gates.");
@@ -120,6 +123,8 @@ public class UnionInputGate implements InputGate, InputGateListener {
 		int currentNumberOfInputChannels = 0;
 
 		taskName = new String("Unknown");
+
+		this.jobId = inputGates[0].getJobID();
 
 		for (InputGate inputGate : inputGates) {
 			if (inputGate instanceof UnionInputGate) {
@@ -309,6 +314,11 @@ public class UnionInputGate implements InputGate, InputGateListener {
 	@Override
 	public SingleInputGate[] getInputGates() {
 		return inputGates;
+	}
+
+	@Override
+	public JobID getJobID() {
+		return jobId;
 	}
 
 	@Override

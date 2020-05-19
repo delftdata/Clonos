@@ -18,6 +18,8 @@
 
 package org.apache.flink.runtime.io.network.netty;
 
+import org.apache.flink.runtime.causal.CausalLogDelta;
+import org.apache.flink.runtime.causal.VertexId;
 import org.apache.flink.runtime.event.TaskEvent;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
@@ -26,13 +28,9 @@ import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannel;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
+import org.apache.flink.shaded.netty4.io.netty.buffer.*;
 import org.apache.flink.util.ExceptionUtils;
 
-import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
-import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBufAllocator;
-import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBufInputStream;
-import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBufOutputStream;
-import org.apache.flink.shaded.netty4.io.netty.buffer.CompositeByteBuf;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelHandler;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelHandlerContext;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelOutboundHandlerAdapter;
@@ -46,6 +44,9 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.ProtocolException;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.LinkedList;
+import java.util.List;
 
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -303,6 +304,8 @@ public abstract class NettyMessage {
 
 		final ByteBuf buffer;
 
+		final List<CausalLogDelta> deltas;
+
 		final InputChannelID receiverId;
 
 		final int sequenceNumber;
@@ -312,12 +315,22 @@ public abstract class NettyMessage {
 		final boolean isBuffer;
 
 		private BufferResponse(
+			ByteBuf buffer,
+			boolean isBuffer,
+			int sequenceNumber,
+			InputChannelID receiverId,
+			int backlog) {
+			this(buffer, new LinkedList<CausalLogDelta>(), isBuffer, sequenceNumber,receiverId, backlog);
+		}
+		private BufferResponse(
 				ByteBuf buffer,
+				List<CausalLogDelta> deltas,
 				boolean isBuffer,
 				int sequenceNumber,
 				InputChannelID receiverId,
 				int backlog) {
 			this.buffer = checkNotNull(buffer);
+			this.deltas = checkNotNull(deltas);
 			this.isBuffer = isBuffer;
 			this.sequenceNumber = sequenceNumber;
 			this.receiverId = checkNotNull(receiverId);
@@ -325,11 +338,21 @@ public abstract class NettyMessage {
 		}
 
 		BufferResponse(
+			Buffer buffer,
+			int sequenceNumber,
+			InputChannelID receiverId,
+			int backlog) {
+			this(buffer, new LinkedList<CausalLogDelta>(), sequenceNumber, receiverId, backlog);
+		}
+
+		BufferResponse(
 				Buffer buffer,
+				List<CausalLogDelta> deltas,
 				int sequenceNumber,
 				InputChannelID receiverId,
 				int backlog) {
 			this.buffer = checkNotNull(buffer).asByteBuf();
+			this.deltas = deltas;
 			this.isBuffer = buffer.isBuffer();
 			this.sequenceNumber = sequenceNumber;
 			this.receiverId = checkNotNull(receiverId);
@@ -338,6 +361,10 @@ public abstract class NettyMessage {
 
 		boolean isBuffer() {
 			return isBuffer;
+		}
+
+		List<CausalLogDelta> getDeltas(){
+			return deltas;
 		}
 
 		ByteBuf getNettyBuffer() {
@@ -358,6 +385,14 @@ public abstract class NettyMessage {
 			final int messageHeaderLength = 16 + 4 + 4 + 1 + 4;
 
 			ByteBuf headerBuf = null;
+
+
+			// 2 for the number of deltas + 10 for each delta header (vertexID (2), logical offset (4), length (4))
+			int determinantHeaderLength = 2 + deltas.size() * (2 + 4 + 4);
+			int determinantDataLength = 0;
+			for(CausalLogDelta d: deltas)
+				determinantDataLength += d.getRawDeterminants().length;
+
 			try {
 				if (buffer instanceof Buffer) {
 					// in order to forward the buffer to netty, it needs an allocator set
@@ -365,7 +400,7 @@ public abstract class NettyMessage {
 				}
 
 				// only allocate header buffer - we will combine it with the data buffer below
-				headerBuf = allocateBuffer(allocator, ID, messageHeaderLength, buffer.readableBytes(), false);
+				headerBuf = allocateBuffer(allocator, ID, messageHeaderLength + determinantHeaderLength , buffer.readableBytes() + determinantDataLength, false);
 
 				receiverId.writeTo(headerBuf);
 				headerBuf.writeInt(sequenceNumber);
@@ -373,11 +408,23 @@ public abstract class NettyMessage {
 				headerBuf.writeBoolean(isBuffer);
 				headerBuf.writeInt(buffer.readableBytes());
 
+
+				headerBuf.writeShort(deltas.size());
+				for(CausalLogDelta delta : deltas){
+					headerBuf.writeShort(delta.getVertexId().getVertexId());
+					headerBuf.writeInt(delta.getOffsetFromEpoch());
+					headerBuf.writeInt(delta.getRawDeterminants().length);
+				}
+
 				CompositeByteBuf composityBuf = allocator.compositeDirectBuffer();
 				composityBuf.addComponent(headerBuf);
 				composityBuf.addComponent(buffer);
+
+				for(CausalLogDelta delta: deltas){
+					composityBuf.addComponent(Unpooled.wrappedBuffer( delta.getRawDeterminants()));
+				}
 				// update writer index since we have data written to the components:
-				composityBuf.writerIndex(headerBuf.writerIndex() + buffer.writerIndex());
+				composityBuf.writerIndex(headerBuf.writerIndex() + buffer.writerIndex() + determinantDataLength);
 				return composityBuf;
 			}
 			catch (Throwable t) {
@@ -398,8 +445,27 @@ public abstract class NettyMessage {
 			boolean isBuffer = buffer.readBoolean();
 			int size = buffer.readInt();
 
+
+			int numDeltas = buffer.readShort();
+			List<CausalLogDelta> deltas = new ArrayList<>(numDeltas);
+
+			for(int i = 0 ; i < numDeltas; i++){
+				VertexId vertexId = new VertexId(buffer.readShort());
+				int offset = buffer.readInt();
+				int determinantsSize = buffer.readInt();
+				deltas.add(new CausalLogDelta(vertexId, new byte[determinantsSize], offset));
+			}
+
 			ByteBuf retainedSlice = buffer.readSlice(size).retain();
-			return new BufferResponse(retainedSlice, isBuffer, sequenceNumber, receiverId, backlog);
+
+			for(int i = 0 ; i < numDeltas; i++){
+				buffer.readBytes(deltas.get(i).getRawDeterminants());
+			}
+
+
+
+
+			return new BufferResponse(retainedSlice,deltas, isBuffer, sequenceNumber, receiverId, backlog);
 		}
 	}
 

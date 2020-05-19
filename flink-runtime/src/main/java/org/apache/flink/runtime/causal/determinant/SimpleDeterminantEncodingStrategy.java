@@ -113,16 +113,18 @@ public class SimpleDeterminantEncodingStrategy implements DeterminantEncodingStr
 		long upper = b.getLong();
 		long lower = b.getLong();
 		byte index = b.get();
-		return new BufferBuiltDeterminant(new IntermediateDataSetID(new AbstractID(lower, upper)), index);
+		int bytes = b.getInt();
+		return new BufferBuiltDeterminant(new IntermediateDataSetID(new AbstractID(lower, upper)), index, bytes);
 	}
 
 	private byte[] encodeBufferBuiltDeterminant(BufferBuiltDeterminant asBufferBuiltDeterminant) {
-		byte[] bytes = new byte[1 + 2 * Long.BYTES + 1];
+		byte[] bytes = new byte[1 + 2 * Long.BYTES + 1 + Integer.BYTES];
 		ByteBuffer b = ByteBuffer.wrap(bytes);
 		b.put(Determinant.BUFFER_BUILT_TAG);
-		b.putLong(asBufferBuiltDeterminant.intermediateDataSetID.getUpperPart());
-		b.putLong(asBufferBuiltDeterminant.intermediateDataSetID.getLowerPart());
-		b.put(asBufferBuiltDeterminant.subpartitionIndex);
+		b.putLong(asBufferBuiltDeterminant.getIntermediateDataSetID().getUpperPart());
+		b.putLong(asBufferBuiltDeterminant.getIntermediateDataSetID().getLowerPart());
+		b.put(asBufferBuiltDeterminant.getSubpartitionIndex());
+		b.putInt(asBufferBuiltDeterminant.getNumberOfBytes());
 		return b.array();
 
 	}

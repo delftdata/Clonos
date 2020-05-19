@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.io.network.netty;
 
+import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.io.network.NetworkSequenceViewReader;
 import org.apache.flink.runtime.io.network.partition.BufferAvailabilityListener;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
@@ -49,6 +50,7 @@ class SequenceNumberingViewReader implements BufferAvailabilityListener, Network
 	private int sequenceNumber = -1;
 
 	private boolean isRegisteredAvailable;
+	private JobID jobID;
 
 	SequenceNumberingViewReader(InputChannelID receiverId, PartitionRequestQueue requestQueue) {
 		this.receiverId = receiverId;
@@ -71,6 +73,7 @@ class SequenceNumberingViewReader implements BufferAvailabilityListener, Network
 					resultPartitionId,
 					subPartitionIndex,
 					this);
+				this.jobID = subpartitionView.getJobID();
 			} else {
 				throw new IllegalStateException("Subpartition already requested");
 			}
@@ -99,6 +102,11 @@ class SequenceNumberingViewReader implements BufferAvailabilityListener, Network
 	@Override
 	public InputChannelID getReceiverId() {
 		return receiverId;
+	}
+
+	@Override
+	public JobID getJobID() {
+		return jobID;
 	}
 
 	@Override

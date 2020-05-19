@@ -23,7 +23,7 @@ import java.util.Objects;
 /**
  * Contains an update on the state of a causal log. Contains the new determinants (the delta) added to the log since the last update.
  */
-public class VertexCausalLogDelta {
+public class CausalLogDelta {
 	/**
 	 * The {@link VertexId} of the vertex that this delta refers to
 	 */
@@ -38,11 +38,12 @@ public class VertexCausalLogDelta {
 	 */
 	int offsetFromEpoch;
 
-	public VertexCausalLogDelta(VertexId vertexId, byte[] rawDeterminants, int offsetFromEpoch) {
+	public CausalLogDelta(VertexId vertexId, byte[] rawDeterminants, int offsetFromEpoch) {
 		this.rawDeterminants = rawDeterminants;
 		this.vertexId = vertexId;
 		this.offsetFromEpoch = offsetFromEpoch;
 	}
+
 
 	public VertexId getVertexId() {
 		return vertexId;
@@ -69,7 +70,7 @@ public class VertexCausalLogDelta {
 	public boolean equals(Object o) {
 		if (this == o) return true;
 		if (o == null || getClass() != o.getClass()) return false;
-		VertexCausalLogDelta that = (VertexCausalLogDelta) o;
+		CausalLogDelta that = (CausalLogDelta) o;
 		return getOffsetFromEpoch() == that.getOffsetFromEpoch() &&
 			getVertexId().equals(that.getVertexId()) &&
 			Arrays.equals(getRawDeterminants(), that.getRawDeterminants());

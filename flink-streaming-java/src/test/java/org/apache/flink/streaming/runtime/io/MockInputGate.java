@@ -18,6 +18,7 @@
 
 package org.apache.flink.streaming.runtime.io;
 
+import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.event.TaskEvent;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
 import org.apache.flink.runtime.io.network.partition.consumer.*;
@@ -67,6 +68,11 @@ public class MockInputGate implements InputGate {
 	@Override
 	public SingleInputGate[] getInputGates() {
 		return new SingleInputGate[0];
+	}
+
+	@Override
+	public JobID getJobID() {
+		return null;
 	}
 
 	@Override

@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.io.network.netty;
 
+import org.apache.flink.runtime.causal.TMCausalLog;
 import org.apache.flink.runtime.io.network.ConnectionID;
 import org.apache.flink.runtime.io.network.ConnectionManager;
 import org.apache.flink.runtime.io.network.TaskEventDispatcher;
@@ -35,6 +36,7 @@ public class NettyConnectionManager implements ConnectionManager {
 
 	private final PartitionRequestClientFactory partitionRequestClientFactory;
 
+
 	public NettyConnectionManager(NettyConfig nettyConfig) {
 		this.server = new NettyServer(nettyConfig);
 		this.client = new NettyClient(nettyConfig);
@@ -45,10 +47,15 @@ public class NettyConnectionManager implements ConnectionManager {
 
 	@Override
 	public void start(ResultPartitionProvider partitionProvider, TaskEventDispatcher taskEventDispatcher) throws IOException {
+		start(partitionProvider, taskEventDispatcher, null);
+	}
+
+	@Override
+	public void start(ResultPartitionProvider partitionProvider, TaskEventDispatcher taskEventDispatcher, TMCausalLog tmCausalLog) throws IOException {
 		NettyProtocol partitionRequestProtocol = new NettyProtocol(
 			partitionProvider,
 			taskEventDispatcher,
-			client.getConfig().isCreditBasedEnabled());
+			client.getConfig().isCreditBasedEnabled(), tmCausalLog);
 
 		client.init(partitionRequestProtocol, bufferPool);
 		server.init(partitionRequestProtocol, bufferPool);

@@ -96,6 +96,21 @@ public class BufferConsumer implements Closeable {
 		LOG.debug("Build buffer {} (memorySegment hash: {}): writerPosition after: {}, readerPosition after: {}", slice, System.identityHashCode(slice.getMemorySegment()), writerPosition.getCached(), currentReaderPosition);
 		return slice.retainBuffer();
 	}
+	/**
+	 * @return sliced {@link Buffer} containing the not yet consumed data of the provided size. Returned {@link Buffer} shares the reference
+	 * counter with the parent {@link BufferConsumer} - in order to recycle memory both of them must be recycled/closed.
+	 */
+	public Buffer build(int size) {
+		writerPosition.update();
+		checkState(writerPosition.getCached() - currentReaderPosition >= size);
+		LOG.debug("Build buffer of size {} with writerPosition: {}, readerPosition: {}", size, writerPosition.getCached(), currentReaderPosition);
+
+		Buffer slice = buffer.readOnlySlice(currentReaderPosition, size);
+
+		currentReaderPosition += size;
+		LOG.debug("Build buffer {} (memorySegment hash: {}): writerPosition after: {}, readerPosition after: {}", slice, System.identityHashCode(slice.getMemorySegment()), writerPosition.getCached(), currentReaderPosition);
+		return slice.retainBuffer();
+	}
 
 	/**
 	 * @return a retained copy of self with separate indexes - it allows two read from the same {@link MemorySegment}

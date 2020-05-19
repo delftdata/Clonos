@@ -18,19 +18,19 @@
 package org.apache.flink.runtime.causal;
 
 import org.apache.flink.runtime.causal.determinant.*;
+import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
 import org.apache.flink.runtime.state.CheckpointListener;
 
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 
 /**
  * A CausalLog contains the determinant logs of all upstream operators and itself.
  */
-public interface ICausalLoggingManager extends CheckpointListener {
+public interface IJobCausalLoggingManager extends CheckpointListener {
 
+	void registerDownstreamConsumer(InputChannelID inputChannelID);
 
-	List<VertexCausalLogDelta> getDeterminants();
+	List<CausalLogDelta> getDeterminants();
 
 	/*
 	Encodes and appends to this tasks log
@@ -38,15 +38,18 @@ public interface ICausalLoggingManager extends CheckpointListener {
 	void appendDeterminant(Determinant determinant);
 
 
-	void processCausalLogDelta(VertexCausalLogDelta d);
+	void processCausalLogDelta(CausalLogDelta d);
 
 	byte[] getDeterminantsOfVertex(VertexId vertexId);
 
-	void enrichWithDeltas(DeterminantCarrier record, int targetChannel);
+	List<CausalLogDelta> getNextDeterminantsForDownstream(InputChannelID inputChannelID);
 
 	void notifyCheckpointBarrier(long checkpointId);
 
 	DeterminantEncodingStrategy getDeterminantEncodingStrategy();
 
 	VertexId getVertexId();
+
+    void unregisterDownstreamConsumer(InputChannelID toCancel);
+
 }

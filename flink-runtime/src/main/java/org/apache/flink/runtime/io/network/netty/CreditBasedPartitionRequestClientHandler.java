@@ -20,6 +20,8 @@ package org.apache.flink.runtime.io.network.netty;
 
 import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.core.memory.MemorySegmentFactory;
+import org.apache.flink.runtime.causal.TMCausalLog;
+import org.apache.flink.runtime.causal.CausalLogDelta;
 import org.apache.flink.runtime.io.network.NetworkClientHandler;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.FreeingBufferRecycler;
@@ -46,6 +48,7 @@ import java.io.IOException;
 import java.net.SocketAddress;
 import java.net.InetSocketAddress;
 import java.util.ArrayDeque;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicReference;
@@ -81,6 +84,16 @@ class CreditBasedPartitionRequestClientHandler extends ChannelInboundHandlerAdap
 	 * be accessed by task thread or canceler thread to cancel partition request during releasing resources.
 	 */
 	private volatile ChannelHandlerContext ctx;
+
+	private final TMCausalLog tmCausalLog;
+
+	public CreditBasedPartitionRequestClientHandler(){
+		this(null);
+	}
+
+	public CreditBasedPartitionRequestClientHandler(TMCausalLog tmCausalLog){
+		this.tmCausalLog = tmCausalLog;
+	}
 
 	// ------------------------------------------------------------------------
 	// Input channel/receiver registration
@@ -332,6 +345,8 @@ class CreditBasedPartitionRequestClientHandler extends ChannelInboundHandlerAdap
 		try {
 			ByteBuf nettyBuffer = bufferOrEvent.getNettyBuffer();
 			final int receivedSize = nettyBuffer.readableBytes();
+			List<CausalLogDelta> deltaList = bufferOrEvent.getDeltas();
+			tmCausalLog.processVertexCausalLogDelta(inputChannel.getJobID(), deltaList);
 			if (bufferOrEvent.isBuffer()) {
 				// ---- Buffer ------------------------------------------------
 

@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.io.network.partition;
 
+import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.io.network.partition.ResultSubpartition.BufferAndBacklog;
 
 import javax.annotation.Nullable;
@@ -99,6 +100,11 @@ class PipelinedSubpartitionView implements ResultSubpartitionView {
 	@Override
 	public boolean isAvailable() {
 		return parent.isAvailable();
+	}
+
+	@Override
+	public JobID getJobID() {
+		return this.parent.getJobID();
 	}
 
 	@Override

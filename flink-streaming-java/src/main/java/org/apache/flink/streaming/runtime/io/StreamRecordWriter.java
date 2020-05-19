@@ -19,10 +19,11 @@ package org.apache.flink.streaming.runtime.io;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.core.io.IOReadableWritable;
-import org.apache.flink.runtime.causal.ICausalLoggingManager;
+import org.apache.flink.runtime.causal.services.CausalRandomService;
 import org.apache.flink.runtime.causal.services.RandomService;
-import org.apache.flink.runtime.io.network.api.writer.CausalRecordWriter;
+import org.apache.flink.runtime.causal.services.SimpleRandomService;
 import org.apache.flink.runtime.io.network.api.writer.ChannelSelector;
+import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 
 import java.io.IOException;
@@ -39,7 +40,7 @@ import static org.apache.flink.util.Preconditions.checkArgument;
  * @param <T> The type of elements written.
  */
 @Internal
-public class StreamRecordWriter<T extends IOReadableWritable> extends CausalRecordWriter<T> {
+public class StreamRecordWriter<T extends IOReadableWritable> extends RecordWriter<T> {
 
 	private static final Logger LOG = LoggerFactory.getLogger(StreamRecordWriter.class);
 
@@ -54,15 +55,15 @@ public class StreamRecordWriter<T extends IOReadableWritable> extends CausalReco
 	private Throwable flusherException;
 
 	public StreamRecordWriter(ResultPartitionWriter writer, ChannelSelector<T> channelSelector, long timeout) {
-		this(writer, channelSelector, timeout, null, null, null);
+		this(writer, channelSelector, timeout, null, new SimpleRandomService());
 	}
 
 	public StreamRecordWriter(
 		ResultPartitionWriter writer,
 		ChannelSelector<T> channelSelector,
 		long timeout,
-		String taskName, ICausalLoggingManager causalLoggingManager, RandomService randomService) {
-		super(writer, channelSelector, timeout == 0, causalLoggingManager, randomService);
+		String taskName, RandomService randomService) {
+		super(writer, channelSelector, timeout == 0, randomService);
 
 		checkArgument(timeout >= -1);
 

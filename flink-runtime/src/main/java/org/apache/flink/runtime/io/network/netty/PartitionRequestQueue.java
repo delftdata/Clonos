@@ -19,6 +19,8 @@
 package org.apache.flink.runtime.io.network.netty;
 
 import org.apache.flink.annotation.VisibleForTesting;
+import org.apache.flink.runtime.causal.TMCausalLog;
+import org.apache.flink.runtime.causal.CausalLogDelta;
 import org.apache.flink.runtime.io.network.NetworkSequenceViewReader;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
@@ -44,6 +46,7 @@ import javax.annotation.Nullable;
 import java.io.IOException;
 import java.net.SocketAddress;
 import java.util.ArrayDeque;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -68,9 +71,19 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 
 	private final Set<InputChannelID> released = Sets.newHashSet();
 
+	private final TMCausalLog tmCausalLog;
+
 	private boolean fatalError;
 
 	private ChannelHandlerContext ctx;
+
+	public PartitionRequestQueue(){
+		this(null);
+	}
+
+	public PartitionRequestQueue(TMCausalLog tmCausalLog){
+		this.tmCausalLog = tmCausalLog;
+	}
 
 	@Override
 	public void channelRegistered(final ChannelHandlerContext ctx) throws Exception {
@@ -135,6 +148,8 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 
 	public void notifyReaderCreated(final NetworkSequenceViewReader reader) {
 		allReaders.put(reader.getReceiverId(), reader);
+		if(tmCausalLog != null)
+			tmCausalLog.registerNewDownstreamConsumer(reader.getJobID(), reader.getReceiverId());
 	}
 
 	public void cancel(InputChannelID receiverId) {
@@ -197,6 +212,7 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 			}
 
 			allReaders.remove(toCancel);
+			tmCausalLog.unregisterDownstreamConsumer(toCancel);
 		} else {
 			ctx.fireUserEventTriggered(msg);
 		}
@@ -251,8 +267,11 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 						registerAvailableReader(reader);
 					}
 
+					List<CausalLogDelta> deltas = tmCausalLog.getNextDeterminantsForDownstream(reader.getReceiverId());
+
 					BufferResponse msg = new BufferResponse(
 						next.buffer(),
+						deltas,
 						reader.getSequenceNumber(),
 						reader.getReceiverId(),
 						next.buffersInBacklog());

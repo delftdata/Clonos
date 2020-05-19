@@ -24,8 +24,6 @@ import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.core.memory.DataInputDeserializer;
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataOutputView;
-import org.apache.flink.runtime.causal.VertexCausalLogDelta;
-import org.apache.flink.runtime.causal.VertexId;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatus;
@@ -33,8 +31,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.LinkedList;
-import java.util.List;
 
 import static java.util.Objects.requireNonNull;
 
@@ -165,17 +161,6 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 		}
 	}
 
-	private void serializeLogDeltas(List<VertexCausalLogDelta> logDeltas, DataOutputView target) throws IOException {
-		target.writeShort(logDeltas.size());
-		for (VertexCausalLogDelta d : logDeltas) {
-			target.writeShort(d.getVertexId().getVertexId());
-			target.writeInt(d.getOffsetFromEpoch());
-			target.writeInt(d.getRawDeterminants().length);
-			target.write(d.getRawDeterminants());
-		}
-
-	}
-
 	@Override
 	public void serialize(StreamElement value, DataOutputView target) throws IOException {
 		if (value.isRecord()) {
@@ -203,22 +188,8 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 		} else {
 			throw new RuntimeException();
 		}
-		serializeLogDeltas(value.getLogDeltas(), target);
 	}
 
-	private List<VertexCausalLogDelta> deserializeLogDeltas(DataInputView source) throws IOException {
-		short numDeltas = source.readShort();
-		List<VertexCausalLogDelta> logDeltas = new LinkedList<>();
-		for (int i = 0; i < numDeltas; i++) {
-			short taskID = source.readShort();
-			int offset = source.readInt();
-			int deltaLength = source.readInt();
-			byte[] bytes = new byte[deltaLength];
-			source.read(bytes);
-			logDeltas.add(new VertexCausalLogDelta(new VertexId(taskID), bytes,offset));
-		}
-		return logDeltas;
-	}
 
 	@Override
 	public StreamElement deserialize(DataInputView source) throws IOException {
@@ -231,19 +202,19 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 		}
 		if (tag == TAG_REC_WITH_TIMESTAMP) {
 			long timestamp = source.readLong();
-			return new StreamRecord<T>(typeSerializer.deserialize(source), timestamp, deserializeLogDeltas(source));
+			return new StreamRecord<T>(typeSerializer.deserialize(source), timestamp);
 		}
 		else if (tag == TAG_REC_WITHOUT_TIMESTAMP) {
-			return new StreamRecord<T>(typeSerializer.deserialize(source), deserializeLogDeltas(source));
+			return new StreamRecord<T>(typeSerializer.deserialize(source));
 		}
 		else if (tag == TAG_WATERMARK) {
-			return new Watermark(source.readLong(), deserializeLogDeltas(source));
+			return new Watermark(source.readLong());
 		}
 		else if (tag == TAG_STREAM_STATUS) {
-			return new StreamStatus(source.readInt(), deserializeLogDeltas(source));
+			return new StreamStatus(source.readInt());
 		}
 		else if (tag == TAG_LATENCY_MARKER) {
-			return new LatencyMarker(source.readLong(), new OperatorID(source.readLong(), source.readLong()), source.readInt(), deserializeLogDeltas(source));
+			return new LatencyMarker(source.readLong(), new OperatorID(source.readLong(), source.readLong()), source.readInt());
 		}
 		else {
 			LOG.debug("On crash source line is: {}.", source.readLine());

@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.io.network.netty;
 
+import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.execution.CancelTaskException;
 import org.apache.flink.runtime.io.network.NetworkSequenceViewReader;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
@@ -406,6 +407,11 @@ public class PartitionRequestQueueTest {
 		@Override
 		public boolean isAvailable() {
 			return false;
+		}
+
+		@Override
+		public JobID getJobID() {
+			return null;
 		}
 
 		@Override

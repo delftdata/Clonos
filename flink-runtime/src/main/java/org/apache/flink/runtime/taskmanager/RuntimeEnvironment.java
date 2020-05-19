@@ -25,7 +25,7 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.accumulators.AccumulatorRegistry;
 import org.apache.flink.runtime.broadcast.BroadcastVariableManager;
-import org.apache.flink.runtime.causal.VertexId;
+import org.apache.flink.runtime.causal.JobCausalLoggingManager;
 import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
 import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
 import org.apache.flink.runtime.execution.Environment;
@@ -33,7 +33,6 @@ import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.network.TaskEventDispatcher;
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
-import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
 import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
@@ -43,7 +42,6 @@ import org.apache.flink.runtime.metrics.groups.TaskMetricGroup;
 import org.apache.flink.runtime.query.TaskKvStateRegistry;
 import org.apache.flink.runtime.state.TaskStateManager;
 
-import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Future;
@@ -93,6 +91,8 @@ public class RuntimeEnvironment implements Environment {
 
 	private final List<JobVertex> topologicallySortedJobVertexes;
 
+	private final JobCausalLoggingManager jobCausalLoggingManager;
+
 	// ------------------------------------------------------------------------
 
 	public RuntimeEnvironment(
@@ -116,6 +116,7 @@ public class RuntimeEnvironment implements Environment {
 		ResultPartitionWriter[] writers,
 		SingleInputGate[] inputGates,
 		TaskEventDispatcher taskEventDispatcher,
+		JobCausalLoggingManager jobCausalLoggingManager,
 		CheckpointResponder checkpointResponder,
 		TaskManagerRuntimeInfo taskManagerInfo,
 		TaskMetricGroup metrics,
@@ -140,6 +141,7 @@ public class RuntimeEnvironment implements Environment {
 		this.writers = checkNotNull(writers);
 		this.inputGates = checkNotNull(inputGates);
 		this.taskEventDispatcher = checkNotNull(taskEventDispatcher);
+		this.jobCausalLoggingManager = checkNotNull(jobCausalLoggingManager);
 		this.checkpointResponder = checkNotNull(checkpointResponder);
 		this.taskManagerInfo = checkNotNull(taskManagerInfo);
 		this.containingTask = containingTask;
@@ -262,6 +264,11 @@ public class RuntimeEnvironment implements Environment {
 	@Override
 	public TaskEventDispatcher getTaskEventDispatcher() {
 		return taskEventDispatcher;
+	}
+
+	@Override
+	public JobCausalLoggingManager getJobCausalLoggingManager(){
+		return jobCausalLoggingManager;
 	}
 
 	public List<JobVertex> getTopologicallySortedJobVertexes() {

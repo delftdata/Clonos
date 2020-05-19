@@ -1,7 +1,7 @@
 /*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
- * distributed with this work for additional debugrmation
+ * distributed with this work for additional information
  * regarding copyright ownership.  The ASF licenses this file
  * to you under the Apache License, Version 2.0 (the
  * "License"); you may not use this file except in compliance
@@ -18,21 +18,21 @@
 package org.apache.flink.runtime.causal;
 
 
+import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Arrays;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.Collectors;
 
 /**
- * Implements the <link>UpstreamDeterminantCache</> as a Growable Circular Array
+ * Implements the {@link CausalLog} as a Growable Circular Array with indexing for checkpoints and consumers.
+ * This implementation should be used for logging the local vertex.
  */
-public class CircularVertexCausalLog implements VertexCausalLog {
+public class CircularCausalLog implements CausalLog {
 
-	private static final Logger LOG = LoggerFactory.getLogger(CircularVertexCausalLog.class);
+	private static final Logger LOG = LoggerFactory.getLogger(CircularCausalLog.class);
 	private static final int DEFAULT_START_SIZE = 65536;
 	private static final int GROWTH_FACTOR = 2;
 
@@ -45,17 +45,17 @@ public class CircularVertexCausalLog implements VertexCausalLog {
 	private int size;
 
 	private List<EpochStartOffset> epochStartOffsets;
-	private DownstreamChannelOffset[] channelOffsets;
+	private Map<InputChannelID, DownstreamChannelOffset> channelOffsetMap;
 
 	private VertexId vertexBeingLogged;
 
-	public CircularVertexCausalLog(int numDownstreamChannels, VertexId vertexBeingLogged) {
-		this(DEFAULT_START_SIZE, numDownstreamChannels, vertexBeingLogged);
+	public CircularCausalLog(VertexId vertexBeingLogged) {
+		this(DEFAULT_START_SIZE, vertexBeingLogged);
 	}
 
-	public CircularVertexCausalLog(int startSize, int numDownstreamChannels, VertexId vertexBeingLogged) {
+	public CircularCausalLog(int startSize, VertexId vertexBeingLogged) {
 		array = new byte[startSize];
-		epochStartOffsets = new LinkedList<>();
+		epochStartOffsets = new CopyOnWriteArrayList<>();
 		start = 0;
 		end = 0;
 		size = 0;
@@ -66,21 +66,24 @@ public class CircularVertexCausalLog implements VertexCausalLog {
 		epochStartOffsets.add(startEpochOffset);
 
 		//initialized to 0s
-		channelOffsets = new DownstreamChannelOffset[numDownstreamChannels];
-		for (int i = 0; i < numDownstreamChannels; i++) {
-			channelOffsets[i] = new DownstreamChannelOffset(startEpochOffset); //Initialize all downstreams to be at 0
-		}
+		channelOffsetMap = new HashMap<>();
 	}
 
 	@Override
-	public byte[] getDeterminants() {
+	public synchronized void registerDownstreamConsumer(InputChannelID inputChannelID) {
+		channelOffsetMap.put(inputChannelID, new DownstreamChannelOffset(getEarliestEpochOffset()));
+	}
+
+
+	@Override
+	public synchronized byte[] getDeterminants() {
 		byte[] copy = new byte[size];
 		circularArrayCopyOutOfLog(array, start, end - start, copy);
 		return copy;
 	}
 
 	@Override
-	public void appendDeterminants(byte[] determinants) {
+	public synchronized void appendDeterminants(byte[] determinants) {
 		while (!hasSpaceFor(determinants.length))
 			grow();
 
@@ -88,33 +91,34 @@ public class CircularVertexCausalLog implements VertexCausalLog {
 	}
 
 	@Override
-	public void processUpstreamVertexCausalLogDelta(VertexCausalLogDelta vertexCausalLogDelta) {
-		//int newDeterminantsLength = vertexCausalLogDelta.offsetFromEpoch + vertexCausalLogDelta.rawDeterminants.length - end;
-
-		int newDeterminantsLength = (vertexCausalLogDelta.offsetFromEpoch + vertexCausalLogDelta.rawDeterminants.length) - logOffsetFromLatestEpoch();
+	public synchronized void processUpstreamVertexCausalLogDelta(CausalLogDelta causalLogDelta) {
+		//Number of new determinants = (last determinant of delta's offset from latest epoch) - (our offset from latest epoch )
+		int newDeterminantsLength = causalLogDelta.offsetFromEpoch + causalLogDelta.rawDeterminants.length - circularDistance(getLatestEpochOffset().offset, end, array.length);
 
 		while (!hasSpaceFor(newDeterminantsLength))
 			grow();
 
 
-		LOG.debug("Upstream log delta has {} new determinant bytes", newDeterminantsLength);
+		LOG.info("Upstream log delta has {} new determinant bytes", newDeterminantsLength);
 		if (newDeterminantsLength > 0)
-			circularCopyIntoLog(vertexCausalLogDelta.rawDeterminants, vertexCausalLogDelta.rawDeterminants.length - newDeterminantsLength);
+			circularCopyIntoLog(causalLogDelta.rawDeterminants, causalLogDelta.rawDeterminants.length - newDeterminantsLength);
 
-	}
-
-	public int logOffsetFromLatestEpoch() {
-		return end - getLatestEpochOffset().getOffset();
 	}
 
 	@Override
-	public void notifyCheckpointBarrier(long checkpointId) {
+	public synchronized void notifyCheckpointBarrier(long checkpointId) {
 		EpochStartOffset newOffset = new EpochStartOffset(checkpointId, end);
+		getLatestEpochOffset().setNext(newOffset);
 		epochStartOffsets.add(newOffset);
 	}
 
 	@Override
-	public void notifyCheckpointComplete(long checkpointId) throws Exception {
+	public synchronized void unregisterDownstreamConsumer(InputChannelID toCancel) {
+		this.channelOffsetMap.remove(toCancel);
+	}
+
+	@Override
+	public synchronized void notifyCheckpointComplete(long checkpointId) throws Exception {
 		EpochStartOffset top;
 		while (true) {
 			top = epochStartOffsets.get(0);
@@ -130,18 +134,34 @@ public class CircularVertexCausalLog implements VertexCausalLog {
 	}
 
 	@Override
-	public VertexCausalLogDelta getNextDeterminantsForDownstream(int channel) {
-		int physicalOffsetForDownstream = channelOffsets[channel].epochStart.offset + channelOffsets[channel].offset;
-		byte[] toReturn = new byte[circularDistance(physicalOffsetForDownstream, end, array.length)];
+	public synchronized CausalLogDelta getNextDeterminantsForDownstream(InputChannelID channel) {
 
-		circularArrayCopyOutOfLog(array, physicalOffsetForDownstream, end - physicalOffsetForDownstream, toReturn);
 
-		int offsetToSend = channelOffsets[channel].offset;
+		DownstreamChannelOffset channelOffset = channelOffsetMap.get(channel);
 
-		channelOffsets[channel].setEpochStart(getLatestEpochOffset());
-		channelOffsets[channel].setOffset(logOffsetFromLatestEpoch()); //channel has all the latest determinants
+		//Calculate the physical offset in the array that the downstream is at.
+		int physicalOffsetForDownstream = channelOffset.epochStart.offset + channelOffset.offset;
 
-		return new VertexCausalLogDelta(vertexBeingLogged, toReturn, offsetToSend);
+		//Save a copy of the logical start offset of the downstream
+		int logicalStartOffset = channelOffset.offset;
+
+		//Given that we now send determinants in netty, we should send only
+		// the minimum between the current amount of determinants and the start of the next epoch.
+		int sendUpTo = (channelOffset.epochStart.getId() == getLatestEpochOffset().id ? end : channelOffset.epochStart.next.offset);
+
+		int numberOfBytesToCopy = circularDistance(physicalOffsetForDownstream, sendUpTo, array.length);
+		byte[] toReturn = new byte[numberOfBytesToCopy];
+
+		circularArrayCopyOutOfLog(array, physicalOffsetForDownstream, numberOfBytesToCopy, toReturn);
+
+		if(sendUpTo == end)
+			channelOffset.setOffset(circularDistance(getLatestEpochOffset().offset, end, array.length)); //channel has all the latest determinants
+		else {
+			channelOffset.setEpochStart(channelOffset.epochStart.next);
+			channelOffset.setOffset(0);
+		}
+
+		return new CausalLogDelta(vertexBeingLogged, toReturn, logicalStartOffset);
 	}
 
 	@Override
@@ -152,12 +172,16 @@ public class CircularVertexCausalLog implements VertexCausalLog {
 			", end=" + end +
 			", size=" + size +
 			", epochStartOffsets=[" + epochStartOffsets.stream().map(Objects::toString).collect(Collectors.toList()) +"]"+
-			", channelOffsets=" + Arrays.toString(channelOffsets) +
+			", channelOffsets=[" + channelOffsetMap.entrySet().stream().map(e -> e.getKey().toString() + " -> " + e.getValue().toString()).collect(Collectors.joining(", ")) + "]" +
 			'}';
 	}
 
 	private EpochStartOffset getLatestEpochOffset() {
 		return epochStartOffsets.get(epochStartOffsets.size() - 1);
+	}
+
+	private EpochStartOffset getEarliestEpochOffset() {
+		return epochStartOffsets.get(0);
 	}
 
 	/**
@@ -207,10 +231,11 @@ public class CircularVertexCausalLog implements VertexCausalLog {
 	 */
 	private void circularCopyIntoLog(byte[] determinants, int offset) {
 		int numDeterminantsToCopy = determinants.length - offset;
-		int bytesTillLoop = array.length - end;
-		if (numDeterminantsToCopy > bytesTillLoop) {
-			System.arraycopy(determinants, offset, array, end, bytesTillLoop);
-			System.arraycopy(determinants, offset + bytesTillLoop, array, 0, numDeterminantsToCopy - bytesTillLoop);
+		int bytesUntilLoop = circularDistance(end, array.length, array.length);
+		LOG.info("NumDeterminantsToCopy={}, bytesUntilLoop={}", numDeterminantsToCopy, bytesUntilLoop);
+		if (numDeterminantsToCopy > bytesUntilLoop) {
+			System.arraycopy(determinants, offset, array, end, bytesUntilLoop);
+			System.arraycopy(determinants, offset + bytesUntilLoop, array, 0, numDeterminantsToCopy - bytesUntilLoop);
 		} else {
 			System.arraycopy(determinants, offset, array, end, numDeterminantsToCopy);
 		}
@@ -228,9 +253,12 @@ public class CircularVertexCausalLog implements VertexCausalLog {
 		//The physical offset in the circular log of the first element after the checkpoint
 		private int offset;
 
+		private EpochStartOffset next;
+
 		public EpochStartOffset(long id, int offset) {
 			this.id = id;
 			this.offset = offset;
+			this.next = null;
 		}
 
 		public long getId() {
@@ -249,11 +277,20 @@ public class CircularVertexCausalLog implements VertexCausalLog {
 			this.offset = offset;
 		}
 
+		public EpochStartOffset getNext() {
+			return next;
+		}
+
+		public void setNext(EpochStartOffset next) {
+			this.next = next;
+		}
+
 		@Override
 		public String toString() {
 			return "CheckpointOffset{" +
 				"id=" + id +
 				", offset=" + offset +
+				", next=" + (next == null ? "none" : next.id) +
 				'}';
 		}
 	}

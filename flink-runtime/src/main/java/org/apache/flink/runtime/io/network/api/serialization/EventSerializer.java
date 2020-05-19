@@ -22,8 +22,6 @@ import org.apache.flink.core.memory.DataInputDeserializer;
 import org.apache.flink.core.memory.DataOutputSerializer;
 import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.core.memory.MemorySegmentFactory;
-import org.apache.flink.runtime.causal.VertexCausalLogDelta;
-import org.apache.flink.runtime.causal.VertexId;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.checkpoint.CheckpointType;
 import org.apache.flink.runtime.event.AbstractEvent;
@@ -41,8 +39,6 @@ import org.apache.flink.util.InstantiationUtil;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.LinkedList;
-import java.util.List;
 
 /**
  * Utility class to serialize and deserialize task events.
@@ -210,9 +206,7 @@ public class EventSerializer {
 		final byte[] locationBytes = checkpointOptions.getTargetLocation().isDefaultReference() ?
 				null : checkpointOptions.getTargetLocation().getReferenceBytes();
 
-		//2 for the number of vertex log deltas, the for each: 2 for vertexID, 4 for offset, and 4 for delta length.
-		int numBytesNeededForLogDeltas = 2 + barrier.getLogDeltas().stream().map(v -> 2 + 4 + 4 + v.getRawDeterminants().length).reduce(0, Integer::sum);
-		final ByteBuffer buf = ByteBuffer.allocate(28 + (locationBytes == null ? 0 : locationBytes.length) + numBytesNeededForLogDeltas);
+		final ByteBuffer buf = ByteBuffer.allocate(28 + (locationBytes == null ? 0 : locationBytes.length) );
 
 		// we do not use checkpointType.ordinal() here to make the serialization robust
 		// against changes in the enum (such as changes in the order of the values)
@@ -235,14 +229,6 @@ public class EventSerializer {
 		} else {
 			buf.putInt(locationBytes.length);
 			buf.put(locationBytes);
-		}
-
-		buf.putShort((short) barrier.getLogDeltas().size());
-		for(VertexCausalLogDelta delta : barrier.getLogDeltas()) {
-			buf.putShort(delta.getVertexId().getVertexId());
-			buf.putInt(delta.getOffsetFromEpoch());
-			buf.putInt(delta.getRawDeterminants().length);
-			buf.put(delta.getRawDeterminants());
 		}
 
 		buf.flip();
@@ -274,17 +260,7 @@ public class EventSerializer {
 			locationRef = new CheckpointStorageLocationReference(bytes);
 		}
 
-		short numLogDeltasToRead = buffer.getShort();
-		List<VertexCausalLogDelta> vertexCausalLogDeltas = new LinkedList<>();
-		for(int i = 0 ; i < numLogDeltasToRead; i++){
-			VertexId vertexId = new VertexId(buffer.getShort());
-			int offset = buffer.getInt();
-			int logDeltaSize = buffer.getInt();
-			byte[] logDelta = new byte[logDeltaSize];
-			buffer.get(logDelta);
-		}
-
-		return new CheckpointBarrier(id, timestamp, new CheckpointOptions(checkpointType, locationRef), vertexCausalLogDeltas);
+		return new CheckpointBarrier(id, timestamp, new CheckpointOptions(checkpointType, locationRef));
 	}
 
 	// ------------------------------------------------------------------------

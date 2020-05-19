@@ -17,6 +17,7 @@
  */
 package org.apache.flink.runtime.causal;
 
+import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
 import org.apache.flink.runtime.state.CheckpointListener;
 
 /**
@@ -24,7 +25,14 @@ import org.apache.flink.runtime.state.CheckpointListener;
  * Is responsible for garbage collection of determinants which have been checkpointed or sent to all downstream tasks.
  * It is responsible for remembering what determinants it has sent to which downstream tasks.
  */
-public interface VertexCausalLog extends CheckpointListener {
+public interface CausalLog extends CheckpointListener {
+
+	/**
+	 * Registers a consumer of the determinant log.
+	 * Offsets will start to be tracked from the current earliest epoch
+	 * @param inputChannelID the id of the downstream consumer channel.
+	 */
+	void registerDownstreamConsumer(InputChannelID inputChannelID);
 
 	/**
 	 * Get all determinants in this log from start to end. Does not advance any internal offsets.
@@ -40,24 +48,26 @@ public interface VertexCausalLog extends CheckpointListener {
 	void appendDeterminants(byte[] determinants);
 
 	/**
-	 * Process a {@link VertexCausalLogDelta}.
+	 * Process a {@link CausalLogDelta}.
 	 * This involves using the provided offset to determine if any new determinants are present and appending only those.
-	 * @param vertexCausalLogDelta
+	 * @param causalLogDelta
 	 */
-	void processUpstreamVertexCausalLogDelta(VertexCausalLogDelta vertexCausalLogDelta);
+	void processUpstreamVertexCausalLogDelta(CausalLogDelta causalLogDelta);
 
 
 	/**
 	 * Calculates the next update to send downstream. Advances internal counters as well.
-	 * @param channel the channel to get the next update for.
-	 * @return a {@link VertexCausalLogDelta} containing the update to send downstream
+	 * @param consumer the channel to get the next update for.
+	 * @return a {@link CausalLogDelta} containing the update to send downstream
 	 */
-	VertexCausalLogDelta getNextDeterminantsForDownstream(int channel);
+	CausalLogDelta getNextDeterminantsForDownstream(InputChannelID consumer);
 
 	/**
 	 * Notifies the log of a checkpoint. This starts a new epoch.
 	 * @param checkpointId
 	 */
 	void notifyCheckpointBarrier(long checkpointId);
+
+    void unregisterDownstreamConsumer(InputChannelID toCancel);
 
 }

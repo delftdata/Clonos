@@ -22,34 +22,44 @@
  *
  *
  */
-
 package org.apache.flink.runtime.causal.services;
 
 import org.apache.flink.runtime.causal.IJobCausalLoggingManager;
-import org.apache.flink.runtime.causal.determinant.TimestampDeterminant;
+import org.apache.flink.runtime.causal.determinant.RNGDeterminant;
 import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
+import org.apache.flink.util.XORShiftRandom;
 
-public class TimeService {
+import java.util.Random;
+
+public class CausalRandomService implements RandomService {
 
 	private IJobCausalLoggingManager causalLoggingManager;
 	private IRecoveryManager recoveryManager;
 
-	public TimeService(IJobCausalLoggingManager causalLoggingManager, IRecoveryManager recoveryManager){
+	//Not thread safe
+	protected final Random rng = new XORShiftRandom();
+
+
+	public CausalRandomService(IJobCausalLoggingManager causalLoggingManager, IRecoveryManager recoveryManager) {
 		this.causalLoggingManager = causalLoggingManager;
 		this.recoveryManager = recoveryManager;
 	}
 
-	public long currentTimeMillis(){
+	@Override
+	public int nextInt() {
+		return this.nextInt(Integer.MAX_VALUE);
+	}
+
+	@Override
+	public int nextInt(int maxExclusive) {
 		while (!(recoveryManager.isRunning() || recoveryManager.isReplaying())); //Spin
 
 		if(recoveryManager.isReplaying())
-			return  recoveryManager.replayNextTimestamp();
+			 return  recoveryManager.replayRandomInt();
 
-		long timestamp = System.currentTimeMillis();
-		causalLoggingManager.appendDeterminant(new TimestampDeterminant(timestamp));
-		return timestamp;
+		int generatedNumber = rng.nextInt(maxExclusive);
+		causalLoggingManager.appendDeterminant(new RNGDeterminant(generatedNumber));
+		return generatedNumber;
 	}
-
-
 
 }

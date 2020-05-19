@@ -29,7 +29,6 @@ import org.apache.flink.runtime.causal.DeterminantResponseEvent;
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
 import org.apache.flink.runtime.io.network.api.DeterminantRequestEvent;
 import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
-import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 
@@ -39,6 +38,8 @@ public interface IRecoveryManager {
 
 
 	void notifyNewChannel(InputGate gate, int channelIndex, int numberOfBuffersRemoved);
+
+	void notifyNewOutputChannel(IntermediateDataSetID partitionId, int index);
 
 	void notifyInFlightLogRequestEvent(InFlightLogRequestEvent e);
 
@@ -66,6 +67,8 @@ public interface IRecoveryManager {
 
 	boolean isRestoringState();
 
+	boolean isWaitingConnections();
+
 	long getFinalRestoreStateCheckpointId();
 
 	//====================================================
@@ -80,5 +83,6 @@ public interface IRecoveryManager {
 
 	long replayNextTimestamp();
 
-    ResultPartitionWriter getPartitionByIntermediateDataSetID(IntermediateDataSetID intermediateDataSetID);
+    RecordWriter getRecordWriterByIntermediateDataSetID(IntermediateDataSetID intermediateDataSetID);
+
 }

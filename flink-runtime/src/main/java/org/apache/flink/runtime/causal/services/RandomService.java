@@ -22,47 +22,13 @@
  *
  *
  */
+
 package org.apache.flink.runtime.causal.services;
 
-import org.apache.flink.runtime.causal.ICausalLoggingManager;
-import org.apache.flink.runtime.causal.determinant.RNGDeterminant;
-import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
+public interface RandomService {
 
-import java.util.Random;
+	int nextInt();
 
-public class RandomService {
-
-	private ICausalLoggingManager causalLoggingManager;
-	private IRecoveryManager recoveryManager;
-
-	private Random random;
-
-
-	public RandomService(ICausalLoggingManager causalLoggingManager, IRecoveryManager recoveryManager){
-		this(causalLoggingManager, recoveryManager, System.currentTimeMillis());
-	}
-
-	public RandomService(ICausalLoggingManager causalLoggingManager, IRecoveryManager recoveryManager, long seed) {
-		this.causalLoggingManager = causalLoggingManager;
-		this.recoveryManager = recoveryManager;
-		this.random = new Random(seed);
-	}
-
-
-
-	public int nextInt() {
-		return this.nextInt(Integer.MAX_VALUE);
-	}
-
-	public int nextInt(int maxExclusive) {
-		while (!(recoveryManager.isRunning() || recoveryManager.isReplaying())); //Spin
-
-		if(recoveryManager.isReplaying())
-			 return  recoveryManager.replayRandomInt();
-
-		int generatedNumber = random.nextInt(maxExclusive);
-		causalLoggingManager.appendDeterminant(new RNGDeterminant(generatedNumber));
-		return generatedNumber;
-	}
+	int nextInt(int maxExclusive);
 
 }

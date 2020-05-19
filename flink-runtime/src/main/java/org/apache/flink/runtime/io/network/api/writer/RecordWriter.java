@@ -21,8 +21,9 @@ package org.apache.flink.runtime.io.network.api.writer;
 import org.apache.flink.core.io.IOReadableWritable;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.SimpleCounter;
-import org.apache.flink.runtime.causal.*;
-import org.apache.flink.runtime.causal.determinant.RNGDeterminant;
+import org.apache.flink.runtime.causal.services.CausalRandomService;
+import org.apache.flink.runtime.causal.services.RandomService;
+import org.apache.flink.runtime.causal.services.SimpleRandomService;
 import org.apache.flink.runtime.event.AbstractEvent;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
 import org.apache.flink.runtime.io.network.api.serialization.RecordSerializer;
@@ -37,7 +38,6 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.util.Optional;
 import java.util.Random;
-import java.util.*;
 
 import static org.apache.flink.runtime.io.network.api.serialization.RecordSerializer.SerializationResult;
 import static org.apache.flink.util.Preconditions.checkState;
@@ -72,12 +72,12 @@ public class RecordWriter<T extends IOReadableWritable> {
 
 	protected final Optional<BufferBuilder>[] bufferBuilders;
 
-	protected final Random rng = new XORShiftRandom();
 
 	protected final boolean flushAlways;
 
 	protected Counter numBytesOut = new SimpleCounter();
 
+	protected CausalRandomService randomService;
 
 	public RecordWriter(ResultPartitionWriter writer) {
 		this(writer, new RoundRobinChannelSelector<T>());
@@ -85,10 +85,10 @@ public class RecordWriter<T extends IOReadableWritable> {
 
 	@SuppressWarnings("unchecked")
 	public RecordWriter(ResultPartitionWriter writer, ChannelSelector<T> channelSelector) {
-		this(writer, channelSelector, false);
+		this(writer, channelSelector, false, new SimpleRandomService());
 	}
 
-	public RecordWriter(ResultPartitionWriter writer, ChannelSelector<T> channelSelector, boolean flushAlways) {
+	public RecordWriter(ResultPartitionWriter writer, ChannelSelector<T> channelSelector, boolean flushAlways, RandomService randomService) {
 		this.flushAlways = flushAlways;
 		this.targetPartition = writer;
 		this.channelSelector = channelSelector;
@@ -133,7 +133,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 	 * This is used to send LatencyMarks to a random target channel.
 	 */
 	public void randomEmit(T record) throws IOException, InterruptedException {
-		sendToTarget(record, rng.nextInt(numChannels));
+		sendToTarget(record, randomService.nextInt(numChannels));
 	}
 
 	protected void sendToTarget(T record, int targetChannel) throws IOException, InterruptedException {
