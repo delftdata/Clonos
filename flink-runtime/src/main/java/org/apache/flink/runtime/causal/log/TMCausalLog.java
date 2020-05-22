@@ -23,10 +23,11 @@
  *
  */
 
-package org.apache.flink.runtime.causal;
+package org.apache.flink.runtime.causal.log;
 
 
 import org.apache.flink.api.common.JobID;
+import org.apache.flink.runtime.causal.VertexGraphInformation;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -65,16 +66,16 @@ public class TMCausalLog {
 		inputChannelIDToManagerMap.put(inputChannelID, c);
 	}
 
-	public List<CausalLogDelta> getNextDeterminantsForDownstream(InputChannelID inputChannelID) {
-		return inputChannelIDToManagerMap.get(inputChannelID).getNextDeterminantsForDownstream(inputChannelID);
+	public List<CausalLogDelta> getNextDeterminantsForDownstream(InputChannelID inputChannelID, long epochID) {
+		return inputChannelIDToManagerMap.get(inputChannelID).getNextDeterminantsForDownstream(inputChannelID, epochID);
 	}
 
 	public void unregisterDownstreamConsumer(InputChannelID toCancel) {
 		inputChannelIDToManagerMap.remove(toCancel).unregisterDownstreamConsumer(toCancel);
 	}
 
-	public void processVertexCausalLogDelta(JobID jobID, List<CausalLogDelta> deltaList) {
+	public void processVertexCausalLogDelta(JobID jobID, List<CausalLogDelta> deltaList, long epochID) {
 		for (CausalLogDelta d : deltaList)
-			this.jobIDToManagerMap.get(jobID).processCausalLogDelta(d);
+			this.jobIDToManagerMap.get(jobID).processCausalLogDelta(d, epochID);
 	}
 }

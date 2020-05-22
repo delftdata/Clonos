@@ -24,6 +24,8 @@ import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.core.fs.CloseableRegistry;
 import org.apache.flink.core.fs.FileSystemSafetyNet;
 import org.apache.flink.runtime.causal.*;
+import org.apache.flink.runtime.causal.log.IJobCausalLoggingManager;
+import org.apache.flink.runtime.causal.log.JobCausalLoggingManager;
 import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 import org.apache.flink.runtime.causal.recovery.RecoveryManager;
 import org.apache.flink.runtime.causal.services.CausalRandomService;
@@ -749,7 +751,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 				operatorChain.prepareSnapshotPreBarrier(checkpointMetaData.getCheckpointId());
 
 				long checkpointId = checkpointMetaData.getCheckpointId();
-				jobCausalLoggingManager.notifyCheckpointBarrier(checkpointId);
+				jobCausalLoggingManager.updateCheckpointID(checkpointId);
 				ResultPartition[] partitions = this.getEnvironment().getContainingTask().getProducedPartitions();
 				for(ResultPartition rp : partitions)
 					rp.notifyCheckpointBarrier(checkpointId);

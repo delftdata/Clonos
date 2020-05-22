@@ -24,7 +24,7 @@
  */
 package org.apache.flink.runtime.causal.services;
 
-import org.apache.flink.runtime.causal.IJobCausalLoggingManager;
+import org.apache.flink.runtime.causal.log.IJobCausalLoggingManager;
 import org.apache.flink.runtime.causal.determinant.RNGDeterminant;
 import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 import org.apache.flink.util.XORShiftRandom;

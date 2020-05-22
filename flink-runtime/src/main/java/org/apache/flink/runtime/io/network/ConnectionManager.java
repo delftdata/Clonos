@@ -18,7 +18,7 @@
 
 package org.apache.flink.runtime.io.network;
 
-import org.apache.flink.runtime.causal.TMCausalLog;
+import org.apache.flink.runtime.causal.log.TMCausalLog;
 import org.apache.flink.runtime.io.network.netty.PartitionRequestClient;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionProvider;
 

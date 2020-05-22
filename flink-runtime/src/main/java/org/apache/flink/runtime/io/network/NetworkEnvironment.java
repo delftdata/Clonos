@@ -20,7 +20,7 @@ package org.apache.flink.runtime.io.network;
 
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.JobID;
-import org.apache.flink.runtime.causal.TMCausalLog;
+import org.apache.flink.runtime.causal.log.TMCausalLog;
 import org.apache.flink.runtime.causal.VertexGraphInformation;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;

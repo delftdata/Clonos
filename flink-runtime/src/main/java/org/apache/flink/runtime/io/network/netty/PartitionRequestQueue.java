@@ -19,8 +19,8 @@
 package org.apache.flink.runtime.io.network.netty;
 
 import org.apache.flink.annotation.VisibleForTesting;
-import org.apache.flink.runtime.causal.TMCausalLog;
-import org.apache.flink.runtime.causal.CausalLogDelta;
+import org.apache.flink.runtime.causal.log.TMCausalLog;
+import org.apache.flink.runtime.causal.log.CausalLogDelta;
 import org.apache.flink.runtime.io.network.NetworkSequenceViewReader;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
@@ -267,11 +267,12 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 						registerAvailableReader(reader);
 					}
 
-					List<CausalLogDelta> deltas = tmCausalLog.getNextDeterminantsForDownstream(reader.getReceiverId());
+					List<CausalLogDelta> deltas = tmCausalLog.getNextDeterminantsForDownstream(reader.getReceiverId(), next.getEpochID());
 
 					BufferResponse msg = new BufferResponse(
 						next.buffer(),
 						deltas,
+						next.getEpochID(),
 						reader.getSequenceNumber(),
 						reader.getReceiverId(),
 						next.buffersInBacklog());

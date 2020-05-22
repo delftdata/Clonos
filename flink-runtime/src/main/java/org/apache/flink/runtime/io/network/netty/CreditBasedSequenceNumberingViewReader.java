@@ -181,7 +181,7 @@ class CreditBasedSequenceNumberingViewReader implements BufferAvailabilityListen
 			LOG.debug("{}: decrement credit. Now {} credits available.", this, numCreditsAvailable);
 
 			return new BufferAndAvailability(
-				next.buffer(), isAvailable(next), next.buffersInBacklog());
+				next.buffer(), isAvailable(next), next.buffersInBacklog(), next.getEpochID());
 		} else {
 			return null;
 		}

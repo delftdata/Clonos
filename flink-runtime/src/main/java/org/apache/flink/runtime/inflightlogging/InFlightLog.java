@@ -19,8 +19,6 @@ package org.apache.flink.runtime.inflightlogging;
 
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 
-import java.util.Iterator;
-
 /**
  * An InFlightLog records {@link Buffer} instances which have been sent to other tasks.
  * It records where in the logs checkpoints happen, starting a new epoch.
@@ -34,6 +32,6 @@ public interface InFlightLog {
 
 	public void notifyCheckpointComplete(long checkpointId);
 
-	public SizedListIterator<Buffer> getInFlightIterator();
+	public InFlightLogIterator<Buffer> getInFlightIterator();
 
 }

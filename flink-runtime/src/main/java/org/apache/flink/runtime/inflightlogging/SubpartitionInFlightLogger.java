@@ -82,7 +82,7 @@ public class SubpartitionInFlightLogger implements InFlightLog {
 	}
 
 	@Override
-	public SizedListIterator<Buffer> getInFlightIterator() {
+	public InFlightLogIterator<Buffer> getInFlightIterator() {
 		//The lower network stack recycles buffers, so for each replay, we must increase reference counts
 		synchronized (slicedLog) {
 			increaseReferenceCounts(slicedLog.firstKey());
@@ -99,7 +99,7 @@ public class SubpartitionInFlightLogger implements InFlightLog {
 
 	}
 
-	public static class ReplayIterator implements SizedListIterator<Buffer> {
+	public static class ReplayIterator implements InFlightLogIterator<Buffer> {
 		private long startKey;
 		private long currentKey;
 		private ListIterator<Buffer> currentIterator;
@@ -188,6 +188,11 @@ public class SubpartitionInFlightLogger implements InFlightLog {
 		@Override
 		public int numberRemaining() {
 			return numberOfBuffersLeft;
+		}
+
+		@Override
+		public long getEpoch() {
+			return 	currentKey;
 		}
 
 		@Override

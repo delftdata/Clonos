@@ -25,7 +25,7 @@
 
 package org.apache.flink.runtime.causal.recovery;
 
-import org.apache.flink.runtime.causal.JobCausalLoggingManager;
+import org.apache.flink.runtime.causal.log.JobCausalLoggingManager;
 import org.apache.flink.runtime.causal.DeterminantResponseEvent;
 import org.apache.flink.runtime.causal.VertexGraphInformation;
 import org.apache.flink.runtime.causal.VertexId;

@@ -40,7 +40,7 @@ public class InFlightLogTest {
 		InFlightLog log = new SubpartitionInFlightLogger();
 		populate(log);
 
-		SizedListIterator<Buffer> iterator = log.getInFlightIterator();
+		InFlightLogIterator<Buffer> iterator = log.getInFlightIterator();
 
 		assertEquals(15 + 3, iterator.numberRemaining());
 	}
@@ -51,7 +51,7 @@ public class InFlightLogTest {
 		populate(log);
 
 		log.notifyCheckpointComplete(1);
-		SizedListIterator<Buffer> iterator = log.getInFlightIterator();
+		InFlightLogIterator<Buffer> iterator = log.getInFlightIterator();
 
 		assertEquals(10 + 2, iterator.numberRemaining());
 	}
@@ -62,7 +62,7 @@ public class InFlightLogTest {
 		populate(log);
 
 		log.notifyCheckpointComplete(1);
-		SizedListIterator<Buffer> iterator = log.getInFlightIterator();
+		InFlightLogIterator<Buffer> iterator = log.getInFlightIterator();
 		assertEquals(true, iterator.hasNext());
 	}
 

@@ -25,7 +25,7 @@
 
 package org.apache.flink.runtime.causal.services;
 
-import org.apache.flink.runtime.causal.IJobCausalLoggingManager;
+import org.apache.flink.runtime.causal.log.IJobCausalLoggingManager;
 import org.apache.flink.runtime.causal.determinant.TimestampDeterminant;
 import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 

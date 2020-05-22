@@ -68,7 +68,8 @@ public class RunningState extends AbstractState {
 		//Since we are in running state, we can simply reply
 		VertexId vertex = e.getFailedVertex();
 		try {
-			DeterminantResponseEvent responseEvent = new DeterminantResponseEvent(vertex, context.jobCausalLoggingManager.getDeterminantsOfVertex(vertex));
+			//todo we cant just .array(). Fixing for tests to work
+			DeterminantResponseEvent responseEvent = new DeterminantResponseEvent(vertex, context.jobCausalLoggingManager.getDeterminantsOfVertex(vertex).array());
 			LOG.info("Responding with: {}", responseEvent);
 			context.inputGate.sendTaskEvent(responseEvent);
 		} catch (IOException | InterruptedException ex) {

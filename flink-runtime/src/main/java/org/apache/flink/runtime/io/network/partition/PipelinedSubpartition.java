@@ -18,11 +18,11 @@
 
 package org.apache.flink.runtime.io.network.partition;
 
-import org.apache.flink.runtime.causal.IJobCausalLoggingManager;
+import org.apache.flink.runtime.causal.log.IJobCausalLoggingManager;
 import org.apache.flink.runtime.causal.determinant.BufferBuiltDeterminant;
 import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 import org.apache.flink.runtime.inflightlogging.InFlightLog;
-import org.apache.flink.runtime.inflightlogging.SizedListIterator;
+import org.apache.flink.runtime.inflightlogging.InFlightLogIterator;
 import org.apache.flink.runtime.inflightlogging.SubpartitionInFlightLogger;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
@@ -86,7 +86,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 	private AtomicBoolean downstreamFailed;
 
-	private SizedListIterator<Buffer> inflightReplayIterator;
+	private InFlightLogIterator<Buffer> inflightReplayIterator;
 	private IRecoveryManager recoveryManager;
 	private boolean logNext = true;
 
@@ -245,7 +245,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 			return new BufferAndBacklog(buffer,
 				inflightReplayIterator != null || isAvailableUnsafe(),
 				getBuffersInBacklog() + (inflightReplayIterator != null ? inflightReplayIterator.numberRemaining() : 0),
-				_recoveryNextBufferIsEvent());
+				_recoveryNextBufferIsEvent(), inflightReplayIterator.getEpoch());
 		}
 	}
 
@@ -277,7 +277,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 				//I feel like these two statements should be synchornized on a lock.
 				buffer = bufferConsumer.build();
 				if (logNext)
-					causalLoggingManager.appendDeterminant(new BufferBuiltDeterminant(parent.getIntermediateDataSetID(), (byte) index, buffer.readableBytes()));
+					causalLoggingManager.appendDeterminant(new BufferBuiltDeterminant(parent.getIntermediateDataSetID(), (byte) index, buffer.readableBytes()), checkpointId);
 
 
 				checkState(bufferConsumer.isFinished() || buffers.size() == 1,
@@ -475,42 +475,36 @@ public class PipelinedSubpartition extends ResultSubpartition {
 				flushRequested = false;
 			}
 
-			if (buffers.isEmpty()) {
-				LOG.info("Call to buildAndLogBuffer, but no buffer consumers to close. Appending determinant and returning. This should indicate that the buffer which was built was the checkpoint barrier that started this epoch.");
-				causalLoggingManager.appendDeterminant(new BufferBuiltDeterminant(parent.getIntermediateDataSetID(), (byte) index, bufferSize));
-				return;
-			}else {
-				BufferConsumer bufferConsumer = buffers.peek();
-				checkpointId = checkpointIds.peek();
+			BufferConsumer bufferConsumer = buffers.peek();
+			checkpointId = checkpointIds.peek();
 
-				//This assumes that the input buffers which are before this close in the determinant log have been
-				// fully processed, thus the bufferconsumer will have this amount of data.
-				//I feel like these two statements should be synchornized on a lock.
-				causalLoggingManager.appendDeterminant(new BufferBuiltDeterminant(parent.getIntermediateDataSetID(), (byte) index, bufferSize));
-				buffer = bufferConsumer.build(bufferSize);
+			//This assumes that the input buffers which are before this close in the determinant log have been
+			// fully processed, thus the bufferconsumer will have this amount of data.
+			//I feel like these two statements should be synchornized on a lock.
+			causalLoggingManager.appendDeterminant(new BufferBuiltDeterminant(parent.getIntermediateDataSetID(), (byte) index, bufferSize), checkpointId);
+			buffer = bufferConsumer.build(bufferSize);
 
 
-				checkState(bufferConsumer.isFinished() || buffers.size() == 1,
-					"When there are multiple buffers, an unfinished bufferConsumer can not be at the head of the buffers queue.");
+			checkState(bufferConsumer.isFinished() || buffers.size() == 1,
+				"When there are multiple buffers, an unfinished bufferConsumer can not be at the head of the buffers queue.");
 
-				if (buffers.size() == 1) {
-					// turn off flushRequested flag if we drained all of the available data
-					flushRequested = false;
-				}
-
-				if (bufferConsumer.isFinished()) {
-					buffers.pop().close();
-					checkpointIds.pop();
-					decreaseBuffersInBacklogUnsafe(bufferConsumer.isBuffer());
-				}
-
-				if (buffer.readableBytes() <= 0) {
-					buffer.recycleBuffer();
-					buffer = null;
-				}
-
+			if (buffers.size() == 1) {
+				// turn off flushRequested flag if we drained all of the available data
+				flushRequested = false;
 			}
-			if(buffer != null) {
+
+			if (bufferConsumer.isFinished()) {
+				buffers.pop().close();
+				checkpointIds.pop();
+				decreaseBuffersInBacklogUnsafe(bufferConsumer.isBuffer());
+			}
+
+			if (buffer.readableBytes() <= 0) {
+				buffer.recycleBuffer();
+				buffer = null;
+			}
+
+			if (buffer != null) {
 				updateStatistics(buffer);
 				logBuffer(buffer, checkpointId);
 			}

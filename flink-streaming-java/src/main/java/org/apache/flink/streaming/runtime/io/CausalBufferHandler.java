@@ -17,7 +17,7 @@
  */
 package org.apache.flink.streaming.runtime.io;
 
-import org.apache.flink.runtime.causal.IJobCausalLoggingManager;
+import org.apache.flink.runtime.causal.log.IJobCausalLoggingManager;
 import org.apache.flink.runtime.causal.determinant.OrderDeterminant;
 import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 import org.apache.flink.runtime.event.AbstractEvent;
