@@ -78,9 +78,4 @@ public class RecordCollectingResultPartitionWriter extends AbstractCollectingRes
 
 	}
 
-	@Override
-	public IntermediateDataSetID getIntermediateDataSetID() {
-		return null;
-	}
-
 }

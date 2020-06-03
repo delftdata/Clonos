@@ -25,7 +25,7 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.accumulators.AccumulatorRegistry;
 import org.apache.flink.runtime.broadcast.BroadcastVariableManager;
-import org.apache.flink.runtime.causal.log.JobCausalLoggingManager;
+import org.apache.flink.runtime.causal.log.job.JobCausalLog;
 import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
 import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
 import org.apache.flink.runtime.execution.Environment;
@@ -91,7 +91,7 @@ public class RuntimeEnvironment implements Environment {
 
 	private final List<JobVertex> topologicallySortedJobVertexes;
 
-	private final JobCausalLoggingManager jobCausalLoggingManager;
+	private final JobCausalLog jobCausalLog;
 
 	// ------------------------------------------------------------------------
 
@@ -116,7 +116,7 @@ public class RuntimeEnvironment implements Environment {
 		ResultPartitionWriter[] writers,
 		SingleInputGate[] inputGates,
 		TaskEventDispatcher taskEventDispatcher,
-		JobCausalLoggingManager jobCausalLoggingManager,
+		JobCausalLog jobCausalLog,
 		CheckpointResponder checkpointResponder,
 		TaskManagerRuntimeInfo taskManagerInfo,
 		TaskMetricGroup metrics,
@@ -141,7 +141,7 @@ public class RuntimeEnvironment implements Environment {
 		this.writers = checkNotNull(writers);
 		this.inputGates = checkNotNull(inputGates);
 		this.taskEventDispatcher = checkNotNull(taskEventDispatcher);
-		this.jobCausalLoggingManager = checkNotNull(jobCausalLoggingManager);
+		this.jobCausalLog = checkNotNull(jobCausalLog);
 		this.checkpointResponder = checkNotNull(checkpointResponder);
 		this.taskManagerInfo = checkNotNull(taskManagerInfo);
 		this.containingTask = containingTask;
@@ -267,8 +267,8 @@ public class RuntimeEnvironment implements Environment {
 	}
 
 	@Override
-	public JobCausalLoggingManager getJobCausalLoggingManager(){
-		return jobCausalLoggingManager;
+	public JobCausalLog getJobCausalLog(){
+		return jobCausalLog;
 	}
 
 	public List<JobVertex> getTopologicallySortedJobVertexes() {

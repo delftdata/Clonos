@@ -20,13 +20,14 @@ package org.apache.flink.runtime.io.network;
 
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.JobID;
-import org.apache.flink.runtime.causal.log.TMCausalLog;
+import org.apache.flink.runtime.causal.log.tm.TMCausalLog;
 import org.apache.flink.runtime.causal.VertexGraphInformation;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager.IOMode;
 import org.apache.flink.runtime.io.network.buffer.BufferPool;
 import org.apache.flink.runtime.io.network.buffer.NetworkBufferPool;
+import org.apache.flink.runtime.io.network.netty.NettyConnectionManager;
 import org.apache.flink.runtime.io.network.partition.ResultPartition;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionManager;
 import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
@@ -66,6 +67,9 @@ public class NetworkEnvironment {
 
 	private final TaskEventDispatcher taskEventDispatcher;
 
+	private final NetworkBufferPool determinantBufferPool;
+	private final int numDeterminantBuffersPerTask;
+
 	/**
 	 * Server for {@link InternalKvState} requests.
 	 */
@@ -99,14 +103,16 @@ public class NetworkEnvironment {
 
 	private final boolean enableCreditBased;
 
-	private final boolean causalLoggingEnabled;
 
 	private final TMCausalLog tmCausalLog;
 
 	private boolean isShutdown;
 
+
+
 	public NetworkEnvironment(
 		NetworkBufferPool networkBufferPool,
+		NetworkBufferPool determinantBufferPool,
 		ConnectionManager connectionManager,
 		ResultPartitionManager resultPartitionManager,
 		TaskEventDispatcher taskEventDispatcher,
@@ -118,30 +124,10 @@ public class NetworkEnvironment {
 		int partitionRequestMaxBackoff,
 		int networkBuffersPerChannel,
 		int extraNetworkBuffersPerGate,
-		boolean enableCreditBased) {
-
-		this(networkBufferPool, connectionManager, resultPartitionManager, taskEventDispatcher, kvStateRegistry,
-			kvStateServer, kvStateClientProxy, defaultIOMode, partitionRequestInitialBackoff,
-			partitionRequestMaxBackoff, networkBuffersPerChannel, extraNetworkBuffersPerGate, enableCreditBased,
-			true);
-	}
-
-	public NetworkEnvironment(
-		NetworkBufferPool networkBufferPool,
-		ConnectionManager connectionManager,
-		ResultPartitionManager resultPartitionManager,
-		TaskEventDispatcher taskEventDispatcher,
-		KvStateRegistry kvStateRegistry,
-		KvStateServer kvStateServer,
-		KvStateClientProxy kvStateClientProxy,
-		IOMode defaultIOMode,
-		int partitionRequestInitialBackoff,
-		int partitionRequestMaxBackoff,
-		int networkBuffersPerChannel,
-		int extraNetworkBuffersPerGate,
-		boolean enableCreditBased, boolean causalLoggingEnabled) {
+		boolean enableCreditBased, int numDeterminantBuffersPerTask) {
 
 		this.networkBufferPool = checkNotNull(networkBufferPool);
+		this.determinantBufferPool = checkNotNull(determinantBufferPool);
 		this.connectionManager = checkNotNull(connectionManager);
 		this.resultPartitionManager = checkNotNull(resultPartitionManager);
 		this.taskEventDispatcher = checkNotNull(taskEventDispatcher);
@@ -160,12 +146,15 @@ public class NetworkEnvironment {
 		this.extraNetworkBuffersPerGate = extraNetworkBuffersPerGate;
 
 		this.enableCreditBased = enableCreditBased;
-		this.causalLoggingEnabled = causalLoggingEnabled;
+		this.numDeterminantBuffersPerTask = numDeterminantBuffersPerTask;
 
-		if(causalLoggingEnabled)
+
 			this.tmCausalLog = new TMCausalLog();
-		else
-			this.tmCausalLog = null;
+
+	}
+
+	public NetworkEnvironment(NetworkBufferPool bufferPool, NettyConnectionManager nettyConnectionManager, ResultPartitionManager resultPartitionManager, TaskEventDispatcher taskEventDispatcher, KvStateRegistry kvStateRegistry, KvStateServer o, KvStateClientProxy o1, IOMode sync, Integer defaultValue, Integer defaultValue1, Integer defaultValue2, Integer defaultValue3, boolean b) {
+		this(bufferPool,null,nettyConnectionManager,resultPartitionManager,taskEventDispatcher,kvStateRegistry,o,o1,sync,defaultValue, defaultValue1, defaultValue2, defaultValue3, b, 0);
 	}
 
 	// --------------------------------------------------------------------------------------------
@@ -204,10 +193,6 @@ public class NetworkEnvironment {
 		return enableCreditBased;
 	}
 
-	public boolean isCausalLoggingEnabled(){
-		return causalLoggingEnabled;
-	}
-
 	public TMCausalLog getTmCausalLog(){
 		return tmCausalLog;
 	}
@@ -241,8 +226,9 @@ public class NetworkEnvironment {
 				throw new IllegalStateException("NetworkEnvironment is shut down");
 			}
 
-			if(isCausalLoggingEnabled())
-				tmCausalLog.registerNewJob(task.getJobID(), new VertexGraphInformation(task.getTopologicallySortedJobVertexes(),task.getJobVertexId(), task.getSubtaskIndex()));
+			VertexGraphInformation graphInformation = new VertexGraphInformation(task.getTopologicallySortedJobVertexes(), task.getJobVertexId(), task.getSubtaskIndex());
+			BufferPool taskDeterminantBufferPool = determinantBufferPool.createBufferPool(numDeterminantBuffersPerTask, numDeterminantBuffersPerTask);
+			tmCausalLog.registerNewJob(task.getJobID(), graphInformation, producedPartitions, taskDeterminantBufferPool);
 
 			for (final ResultPartition partition : producedPartitions) {
 				setupPartition(partition);
@@ -359,10 +345,8 @@ public class NetworkEnvironment {
 
 			try {
 				LOG.debug("Starting network connection manager");
-				if(causalLoggingEnabled)
-					connectionManager.start(resultPartitionManager, taskEventDispatcher, tmCausalLog);
-				else
-					connectionManager.start(resultPartitionManager, taskEventDispatcher);
+				connectionManager.start(resultPartitionManager, taskEventDispatcher, tmCausalLog);
+
 			} catch (IOException t) {
 				throw new IOException("Failed to instantiate network connection manager.", t);
 			}

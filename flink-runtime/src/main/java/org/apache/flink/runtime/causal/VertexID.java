@@ -27,13 +27,13 @@ Flink has no SubTask specific IDs. It has only JobVertexIDs + subtask index.
 Flink's AbstractID has two issues. 1. it is statistical, 2. it is too large. Compressing that large space into a short
 increases the probability of collisions.
  */
-public class VertexId implements Serializable {
+public class VertexID implements Serializable {
 
 	private static final long serialVersionUID = 1L;
 
 	short id;
 
-	public VertexId(short taskID) {
+	public VertexID(short taskID) {
 		this.id = taskID;
 	}
 
@@ -62,7 +62,7 @@ public class VertexId implements Serializable {
 	public boolean equals(Object o) {
 		if (this == o) return true;
 		if (o == null || getClass() != o.getClass()) return false;
-		VertexId vertexId = (VertexId) o;
+		VertexID vertexId = (VertexID) o;
 		return id == vertexId.id;
 	}
 }

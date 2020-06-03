@@ -33,7 +33,7 @@ import org.apache.flink.runtime.accumulators.StringifiedAccumulatorResult;
 import org.apache.flink.runtime.blob.BlobWriter;
 import org.apache.flink.runtime.blob.PermanentBlobKey;
 import org.apache.flink.runtime.blob.VoidBlobWriter;
-import org.apache.flink.runtime.causal.VertexId;
+import org.apache.flink.runtime.causal.VertexID;
 import org.apache.flink.runtime.checkpoint.*;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.concurrent.FutureUtils.ConjunctFuture;
@@ -1571,10 +1571,10 @@ public class ExecutionGraph implements AccessExecutionGraph {
 		}
 	}
 
-	public Collection<VertexId> getUpstreamVertices(JobVertexID jobVertexID) {
+	public Collection<VertexID> getUpstreamVertices(JobVertexID jobVertexID) {
 		LOG.info("Building upstream vertices list");
 		//Set to eliminate duplicates from results
-		Set<VertexId> result = new HashSet<>();
+		Set<VertexID> result = new HashSet<>();
 
 		Deque<ExecutionJobVertex> added = new ArrayDeque<>();
 		//Initialize stack with immediately neighbours
@@ -1584,9 +1584,9 @@ public class ExecutionGraph implements AccessExecutionGraph {
 		//Start DF reachability
 		while (added.size() != 0) {
 			ExecutionJobVertex jv = added.pop();
-			List<VertexId> vertexIdsOfJobVertex = Arrays.asList(jv.getTaskVertices()).stream().map(ExecutionVertex::getVertexId).collect(Collectors.toList());
-			result.addAll(vertexIdsOfJobVertex);
-			LOG.info("Vertex Ids for Job Vertex: {}", String.join(", ", vertexIdsOfJobVertex.stream().map(Object::toString).collect(Collectors.toList())));
+			List<VertexID> vertexIdsOfJobVertices = Arrays.asList(jv.getTaskVertices()).stream().map(ExecutionVertex::getVertexId).collect(Collectors.toList());
+			result.addAll(vertexIdsOfJobVertices);
+			LOG.info("Vertex Ids for Job Vertex: {}", String.join(", ", vertexIdsOfJobVertices.stream().map(Object::toString).collect(Collectors.toList())));
 			added.addAll(jv.getInputs().stream().map(IntermediateResult::getProducer).collect(Collectors.toList()));
 		}
 

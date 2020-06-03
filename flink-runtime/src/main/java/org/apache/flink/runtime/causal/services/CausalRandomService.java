@@ -24,7 +24,8 @@
  */
 package org.apache.flink.runtime.causal.services;
 
-import org.apache.flink.runtime.causal.log.IJobCausalLoggingManager;
+import org.apache.flink.runtime.causal.EpochProvider;
+import org.apache.flink.runtime.causal.log.job.IJobCausalLog;
 import org.apache.flink.runtime.causal.determinant.RNGDeterminant;
 import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 import org.apache.flink.util.XORShiftRandom;
@@ -33,14 +34,15 @@ import java.util.Random;
 
 public class CausalRandomService implements RandomService {
 
-	private IJobCausalLoggingManager causalLoggingManager;
+	private IJobCausalLog causalLoggingManager;
 	private IRecoveryManager recoveryManager;
+	private EpochProvider epochProvider;
 
 	//Not thread safe
 	protected final Random rng = new XORShiftRandom();
 
 
-	public CausalRandomService(IJobCausalLoggingManager causalLoggingManager, IRecoveryManager recoveryManager) {
+	public CausalRandomService(EpochProvider epochProvider,IJobCausalLog causalLoggingManager, IRecoveryManager recoveryManager) {
 		this.causalLoggingManager = causalLoggingManager;
 		this.recoveryManager = recoveryManager;
 	}
@@ -52,13 +54,11 @@ public class CausalRandomService implements RandomService {
 
 	@Override
 	public int nextInt(int maxExclusive) {
-		while (!(recoveryManager.isRunning() || recoveryManager.isReplaying())); //Spin
-
 		if(recoveryManager.isReplaying())
 			 return  recoveryManager.replayRandomInt();
 
 		int generatedNumber = rng.nextInt(maxExclusive);
-		causalLoggingManager.appendDeterminant(new RNGDeterminant(generatedNumber));
+		causalLoggingManager.appendDeterminant(new RNGDeterminant(generatedNumber),epochProvider.getCurrentEpochID());
 		return generatedNumber;
 	}
 

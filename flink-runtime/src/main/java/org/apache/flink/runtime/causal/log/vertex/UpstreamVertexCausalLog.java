@@ -23,12 +23,10 @@
  *
  */
 
-package org.apache.flink.runtime.causal.log;
+package org.apache.flink.runtime.causal.log.vertex;
 
-public interface LocalCausalLog extends CausalLog {
-	/**
-	 * Appends the provided determinants to the  log.
-	 * @param determinants to append
-	 */
-	void appendDeterminants(byte[] determinants, long checkpointID);
+public interface UpstreamVertexCausalLog extends VertexCausalLog {
+
+	void processUpstreamCausalLogDelta(VertexCausalLogDelta causalLogDelta, long checkpointID);
+
 }

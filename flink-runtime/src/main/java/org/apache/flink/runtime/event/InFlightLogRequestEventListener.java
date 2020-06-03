@@ -43,7 +43,6 @@ public class InFlightLogRequestEventListener implements EventListener<TaskEvent>
 
 	}
 
-	/** Barrier will turn the in-flight log request signal to true */
 	@Override
 	public void onEvent(TaskEvent event) {
 		LOG.info("{} received event {}.", this, event);

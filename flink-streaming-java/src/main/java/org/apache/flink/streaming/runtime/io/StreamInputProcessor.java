@@ -23,7 +23,7 @@ import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.SimpleCounter;
-import org.apache.flink.runtime.causal.log.IJobCausalLoggingManager;
+import org.apache.flink.runtime.causal.log.job.IJobCausalLog;
 import org.apache.flink.runtime.event.AbstractEvent;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
@@ -111,9 +111,6 @@ public class StreamInputProcessor<IN> {
 
 	private boolean isFinished;
 
-	// ----------- Causal Logging -----------------
-	private IJobCausalLoggingManager causalLoggingManager;
-	private InputGate inputGate;
 
 	@SuppressWarnings("unchecked")
 	public StreamInputProcessor(
@@ -129,9 +126,8 @@ public class StreamInputProcessor<IN> {
 		TaskIOMetricGroup metrics,
 		WatermarkGauge watermarkGauge) throws IOException {
 
-		this.causalLoggingManager = checkpointedTask.getJobCausalLoggingManager();
 
-		inputGate = InputGateUtil.createInputGate(inputGates);
+		InputGate inputGate = InputGateUtil.createInputGate(inputGates);
 		checkpointedTask.getRecoveryManager().setInputGate(inputGate);
 
 		this.barrierHandler = InputProcessorUtil.createCheckpointBarrierHandler(

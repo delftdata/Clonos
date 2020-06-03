@@ -25,9 +25,8 @@
 
 package org.apache.flink.runtime.causal;
 
-import org.apache.flink.runtime.causal.log.CausalLogDelta;
-import org.apache.flink.runtime.causal.log.ReplicatedCausalLog;
-import org.apache.flink.runtime.causal.log.UpstreamCausalLog;
+import org.apache.flink.runtime.causal.log.thread.ReplicatedThreadCausalLog;
+import org.apache.flink.runtime.causal.log.thread.UpstreamThreadCausalLog;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 import org.apache.flink.shaded.netty4.io.netty.buffer.Unpooled;
@@ -36,7 +35,6 @@ import org.junit.Test;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
-import java.util.concurrent.atomic.AtomicLong;
 
 public class RemoteCausalLogTest {
 
@@ -71,125 +69,134 @@ public class RemoteCausalLogTest {
 		return sb.toString();
 	}
 
-	@Test
-	public void remoteCausalLogTest() throws InterruptedException {
+	//@Test
+	//public void remoteCausalLogTest() throws InterruptedException {
 
-		System.out.println(new String(toSend));
-		System.out.println("---------------");
-		VertexId vertexId = new VertexId((short) 0);
-		UpstreamCausalLog upstreamCausalLog = new ReplicatedCausalLog(vertexId);
+	//	System.out.println(new String(toSend));
+	//	System.out.println("---------------");
+	//	VertexId vertexId = new VertexId((short) 0);
+	//	UpstreamThreadCausalLog upstreamCausalLog = new ReplicatedThreadCausalLog(vertexId);
 
-		int numWriterThreads = 3;
-		int numReaderThreads = 3;
+	//	int numWriterThreads = 10;
+	//	int numReaderThreads = 10;
 
-		List<WriterThread> writers = new ArrayList<>(numWriterThreads);
-		List<ReaderThread> readers = new ArrayList<>(numReaderThreads);
+	//	List<WriterThread> writers = new ArrayList<>(numWriterThreads);
+	//	List<ReaderThread> readers = new ArrayList<>(numReaderThreads);
 
-		for (int i = 0; i < numWriterThreads; i++) {
-			WriterThread thread = new WriterThread(vertexId, upstreamCausalLog);
-			writers.add(thread);
-			thread.start();
-		}
+	//	for (int i = 0; i < numWriterThreads; i++) {
+	//		WriterThread thread = new WriterThread(vertexId, upstreamCausalLog);
+	//		writers.add(thread);
+	//		thread.start();
+	//		Thread.sleep(1L);
+	//	}
+	//	Thread.sleep(500);
 
-		for (int i = 0; i < numReaderThreads; i++) {
-			ReaderThread thread = new ReaderThread(vertexId, upstreamCausalLog);
-			readers.add(thread);
-			thread.start();
-		}
-
-
-		for (WriterThread writerThread : writers)
-			writerThread.join();
-		for (ReaderThread readerThread : readers)
-			readerThread.join();
+	//	for (int i = 0; i < numReaderThreads; i++) {
+	//		ReaderThread thread = new ReaderThread(vertexId, upstreamCausalLog);
+	//		readers.add(thread);
+	//		thread.start();
+	//		Thread.sleep(3L);
+	//	}
 
 
-	}
-
-	public class WriterThread extends Thread {
-
-
-		private final VertexId vertexId;
-		private final UpstreamCausalLog upstreamCausalLog;
-		private long checkpoint;
-		private int readIndex;
-		private int epochOffset;
-
-		public WriterThread(VertexId vertexId, UpstreamCausalLog upstreamCausalLog) {
-			this.vertexId = vertexId;
-			this.upstreamCausalLog = upstreamCausalLog;
-
-			readIndex = 0;
-			checkpoint = 0L;
-			epochOffset = 0;
-		}
-
-		@Override
-		public void run() {
-			Random random = new Random(System.currentTimeMillis());
-			while (readIndex != toSend.length) {
-				while (epochOffset != epochSize) {
-					int size = Math.min(epochSize - epochOffset, random.nextInt(1000));
-					ByteBuf buf = Unpooled.buffer(size);
-					buf.writeBytes(toSend, readIndex, readIndex + size);
-					upstreamCausalLog.processUpstreamVertexCausalLogDelta(new CausalLogDelta(vertexId, buf, readIndex), checkpoint);
-					readIndex += size;
-					epochOffset += size;
-					try {
-						Thread.sleep(random.nextInt(50));
-					} catch (InterruptedException e) {
-						e.printStackTrace();
-					}
-				}
-				checkpoint++;
-				epochOffset = 0;
-			}
-		}
-	}
-
-	public class ReaderThread extends Thread {
-		private final VertexId vertexId;
-		private final UpstreamCausalLog upstreamCausalLog;
-		private byte[] readCopy;
-		private int writeIndex;
-		private InputChannelID channelID;
-		private long checkpointID;
-
-		public ReaderThread(VertexId vertexId, UpstreamCausalLog upstreamCausalLog) {
-			this.vertexId = vertexId;
-			this.upstreamCausalLog = upstreamCausalLog;
-			readCopy = new byte[toSend.length];
-			this.writeIndex = 0;
-			this.channelID = new InputChannelID();
-			upstreamCausalLog.registerDownstreamConsumer(channelID);
-			checkpointID = 0L;
-		}
+	//	for (WriterThread writerThread : writers)
+	//		writerThread.join();
+	//	for (ReaderThread readerThread : readers)
+	//		readerThread.join();
 
 
-		@Override
-		public void run() {
-			while (writeIndex != readCopy.length) {
-				CausalLogDelta delta = upstreamCausalLog.getNextDeterminantsForDownstream(channelID, checkpointID);
+	//}
 
-				int readableBytes = delta.getRawDeterminants().readableBytes();
-				delta.getRawDeterminants().writeBytes(readCopy, writeIndex, writeIndex + readableBytes);
-
-				if(writeIndex % epochSize == 0 && writeIndex != 0)
-					checkpointID ++;
-
-				writeIndex+= readableBytes;
+	//public class WriterThread extends Thread {
 
 
-				try {
-					Thread.sleep(120);
-				} catch (InterruptedException e) {
-					e.printStackTrace();
-				}
-			}
-			System.out.println(new String(readCopy));
-		}
+	//	private final VertexId vertexId;
+	//	private final UpstreamThreadCausalLog upstreamCausalLog;
+	//	private long checkpoint;
+	//	private int readIndex;
+	//	private int epochOffset;
 
-	}
+	//	public WriterThread(VertexId vertexId, UpstreamThreadCausalLog upstreamCausalLog) {
+	//		this.vertexId = vertexId;
+	//		this.upstreamCausalLog = upstreamCausalLog;
+
+	//		readIndex = 0;
+	//		checkpoint = 0L;
+	//		epochOffset = 0;
+	//	}
+
+	//	@Override
+	//	public void run() {
+	//		Random random = new Random(System.currentTimeMillis());
+	//		while (readIndex != toSend.length) {
+	//			while (epochOffset != epochSize) {
+	//				int size = Math.min(epochSize - epochOffset, random.nextInt(1000));
+	//				ByteBuf buf = Unpooled.buffer(size);
+	//				buf.writeBytes(toSend, readIndex, size);
+	//				upstreamCausalLog.processUpstreamVertexCausalLogDelta(new CausalLogThreadDelta(vertexId, buf, readIndex % epochSize), checkpoint);
+	//				readIndex += size;
+	//				epochOffset += size;
+	//				try {
+	//					Thread.sleep(random.nextInt(50));
+	//				} catch (InterruptedException e) {
+	//					e.printStackTrace();
+	//				}
+	//			}
+	//			System.out.println("Done writing epoch " + checkpoint);
+	//			checkpoint++;
+	//			epochOffset = 0;
+	//		}
+	//	}
+	//}
+
+	//public class ReaderThread extends Thread {
+	//	private final VertexId vertexId;
+	//	private final UpstreamThreadCausalLog upstreamCausalLog;
+	//	private byte[] readCopy;
+	//	private int writeIndex;
+	//	private InputChannelID channelID;
+	//	private long checkpointID;
+
+	//	public ReaderThread(VertexId vertexId, UpstreamThreadCausalLog upstreamCausalLog) {
+	//		this.vertexId = vertexId;
+	//		this.upstreamCausalLog = upstreamCausalLog;
+	//		readCopy = new byte[toSend.length];
+	//		this.writeIndex = 0;
+	//		this.channelID = new InputChannelID();
+	//		upstreamCausalLog.registerDownstreamConsumer(channelID);
+	//		checkpointID = 0L;
+	//	}
+
+
+	//	@Override
+	//	public void run() {
+	//		int epochOffset = 0;
+	//		while (writeIndex != readCopy.length) {
+	//			while (epochOffset != epochSize) {
+	//				CausalLogThreadDelta delta = upstreamCausalLog.getNextDeterminantsForDownstream(channelID, checkpointID);
+
+	//				int readableBytes = delta.getRawDeterminants().readableBytes();
+	//				delta.getRawDeterminants().readBytes(readCopy, writeIndex, readableBytes);
+
+	//				writeIndex += readableBytes;
+	//				epochOffset += readableBytes;
+	//				System.out.println("Epoch: " + checkpointID + ", readable: " + readableBytes + ", writeIndex: " + writeIndex);
+
+	//				try {
+	//					Thread.sleep(120);
+	//				} catch (InterruptedException e) {
+	//					e.printStackTrace();
+	//				}
+	//			}
+	//			System.out.println("Done reading epoch " + checkpointID);
+	//			epochOffset = 0;
+	//			checkpointID++;
+
+	//		}
+	//		System.out.println(new String(readCopy));
+	//	}
+
+	//}
 
 
 }

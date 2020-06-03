@@ -389,20 +389,29 @@ public class TaskManagerServices {
 
 		NetworkEnvironmentConfiguration networkEnvironmentConfiguration = taskManagerServicesConfiguration.getNetworkConfig();
 
+		int determinantSegmentSize = networkEnvironmentConfiguration.nettyConfig().getDeterminantBufferSize();
+		float determinantSteal = networkEnvironmentConfiguration.nettyConfig().getDeterminantMemorySteal();
+
 		final long networkBuf = calculateNetworkBufferMemory(taskManagerServicesConfiguration, maxJvmHeapMemory);
-		int segmentSize = networkEnvironmentConfiguration.networkBufferSize();
+		int dataSegmentSize = networkEnvironmentConfiguration.networkBufferSize();
+
 
 		// tolerate offcuts between intended and allocated memory due to segmentation (will be available to the user-space memory)
-		final long numNetBuffersLong = networkBuf / segmentSize;
+		final long numNetBuffersLong = (long) (((1-determinantSteal) * networkBuf)/ dataSegmentSize);
 		if (numNetBuffersLong > Integer.MAX_VALUE) {
 			throw new IllegalArgumentException("The given number of memory bytes (" + networkBuf
 				+ ") corresponds to more than MAX_INT pages.");
 		}
 
+
 		NetworkBufferPool networkBufferPool = new NetworkBufferPool(
 			(int) (numNetBuffersLong),
-			segmentSize);
+			dataSegmentSize);
 
+		final long numNetBuffersForDeterminants = (long) (networkBuf * determinantSteal / determinantSegmentSize);
+		NetworkBufferPool determinantBufferPool = new NetworkBufferPool(
+			(int) (numNetBuffersForDeterminants),
+			determinantSegmentSize);
 
 		ConnectionManager connectionManager;
 		boolean enableCreditBased = false;
@@ -451,6 +460,7 @@ public class TaskManagerServices {
 		// we start the network first, to make sure it can allocate its buffers first
 		return new NetworkEnvironment(
 			networkBufferPool,
+			determinantBufferPool,
 			connectionManager,
 			resultPartitionManager,
 			taskEventDispatcher,
@@ -462,7 +472,7 @@ public class TaskManagerServices {
 			networkEnvironmentConfiguration.partitionRequestMaxBackoff(),
 			networkEnvironmentConfiguration.networkBuffersPerChannel(),
 			networkEnvironmentConfiguration.floatingNetworkBuffersPerGate(),
-			enableCreditBased);
+			enableCreditBased, nettyConfig.getNumDeterminantBuffersPerTask());
 	}
 
 	/**

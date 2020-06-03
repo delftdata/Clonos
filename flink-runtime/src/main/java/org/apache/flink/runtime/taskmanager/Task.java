@@ -503,7 +503,6 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 				taskNameWithSubtaskAndId,
 				this,
 				jobId,
-				desc.getResultId(),
 				partitionId,
 				desc.getPartitionType(),
 				desc.getNumberOfSubpartitions(),

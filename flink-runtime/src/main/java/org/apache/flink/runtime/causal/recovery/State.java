@@ -30,7 +30,9 @@ import org.apache.flink.runtime.event.InFlightLogRequestEvent;
 import org.apache.flink.runtime.io.network.api.DeterminantRequestEvent;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
+import org.apache.flink.runtime.io.network.partition.consumer.RemoteInputChannel;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
+import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 
 public interface State {
 
@@ -38,9 +40,9 @@ public interface State {
 
 	void notifyDeterminantRequestEvent(DeterminantRequestEvent e,int channelRequestArrivedFrom);
 
-	void notifyNewInputChannel(InputGate inputGate, int channelIndex, int numberOfBuffersRemoved);
+	void notifyNewInputChannel(RemoteInputChannel inputChannel, int consumedSubpartitionIndex, int numBuffersRemoved);
 
-	void notifyNewOutputChannel(IntermediateDataSetID intermediateDataSetID, int subpartitionIndex);
+	void notifyNewOutputChannel(IntermediateResultPartitionID intermediateResultPartitionID, int subpartitionIndex);
 
 	void notifyInFlightLogRequestEvent(InFlightLogRequestEvent e);
 

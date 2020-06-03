@@ -26,17 +26,23 @@
 package org.apache.flink.runtime.causal.recovery;
 
 import org.apache.flink.runtime.causal.DeterminantResponseEvent;
+import org.apache.flink.runtime.causal.log.vertex.VertexCausalLogDelta;
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
 import org.apache.flink.runtime.io.network.api.DeterminantRequestEvent;
 import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
+import org.apache.flink.runtime.io.network.partition.PipelinedSubpartition;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
+import org.apache.flink.runtime.io.network.partition.ResultSubpartition;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
+import org.apache.flink.runtime.io.network.partition.consumer.RemoteInputChannel;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSet;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
+import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.rmi.Remote;
 
 public abstract class AbstractState implements State {
 
@@ -50,7 +56,7 @@ public abstract class AbstractState implements State {
 
 
 	@Override
-	public void notifyNewInputChannel(InputGate gate, int channelIndex, int numberOfBuffersRemoved){
+	public void notifyNewInputChannel(RemoteInputChannel remoteInputChannel, int consumedSubpartitionIndex, int numBuffersRemoved){
 		//we got notified of a new input channel while we were recovering.
 		//This means that  we now have to wait for the upstream to finish recovering before we do.
 		//Furthermore, if we have already sent an inflight log request for this channel, we now have to send it again.
@@ -58,7 +64,7 @@ public abstract class AbstractState implements State {
 	}
 
 	@Override
-	public void notifyNewOutputChannel(IntermediateDataSetID intermediateDataSetID, int subpartitionIndex){
+	public void notifyNewOutputChannel(IntermediateResultPartitionID intermediateResultPartitionID, int subpartitionIndex){
 		LOG.info("Got notified of unexpected NewOutputChannel event, while in state " + this.getClass());
 
 	}
@@ -78,6 +84,11 @@ public abstract class AbstractState implements State {
 			context.finalRestoredCheckpointId = checkpointId;
 		//throw new RuntimeException("Unexpected notification StateRestorationStart in state " + this.getClass());
 
+		for (RecordWriter recordWriter : context.recordWriters)
+			for(ResultSubpartition rs : recordWriter.getResultPartition().getResultSubpartitions())
+				((PipelinedSubpartition)rs).setCurrentEpochID(context.finalRestoredCheckpointId);
+
+			context.epochProvider.setCurrentEpochID(context.finalRestoredCheckpointId);
 	}
 
 	@Override
@@ -90,16 +101,15 @@ public abstract class AbstractState implements State {
 	@Override
 	public void notifyDeterminantResponseEvent(DeterminantResponseEvent e) {
 		LOG.info("Received a DeterminantResponseEvent, but am not recovering: {}", e);
-		RecoveryManager.UnansweredDeterminantRequest udr = context.unansweredDeterminantRequests.get(e.getVertexId());
+		RecoveryManager.UnansweredDeterminantRequest udr = context.unansweredDeterminantRequests.get(e.getVertexCausalLogDelta().getVertexId());
 		if(udr != null) {
 			udr.incResponsesReceived();
-			if (e.getDeterminants().length > udr.determinants.length)
-				udr.setDeterminants(e.getDeterminants());
-
+			udr.getVertexCausalLogDelta().merge(e.getVertexCausalLogDelta());
 			if (udr.getNumResponsesReceived() == context.vertexGraphInformation.getNumberOfDirectDownstreamNeighbours()) {
-				context.unansweredDeterminantRequests.remove(e.getVertexId());
+				VertexCausalLogDelta fulfilledRequest = context.unansweredDeterminantRequests.remove(e.getVertexCausalLogDelta().getVertexId()).getVertexCausalLogDelta();
 				try {
-					context.inputGate.getInputChannel(udr.getRequestingChannel()).sendTaskEvent(new DeterminantResponseEvent(udr.getVertexId(), udr.getDeterminants()));
+					context.inputGate.getInputChannel(udr.getRequestingChannel()).sendTaskEvent(new DeterminantResponseEvent(fulfilledRequest));
+					//todo where does the memory for this get freed?
 				} catch (IOException | InterruptedException ex) {
 					ex.printStackTrace();
 				}

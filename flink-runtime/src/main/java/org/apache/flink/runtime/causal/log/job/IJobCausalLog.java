@@ -22,48 +22,42 @@
  *
  *
  */
-package org.apache.flink.runtime.causal.log;
+package org.apache.flink.runtime.causal.log.job;
 
-import org.apache.flink.runtime.causal.VertexId;
+import org.apache.flink.runtime.causal.VertexID;
 import org.apache.flink.runtime.causal.determinant.*;
+import org.apache.flink.runtime.causal.log.vertex.VertexCausalLogDelta;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
+import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.apache.flink.runtime.state.CheckpointListener;
-import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 
 import java.util.List;
 
 /**
  * A CausalLog contains the determinant logs of all upstream operators and itself.
  */
-public interface IJobCausalLoggingManager extends CheckpointListener {
+public interface IJobCausalLog extends CheckpointListener {
 
-	void registerDownstreamConsumer(InputChannelID inputChannelID);
+	void registerDownstreamConsumer(InputChannelID inputChannelID, IntermediateResultPartitionID intermediateResultPartitionID, int consumedSubpartition);
 
-	List<CausalLogDelta> getDeterminants();
+	void unregisterDownstreamConsumer(InputChannelID toCancel);
 
 	/*
 	Encodes and appends to this tasks log
 	 */
 	void appendDeterminant(Determinant determinant, long checkpointID);
 
-	/**
-	 * Note: Should ONLY be used by Main thread determinants
-	 * @param determinant
-	 */
-	void appendDeterminant(Determinant determinant);
+	void appendSubpartitionDeterminants(Determinant determinant, long checkpointID, IntermediateResultPartitionID intermediateResultPartitionID, int subpartitionIndex);
 
-	void updateCheckpointID(long checkpointID);
+	void processUpstreamVertexCausalLogDelta(VertexCausalLogDelta d, long checkpointID);
 
-	void processCausalLogDelta(CausalLogDelta d, long checkpointID);
+	VertexCausalLogDelta getDeterminantsOfVertex(VertexID vertexId);
 
-	ByteBuf getDeterminantsOfVertex(VertexId vertexId);
-
-	List<CausalLogDelta> getNextDeterminantsForDownstream(InputChannelID inputChannelID, long checkpointID);
+	List<VertexCausalLogDelta> getNextDeterminantsForDownstream(InputChannelID inputChannelID, long checkpointID);
 
 	DeterminantEncodingStrategy getDeterminantEncodingStrategy();
 
-	VertexId getVertexId();
+	VertexID getVertexId();
 
-    void unregisterDownstreamConsumer(InputChannelID toCancel);
 
 }

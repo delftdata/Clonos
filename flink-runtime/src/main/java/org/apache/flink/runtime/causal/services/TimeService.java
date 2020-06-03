@@ -25,18 +25,21 @@
 
 package org.apache.flink.runtime.causal.services;
 
-import org.apache.flink.runtime.causal.log.IJobCausalLoggingManager;
+import org.apache.flink.runtime.causal.EpochProvider;
+import org.apache.flink.runtime.causal.log.job.IJobCausalLog;
 import org.apache.flink.runtime.causal.determinant.TimestampDeterminant;
 import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 
 public class TimeService {
 
-	private IJobCausalLoggingManager causalLoggingManager;
+	private final EpochProvider epochProvider;
+	private IJobCausalLog causalLoggingManager;
 	private IRecoveryManager recoveryManager;
 
-	public TimeService(IJobCausalLoggingManager causalLoggingManager, IRecoveryManager recoveryManager){
+	public TimeService(IJobCausalLog causalLoggingManager, IRecoveryManager recoveryManager, EpochProvider epochProvider){
 		this.causalLoggingManager = causalLoggingManager;
 		this.recoveryManager = recoveryManager;
+		this.epochProvider = epochProvider;
 	}
 
 	public long currentTimeMillis(){
@@ -46,7 +49,7 @@ public class TimeService {
 			return  recoveryManager.replayNextTimestamp();
 
 		long timestamp = System.currentTimeMillis();
-		causalLoggingManager.appendDeterminant(new TimestampDeterminant(timestamp));
+		causalLoggingManager.appendDeterminant(new TimestampDeterminant(timestamp), epochProvider.getCurrentEpochID());
 		return timestamp;
 	}
 

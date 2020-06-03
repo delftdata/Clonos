@@ -89,8 +89,6 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 
 	private final JobID jobId;
 
-	private final IntermediateDataSetID intermediateDataSetID;
-
 	private final ResultPartitionID partitionId;
 
 	/**
@@ -142,26 +140,10 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 		ResultPartitionConsumableNotifier partitionConsumableNotifier,
 		IOManager ioManager,
 		boolean sendScheduleOrUpdateConsumersMessage) {
-		this(owningTaskName, taskActions, jobId, new IntermediateDataSetID(), partitionId, partitionType,numberOfSubpartitions,numTargetKeyGroups,partitionManager,partitionConsumableNotifier,ioManager,sendScheduleOrUpdateConsumersMessage);
-	}
-	public ResultPartition(
-		String owningTaskName,
-		TaskActions taskActions, // actions on the owning task
-		JobID jobId,
-		IntermediateDataSetID intermediateDataSetID,
-		ResultPartitionID partitionId,
-		ResultPartitionType partitionType,
-		int numberOfSubpartitions,
-		int numTargetKeyGroups,
-		ResultPartitionManager partitionManager,
-		ResultPartitionConsumableNotifier partitionConsumableNotifier,
-		IOManager ioManager,
-		boolean sendScheduleOrUpdateConsumersMessage) {
 
 		this.owningTaskName = checkNotNull(owningTaskName);
 		this.taskActions = checkNotNull(taskActions);
 		this.jobId = checkNotNull(jobId);
-		this.intermediateDataSetID = checkNotNull(intermediateDataSetID);
 		this.partitionId = checkNotNull(partitionId);
 		this.partitionType = checkNotNull(partitionType);
 		this.subpartitions = new ResultSubpartition[numberOfSubpartitions];
@@ -258,11 +240,6 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 	public void notifyCheckpointComplete(long checkpointId) {
 		for (ResultSubpartition sb : subpartitions)
 			sb.notifyCheckpointComplete(checkpointId);
-	}
-
-	@Override
-	public IntermediateDataSetID getIntermediateDataSetID() {
-		return intermediateDataSetID;
 	}
 
 	public int getNumberOfQueuedBuffers() {

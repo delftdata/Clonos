@@ -20,10 +20,7 @@ package org.apache.flink.runtime.event;
 
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataOutputView;
-import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
-import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
-import org.apache.flink.util.AbstractID;
 
 import java.io.IOException;
 
@@ -32,7 +29,7 @@ import java.io.IOException;
  */
 public class InFlightLogRequestEvent extends TaskEvent {
 
-	private IntermediateDataSetID intermediateDataSetID;
+	private IntermediateResultPartitionID intermediateResultPartitionID;
 	private int subpartitionIndex;
 	private long checkpointId;
 	private int numberOfBuffersToSkip;
@@ -46,20 +43,20 @@ public class InFlightLogRequestEvent extends TaskEvent {
 	}
 
 
-	public InFlightLogRequestEvent(IntermediateDataSetID intermediateDataSetID, int consumedSubpartitionIndex, long finalRestoreStateCheckpointId) {
-		this(intermediateDataSetID, consumedSubpartitionIndex, finalRestoreStateCheckpointId, 0);
+	public InFlightLogRequestEvent(IntermediateResultPartitionID intermediateResultPartitionID, int consumedSubpartitionIndex, long finalRestoreStateCheckpointId) {
+		this(intermediateResultPartitionID, consumedSubpartitionIndex, finalRestoreStateCheckpointId, 0);
 	}
 
-	public InFlightLogRequestEvent(IntermediateDataSetID intermediateDataSetID, int consumedSubpartitionIndex, long finalRestoreStateCheckpointId, int numberOfBuffersToSkip) {
+	public InFlightLogRequestEvent(IntermediateResultPartitionID intermediateResultPartitionID, int consumedSubpartitionIndex, long finalRestoreStateCheckpointId, int numberOfBuffersToSkip) {
 		super();
-		this.intermediateDataSetID = intermediateDataSetID;
+		this.intermediateResultPartitionID = intermediateResultPartitionID;
 		this.subpartitionIndex = consumedSubpartitionIndex;
 		this.checkpointId = finalRestoreStateCheckpointId;
 		this.numberOfBuffersToSkip = numberOfBuffersToSkip;
 	}
 
-	public IntermediateDataSetID getIntermediateDataSetID() {
-		return intermediateDataSetID;
+	public IntermediateResultPartitionID getIntermediateResultPartitionID() {
+		return intermediateResultPartitionID;
 	}
 
 	public int getSubpartitionIndex() {
@@ -76,8 +73,8 @@ public class InFlightLogRequestEvent extends TaskEvent {
 
 	@Override
 	public void write(final DataOutputView out) throws IOException {
-		out.writeLong(intermediateDataSetID.getUpperPart());
-		out.writeLong(intermediateDataSetID.getLowerPart());
+		out.writeLong(intermediateResultPartitionID.getUpperPart());
+		out.writeLong(intermediateResultPartitionID.getLowerPart());
 		out.writeInt(this.subpartitionIndex);
 		out.writeLong(this.checkpointId);
 		out.writeInt(numberOfBuffersToSkip);
@@ -87,7 +84,7 @@ public class InFlightLogRequestEvent extends TaskEvent {
 	public void read(final DataInputView in) throws IOException {
 		long upper = in.readLong();
 		long lower = in.readLong();
-		this.intermediateDataSetID = new IntermediateDataSetID(new AbstractID(lower, upper));
+		this.intermediateResultPartitionID = new IntermediateResultPartitionID(lower, upper);
 
 		this.subpartitionIndex = in.readInt();
 		this.checkpointId = in.readLong();
@@ -97,7 +94,7 @@ public class InFlightLogRequestEvent extends TaskEvent {
 	@Override
 	public String toString() {
 		return "InFlightLogRequestEvent{" +
-			"intermediateDataSetID=" + intermediateDataSetID +
+			"intermediateResultPartitionID=" + intermediateResultPartitionID +
 			", subpartitionIndex=" + subpartitionIndex +
 			", checkpointId=" + checkpointId +
 			", numberBuffersSkip=" + numberOfBuffersToSkip +

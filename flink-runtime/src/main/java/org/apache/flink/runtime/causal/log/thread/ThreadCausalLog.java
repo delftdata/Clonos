@@ -22,7 +22,7 @@
  *
  *
  */
-package org.apache.flink.runtime.causal.log;
+package org.apache.flink.runtime.causal.log.thread;
 
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
 import org.apache.flink.runtime.state.CheckpointListener;
@@ -33,14 +33,7 @@ import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
  * Is responsible for garbage collection of determinants which have been checkpointed or sent to all downstream tasks.
  * It is responsible for remembering what determinants it has sent to which downstream tasks.
  */
-public interface CausalLog extends CheckpointListener {
-
-	/**
-	 * Registers a consumer of the determinant log.
-	 * Offsets will start to be tracked from the current earliest epoch
-	 * @param inputChannelID the id of the downstream consumer channel.
-	 */
-	void registerDownstreamConsumer(InputChannelID inputChannelID);
+public interface ThreadCausalLog extends CheckpointListener {
 
 	/**
 	 * Get all determinants in this log from start to end. Does not advance any internal offsets.
@@ -52,11 +45,8 @@ public interface CausalLog extends CheckpointListener {
 	/**
 	 * Calculates the next update to send downstream. Advances internal counters as well.
 	 * @param consumer the channel to get the next update for.
-	 * @return a {@link CausalLogDelta} containing the update to send downstream
+	 * @return a {@link CausalLogThreadDelta} containing the update to send downstream
 	 */
-	CausalLogDelta getNextDeterminantsForDownstream(InputChannelID consumer, long checkpointID);
-
-
-    void unregisterDownstreamConsumer(InputChannelID toCancel);
+	ThreadLogDelta getNextDeterminantsForDownstream(InputChannelID consumer, long checkpointID);
 
 }

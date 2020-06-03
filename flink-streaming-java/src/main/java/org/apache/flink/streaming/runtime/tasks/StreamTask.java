@@ -24,8 +24,8 @@ import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.core.fs.CloseableRegistry;
 import org.apache.flink.core.fs.FileSystemSafetyNet;
 import org.apache.flink.runtime.causal.*;
-import org.apache.flink.runtime.causal.log.IJobCausalLoggingManager;
-import org.apache.flink.runtime.causal.log.JobCausalLoggingManager;
+import org.apache.flink.runtime.causal.log.job.IJobCausalLog;
+import org.apache.flink.runtime.causal.log.job.JobCausalLog;
 import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 import org.apache.flink.runtime.causal.recovery.RecoveryManager;
 import org.apache.flink.runtime.causal.services.CausalRandomService;
@@ -121,7 +121,7 @@ import java.util.stream.Collectors;
 @Internal
 public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		extends AbstractInvokable
-		implements AsyncExceptionHandler {
+		implements AsyncExceptionHandler, EpochProvider {
 
 	/** The thread group that holds all trigger timer threads. */
 	public static final ThreadGroup TRIGGER_THREAD_GROUP = new ThreadGroup("Triggers");
@@ -205,10 +205,11 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 	private final List<StreamRecordWriter<SerializationDelegate<StreamRecord<OUT>>>> streamRecordWriters;
 
-	private final JobCausalLoggingManager jobCausalLoggingManager;
+	private final JobCausalLog jobCausalLog;
 	private final RecoveryManager recoveryManager;
 
 	private final TimeService timeService;
+	private long currentEpochID;
 
 	// ------------------------------------------------------------------------
 
@@ -259,13 +260,13 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		VertexGraphInformation vertexGraphInformation = new VertexGraphInformation(sortedJobVertexes, jobVertexID, subtaskIndex);
 
 		SingleInputGate[] inputGates = environment.getContainingTask().getAllInputGates();
-		this.jobCausalLoggingManager = environment.getJobCausalLoggingManager();
-		this.recoveryManager = new RecoveryManager(jobCausalLoggingManager, readyToReplayFuture, vertexGraphInformation);
-		this.timeService = new TimeService(jobCausalLoggingManager, recoveryManager);
+		this.jobCausalLog = environment.getJobCausalLog();
+		this.recoveryManager = new RecoveryManager(this, jobCausalLog, readyToReplayFuture, vertexGraphInformation);
+		this.timeService = new TimeService(jobCausalLog, recoveryManager, this);
 
-		this.streamRecordWriters = createStreamRecordWriters(configuration, environment, jobCausalLoggingManager, recoveryManager);
+		this.streamRecordWriters = createStreamRecordWriters(configuration, environment, this, jobCausalLog, recoveryManager);
 		List<RecordWriter> recordWriters = streamRecordWriters.stream().map(x -> (RecordWriter) x).collect(Collectors.toList()); //todo better way to do this?
-		recoveryManager.setRecordWriters(recordWriters); //todo if possible fix the circular dependency
+		recoveryManager.setRecordWriters(recordWriters);
 
 
 		for(SingleInputGate inputGate : inputGates){
@@ -274,8 +275,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 		for(ResultPartition partition : environment.getContainingTask().getProducedPartitions()) {
 			for(ResultSubpartition subpartition : partition.getResultSubpartitions()) {
+				((PipelinedSubpartition) subpartition).setCausalLoggingManager(jobCausalLog);
 				((PipelinedSubpartition) subpartition).setRecoveryManager(recoveryManager);
-				((PipelinedSubpartition) subpartition).setCausalLoggingManager(jobCausalLoggingManager);
 			}
 			DeterminantResponseEventListener edel = new DeterminantResponseEventListener(environment.getUserClassLoader(), recoveryManager);
 			environment.getTaskEventDispatcher().subscribeToEvent(partition.getPartitionId(), edel, DeterminantResponseEvent.class);
@@ -285,6 +286,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			environment.getTaskEventDispatcher().subscribeToEvent(partition.getPartitionId(), iflrel, InFlightLogRequestEvent.class);
 			LOG.info("Set InFlightLogRequestEventListener {} for resultPartition {}.", iflrel, partition);
 		}
+
+		currentEpochID = 0l;
 
 	}
 
@@ -717,11 +720,11 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	}
 
 	public boolean isCausal() {
-		return getJobCausalLoggingManager() != null;
+		return getJobCausalLog() != null;
 	}
 
-	public IJobCausalLoggingManager getJobCausalLoggingManager() {
-		return this.jobCausalLoggingManager;
+	public IJobCausalLog getJobCausalLog() {
+		return this.jobCausalLog;
 	}
 
 	public IRecoveryManager getRecoveryManager() {
@@ -737,7 +740,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			checkpointMetaData.getCheckpointId(), checkpointOptions.getCheckpointType(), getName());
 
 		synchronized (lock) {
-			LOG.debug("{} (isRunning: {}) acquired lock to perform checkpoint.", isRunning, getName());
+			LOG.info("{} (isRunning: {}) acquired lock to perform checkpoint.", isRunning, getName());
 			if (isRunning) {
 				// we can do a checkpoint
 
@@ -750,11 +753,11 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 				//           The pre-barrier work should be nothing or minimal in the common case.
 				operatorChain.prepareSnapshotPreBarrier(checkpointMetaData.getCheckpointId());
 
-				long checkpointId = checkpointMetaData.getCheckpointId();
-				jobCausalLoggingManager.updateCheckpointID(checkpointId);
+				currentEpochID = checkpointMetaData.getCheckpointId();
 				ResultPartition[] partitions = this.getEnvironment().getContainingTask().getProducedPartitions();
+				//Inform the partitions that a checkpoint barrier is going to come next
 				for(ResultPartition rp : partitions)
-					rp.notifyCheckpointBarrier(checkpointId);
+					rp.notifyCheckpointBarrier(currentEpochID);
 
 				// Step (2): Send the checkpoint barrier downstream
 				operatorChain.broadcastCheckpointBarrier(
@@ -812,7 +815,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 					}
 				}
 
-				jobCausalLoggingManager.notifyCheckpointComplete(checkpointId);
+				jobCausalLog.notifyCheckpointComplete(checkpointId);
 				//Notify InFlightLogger
 				ResultPartition[] partitions = this.getEnvironment().getContainingTask().getProducedPartitions();
 				for(ResultPartition rp : partitions)
@@ -1177,6 +1180,11 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		return cancelables;
 	}
 
+	@Override
+	public long getCurrentEpochID(){return  currentEpochID;}
+
+	@Override
+	public void setCurrentEpochID(long currentEpochID){this.currentEpochID = currentEpochID;}
 	// ------------------------------------------------------------------------
 
 	private static final class CheckpointingOperation {
@@ -1324,8 +1332,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 	@VisibleForTesting
 	public static <OUT> List<StreamRecordWriter<SerializationDelegate<StreamRecord<OUT>>>> createStreamRecordWriters(
-            StreamConfig configuration,
-            Environment environment, IJobCausalLoggingManager causalLog, IRecoveryManager recoveryManager) {
+		StreamConfig configuration,
+		Environment environment, EpochProvider epochProvider, IJobCausalLog causalLog, IRecoveryManager recoveryManager) {
 		List<StreamRecordWriter<SerializationDelegate<StreamRecord<OUT>>>> streamRecordWriters = new ArrayList<>();
 		List<StreamEdge> outEdgesInOrder = configuration.getOutEdgesInOrder(environment.getUserClassLoader());
 		Map<Integer, StreamConfig> chainedConfigs = configuration.getTransitiveChainedTaskConfigsWithSelf(environment.getUserClassLoader());
@@ -1338,18 +1346,18 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 				i,
 				environment,
 				environment.getTaskInfo().getTaskName(),
-				chainedConfigs.get(edge.getSourceId()).getBufferTimeout(),  causalLog, recoveryManager);
+				chainedConfigs.get(edge.getSourceId()).getBufferTimeout(), epochProvider,  causalLog, recoveryManager);
 			streamRecordWriters.add(newRecordWriter);
 		}
 		return streamRecordWriters;
 	}
 
 	private static <OUT> StreamRecordWriter<SerializationDelegate<StreamRecord<OUT>>> createStreamRecordWriter(
-            StreamEdge edge,
-            int outputIndex,
-            Environment environment,
-            String taskName,
-            long bufferTimeout, IJobCausalLoggingManager causalLog, IRecoveryManager recoveryManager) {
+		StreamEdge edge,
+		int outputIndex,
+		Environment environment,
+		String taskName,
+		long bufferTimeout, EpochProvider epochProvider,IJobCausalLog causalLog, IRecoveryManager recoveryManager) {
 		@SuppressWarnings("unchecked")
 		StreamPartitioner<OUT> outputPartitioner = (StreamPartitioner<OUT>) edge.getPartitioner();
 
@@ -1366,7 +1374,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		}
 
 		StreamRecordWriter<SerializationDelegate<StreamRecord<OUT>>> output =
-			new StreamRecordWriter<>(bufferWriter, outputPartitioner, bufferTimeout, taskName, new CausalRandomService(causalLog, recoveryManager));
+			new StreamRecordWriter<>(bufferWriter, outputPartitioner, bufferTimeout, taskName, new CausalRandomService(epochProvider, causalLog, recoveryManager));
 		output.setMetricGroup(environment.getMetricGroup().getIOMetricGroup());
 		return output;
 	}

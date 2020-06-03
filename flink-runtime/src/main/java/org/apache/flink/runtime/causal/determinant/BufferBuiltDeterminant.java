@@ -30,36 +30,25 @@ import org.apache.flink.runtime.io.network.partition.PipelinedSubpartition;
 import org.apache.flink.runtime.io.network.partition.ResultSubpartition;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 
-public class BufferBuiltDeterminant extends NonMainThreadDeterminant{
+public class BufferBuiltDeterminant extends Determinant{
 
 
-	private IntermediateDataSetID intermediateDataSetID;
-	private byte subpartitionIndex;
 	private int numberOfBytes;
 
-	public BufferBuiltDeterminant(IntermediateDataSetID intermediateDataSetID, byte subpartitionIndex, int numberOfBytes) {
-		this.intermediateDataSetID = intermediateDataSetID;
-		this.subpartitionIndex = subpartitionIndex;
+	public BufferBuiltDeterminant( int numberOfBytes) {
 		this.numberOfBytes = numberOfBytes;
 	}
 
 
-	public IntermediateDataSetID getIntermediateDataSetID() {
-		return intermediateDataSetID;
-	}
-
-	public byte getSubpartitionIndex() {
-		return subpartitionIndex;
-	}
 
 	public int getNumberOfBytes(){
 		return numberOfBytes;
 	}
 
-	@Override
-	public void process(RecoveryManager recoveryManager) {
-		ResultSubpartition subpartition = recoveryManager.getRecordWriterByIntermediateDataSetID(intermediateDataSetID).getResultPartition().getResultSubpartitions()[subpartitionIndex];
-		//We know it is a PipelinedSubpartition for sure.
-		((PipelinedSubpartition)subpartition).buildAndLogBuffer(numberOfBytes);
-	}
+	//@Override
+	//public void process(RecoveryManager recoveryManager) {
+	//	ResultSubpartition subpartition = recoveryManager.getRecordWriterByIntermediateDataSetID(intermediateDataSetID).getResultPartition().getResultSubpartitions()[subpartitionIndex];
+	//	//We know it is a PipelinedSubpartition for sure.
+	//	((PipelinedSubpartition)subpartition).buildAndLogBuffer(numberOfBytes);
+	//}
 }

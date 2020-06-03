@@ -78,6 +78,21 @@ public class NettyConfig {
 			.withDescription("The Netty send and receive buffer size. This defaults to the system buffer size" +
 				" (cat /proc/sys/net/ipv4/tcp_[rw]mem) and is 4 MiB in modern Linux.");
 
+	public static final ConfigOption<Float> DETERMINANT_MEMORY_STEAL = ConfigOptions
+		.key("taskmanager.network.netty.determinantMemorySteal")
+		.defaultValue(0.2f)
+		.withDescription("The percentage of determinant memory to steal from sendReceive memory");
+
+	public static final ConfigOption<Integer> DETERMINANT_BUFFER_SIZE = ConfigOptions
+		.key("taskmanager.network.netty.determinantBufferSize")
+		.defaultValue(16384) // default: 0 => Netty's default
+		.withDescription("The Netty buffer size for determinants");
+	public static final ConfigOption<Integer> DETERMINANT_BUFFERS_PER_TASK = ConfigOptions
+		.key("taskmanager.network.netty.determinantBuffersPerTask")
+		.defaultValue(500)
+		.withDescription("Number of buffers to give any single task.");
+
+
 	public static final ConfigOption<String> TRANSPORT_TYPE = ConfigOptions
 			.key("taskmanager.network.netty.transport")
 			.defaultValue("nio")
@@ -167,6 +182,19 @@ public class NettyConfig {
 		// default: number of task slots
 		final int configValue = config.getInteger(NUM_THREADS_CLIENT);
 		return configValue == -1 ? numberOfSlots : configValue;
+	}
+
+
+	public float getDeterminantMemorySteal(){
+		return config.getFloat(DETERMINANT_MEMORY_STEAL);
+	}
+
+	public int getDeterminantBufferSize(){
+		return config.getInteger(DETERMINANT_BUFFER_SIZE);
+	}
+
+	public int getNumDeterminantBuffersPerTask(){
+		return config.getInteger(DETERMINANT_BUFFERS_PER_TASK);
 	}
 
 	public int getClientConnectTimeoutSeconds() {

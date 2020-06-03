@@ -19,6 +19,7 @@ package org.apache.flink.runtime.causal.determinant;
 
 
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
+import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 import org.apache.flink.util.AbstractID;
 
 import java.nio.ByteBuffer;
@@ -40,22 +41,22 @@ public class SimpleDeterminantEncodingStrategy implements DeterminantEncodingStr
 	}
 
 
-	@Override
-	public List<Determinant> decode(byte[] determinants) {
-		List<Determinant> result = new LinkedList<>();
-		ByteBuffer b = ByteBuffer.wrap(determinants);
+	//@Override
+	//public List<Determinant> decode(byte[] determinants) {
+	//	List<Determinant> result = new LinkedList<>();
+	//	ByteBuffer b = ByteBuffer.wrap(determinants);
 
-		while (b.hasRemaining()) {
-			result.add(decodeNext(b));
-		}
-		return result;
-	}
+	//	while (b.hasRemaining()) {
+	//		result.add(decodeNext(b));
+	//	}
+	//	return result;
+	//}
 
 	@Override
-	public Determinant decodeNext(ByteBuffer b) {
-		if(!b.hasRemaining())
+	public Determinant decodeNext(ByteBuf b) {
+		if(!b.isReadable())
 			return null;
-		byte tag = b.get();
+		byte tag = b.readByte();
 		if (tag == Determinant.ORDER_DETERMINANT_TAG) return decodeOrderDeterminant(b);
 		if (tag == Determinant.RANDOMEMIT_DETERMINANT_TAG) return decodeRandomEmitDeterminant(b);
 		if (tag == Determinant.TIMESTAMP_DETERMINANT_TAG) return decodeTimestampDeterminant(b);
@@ -64,19 +65,19 @@ public class SimpleDeterminantEncodingStrategy implements DeterminantEncodingStr
 		throw new CorruptDeterminantArrayException();
 	}
 
-	private Determinant decodeOrderDeterminant(ByteBuffer b) {
-		return new OrderDeterminant(b.get());
+	private Determinant decodeOrderDeterminant(ByteBuf b) {
+		return new OrderDeterminant(b.readByte());
 	}
 
 	private byte[] encodeOrderDeterminant(OrderDeterminant orderDeterminant) {
 		byte[] bytes = new byte[2];
-		//bytes[0] = Determinant.ORDER_DETERMINANT_TAG;
+		bytes[0] = Determinant.ORDER_DETERMINANT_TAG;
 		bytes[1] = orderDeterminant.getChannel();
 		return bytes;
 	}
 
-	private Determinant decodeTimestampDeterminant(ByteBuffer b) {
-		return new TimestampDeterminant(b.getLong());
+	private Determinant decodeTimestampDeterminant(ByteBuf b) {
+		return new TimestampDeterminant(b.readLong());
 	}
 
 	private byte[] encodeTimestampDeterminant(TimestampDeterminant timestampDeterminant) {
@@ -87,8 +88,8 @@ public class SimpleDeterminantEncodingStrategy implements DeterminantEncodingStr
 		return b.array();
 	}
 
-	private Determinant decodeRandomEmitDeterminant(ByteBuffer b) {
-		return new RandomEmitDeterminant(b.get());
+	private Determinant decodeRandomEmitDeterminant(ByteBuf b) {
+		return new RandomEmitDeterminant(b.readByte());
 	}
 
 	private byte[] encodeRandomEmitDeterminant(RandomEmitDeterminant randomEmitDeterminant) {
@@ -98,8 +99,8 @@ public class SimpleDeterminantEncodingStrategy implements DeterminantEncodingStr
 		return bytes;
 	}
 
-	private Determinant decodeRNGDeterminant(ByteBuffer b) {
-		return new RNGDeterminant(b.getInt());
+	private Determinant decodeRNGDeterminant(ByteBuf b) {
+		return new RNGDeterminant(b.readInt());
 	}
 
 	private byte[] encodeRNGDeterminant(RNGDeterminant rngDeterminant) {
@@ -109,21 +110,15 @@ public class SimpleDeterminantEncodingStrategy implements DeterminantEncodingStr
 		b.putInt(rngDeterminant.getNumber());
 		return b.array();
 	}
-	private Determinant decodeBufferBuiltDeterminant(ByteBuffer b) {
-		long upper = b.getLong();
-		long lower = b.getLong();
-		byte index = b.get();
-		int bytes = b.getInt();
-		return new BufferBuiltDeterminant(new IntermediateDataSetID(new AbstractID(lower, upper)), index, bytes);
+	private Determinant decodeBufferBuiltDeterminant(ByteBuf b) {
+		int bytes = b.readInt();
+		return new BufferBuiltDeterminant(bytes);
 	}
 
 	private byte[] encodeBufferBuiltDeterminant(BufferBuiltDeterminant asBufferBuiltDeterminant) {
-		byte[] bytes = new byte[1 + 2 * Long.BYTES + 1 + Integer.BYTES];
+		byte[] bytes = new byte[1 + Integer.BYTES];
 		ByteBuffer b = ByteBuffer.wrap(bytes);
 		b.put(Determinant.BUFFER_BUILT_TAG);
-		b.putLong(asBufferBuiltDeterminant.getIntermediateDataSetID().getUpperPart());
-		b.putLong(asBufferBuiltDeterminant.getIntermediateDataSetID().getLowerPart());
-		b.put(asBufferBuiltDeterminant.getSubpartitionIndex());
 		b.putInt(asBufferBuiltDeterminant.getNumberOfBytes());
 		return b.array();
 

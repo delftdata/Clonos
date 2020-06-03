@@ -28,7 +28,10 @@ package org.apache.flink.runtime.causal.recovery;
 import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
+import org.apache.flink.runtime.io.network.partition.consumer.RemoteInputChannel;
+import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
+import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -40,41 +43,46 @@ public class WaitingConnectionsState extends AbstractState{
 	private static final Logger LOG = LoggerFactory.getLogger(WaitingConnectionsState.class);
 	Boolean[] inputChannelsReestablishmentStatus;
 
-	Map<IntermediateDataSetID, Boolean[]> outputChannelsReestablishmentStatus;
+	Map<IntermediateResultPartitionID, Boolean[]> outputChannelsReestablishmentStatus;
 
 
 	public WaitingConnectionsState(RecoveryManager context) {
 		super(context);
 
-		inputChannelsReestablishmentStatus = new Boolean[context.inputGate.getNumberOfInputChannels()];
-		Arrays.fill(inputChannelsReestablishmentStatus, Boolean.FALSE);
-
+		inputChannelsReestablishmentStatus = new Boolean[0];
 		outputChannelsReestablishmentStatus = new HashMap<>();
-		for(RecordWriter recordWriter :context.recordWriters) {
-			Boolean[] array = new Boolean[recordWriter.getResultPartition().getNumberOfSubpartitions()];
-			Arrays.fill(array,Boolean.FALSE);
-			outputChannelsReestablishmentStatus.put(recordWriter.getResultPartition().getIntermediateDataSetID(), array);
+
+		if(context.vertexGraphInformation.hasUpstream()) {
+			inputChannelsReestablishmentStatus = new Boolean[context.inputGate.getNumberOfInputChannels()];
+			Arrays.fill(inputChannelsReestablishmentStatus, Boolean.FALSE);
 		}
 
-
+		if(context.vertexGraphInformation.hasDownstream()) {
+			for (RecordWriter recordWriter : context.recordWriters) {
+				Boolean[] array = new Boolean[recordWriter.getResultPartition().getNumberOfSubpartitions()];
+				Arrays.fill(array, Boolean.FALSE);
+				outputChannelsReestablishmentStatus.put(recordWriter.getResultPartition().getPartitionId().getPartitionId(), array);
+			}
+		}
 
 		LOG.info("Waiting for new connections!");
 	}
 
 
 	@Override
-	public void notifyNewInputChannel(InputGate gate, int channelIndex, int numberOfBuffersRemoved) {
-		LOG.info("Got Notified of new input channel for gate {}, index {}.", gate, channelIndex);
-		inputChannelsReestablishmentStatus[context.inputGate.getAbsoluteChannelIndex(gate, channelIndex)] = Boolean.TRUE;
-
+	public void notifyNewInputChannel(RemoteInputChannel inputChannel, int consumedSubpartitionIndex, int numberOfBuffersRemoved) {
+		LOG.info("Got Notified of new input channel {}, consuming index {} and having to skip {} buffers.", inputChannel, consumedSubpartitionIndex, numberOfBuffersRemoved);
+		SingleInputGate singleInputGate = inputChannel.getInputGate();
+		int channelIndex = inputChannel.getChannelIndex();
+		inputChannelsReestablishmentStatus[context.inputGate.getAbsoluteChannelIndex(singleInputGate, channelIndex)] = Boolean.TRUE;
 		checkConnectionsComplete();
 	}
 
 
 	@Override
-	public void notifyNewOutputChannel(IntermediateDataSetID intermediateDataSetID, int subpartitionIndex){
-		LOG.info("Got Notified of new output channel for intermediateDataSet {} index {}.", intermediateDataSetID, subpartitionIndex);
-		outputChannelsReestablishmentStatus.get(intermediateDataSetID)[subpartitionIndex] = true;
+	public void notifyNewOutputChannel(IntermediateResultPartitionID intermediateResultPartitionID, int subpartitionIndex){
+		LOG.info("Got Notified of new output channel for intermediateResultPartition {} index {}.", intermediateResultPartitionID, subpartitionIndex);
+		outputChannelsReestablishmentStatus.get(intermediateResultPartitionID)[subpartitionIndex] = true;
 		checkConnectionsComplete();
 	}
 

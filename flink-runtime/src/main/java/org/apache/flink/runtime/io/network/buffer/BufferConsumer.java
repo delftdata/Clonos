@@ -103,12 +103,12 @@ public class BufferConsumer implements Closeable {
 	public Buffer build(int size) {
 		writerPosition.update();
 		checkState(writerPosition.getCached() - currentReaderPosition >= size);
-		LOG.debug("Build buffer of size {} with writerPosition: {}, readerPosition: {}", size, writerPosition.getCached(), currentReaderPosition);
+		LOG.info("Build buffer of size {} with writerPosition: {}, readerPosition: {}", size, writerPosition.getCached(), currentReaderPosition);
 
 		Buffer slice = buffer.readOnlySlice(currentReaderPosition, size);
 
 		currentReaderPosition += size;
-		LOG.debug("Build buffer {} (memorySegment hash: {}): writerPosition after: {}, readerPosition after: {}", slice, System.identityHashCode(slice.getMemorySegment()), writerPosition.getCached(), currentReaderPosition);
+		LOG.info("Build buffer {} (memorySegment hash: {}): writerPosition after: {}, readerPosition after: {}", slice, System.identityHashCode(slice.getMemorySegment()), writerPosition.getCached(), currentReaderPosition);
 		return slice.retainBuffer();
 	}
 
@@ -141,6 +141,11 @@ public class BufferConsumer implements Closeable {
 
 	public int getWrittenBytes() {
 		return writerPosition.getCached();
+	}
+
+	public int getUnreadBytes() {
+		writerPosition.update();
+		return writerPosition.getCached() - currentReaderPosition;
 	}
 
 	/**

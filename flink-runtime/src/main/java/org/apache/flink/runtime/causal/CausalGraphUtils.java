@@ -36,7 +36,7 @@ import java.util.stream.IntStream;
 
 public class CausalGraphUtils {
 
-	public static VertexId computeVertexId(List<JobVertex> sortedJobVertexes, JobVertexID jobVertexID, int subtaskIndex) {
+	public static VertexID computeVertexId(List<JobVertex> sortedJobVertexes, JobVertexID jobVertexID, int subtaskIndex) {
 		short idCounter = 0;
 		for (JobVertex jobVertex : sortedJobVertexes) {
 			if (jobVertex.getID().equals(jobVertexID)) {
@@ -45,37 +45,23 @@ public class CausalGraphUtils {
 			}
 			idCounter += jobVertex.getParallelism();
 		}
-		return new VertexId(idCounter);
+		return new VertexID(idCounter);
 	}
 
-	private static JobVertex fromSortedList(List<JobVertex> sortedJobVertexes, JobVertexID jobVertexID) {
+	public static JobVertex fromSortedList(List<JobVertex> sortedJobVertexes, JobVertexID jobVertexID) {
 		Map<JobVertexID, JobVertex> map = sortedJobVertexes.stream().collect(Collectors.toMap(JobVertex::getID, jobVertex -> jobVertex));
 		return map.get(jobVertexID);
 	}
 
-	private static List<VertexId> toVertexIdList(List<JobVertex> sortedList, List<JobVertex> jobVertexesToCompute) {
+	private static List<VertexID> toVertexIdList(List<JobVertex> sortedList, List<JobVertex> jobVertexesToCompute) {
 		return jobVertexesToCompute.stream().flatMap(v -> IntStream.range(0, v.getParallelism()).boxed().map(i -> computeVertexId(sortedList, v.getID(), i))).collect(Collectors.toList());
 	}
 
-	public static List<VertexId> getUpstreamVertexIds(List<JobVertex> sortedJobVertexes, JobVertexID jobVertexID) {
-		JobVertex target = fromSortedList(sortedJobVertexes, jobVertexID);
-
-		List<JobVertex> upstreamVertexes = new LinkedList<>();
-		Deque<JobVertex> unexplored = target.getInputs().stream().map(je -> je.getSource().getProducer()).distinct().collect(Collectors.toCollection(ArrayDeque::new));
-
-		while (!unexplored.isEmpty()) {
-			JobVertex toExplore = unexplored.pop();
-			upstreamVertexes.add(toExplore);
-
-			toExplore.getInputs().forEach(jobEdge -> unexplored.add(jobEdge.getSource().getProducer()));
-		}
-
-		upstreamVertexes = upstreamVertexes.stream().distinct().collect(Collectors.toList());
-
-		return toVertexIdList(sortedJobVertexes, upstreamVertexes);
+	public static List<VertexID> getUpstreamVertexIds(List<JobVertex> sortedJobVertexes, JobVertexID jobVertexID) {
+		return toVertexIdList(sortedJobVertexes, computeUpstreamJobVertexes(sortedJobVertexes, jobVertexID));
 	}
 
-	public static List<VertexId> getDownstreamVertexIds(List<JobVertex> sortedJobVertexes, JobVertexID jobVertexID) {
+	public static List<VertexID> getDownstreamVertexIds(List<JobVertex> sortedJobVertexes, JobVertexID jobVertexID) {
 		JobVertex target = fromSortedList(sortedJobVertexes, jobVertexID);
 
 		List<JobVertex> downstreamVertexes = new LinkedList<>();
@@ -93,9 +79,37 @@ public class CausalGraphUtils {
 		return toVertexIdList(sortedJobVertexes, downstreamVertexes);
 	}
 
+
 	public static int getNumberOfDirectDownstreamNeighbours(List<JobVertex> sortedJobVertexes, JobVertexID jobVertexID){
 		JobVertex target = fromSortedList(sortedJobVertexes, jobVertexID);
 
 		return target.getProducedDataSets().stream().map(IntermediateDataSet::getConsumers).flatMap(je -> je.stream().map(JobEdge::getTarget)).distinct().mapToInt(JobVertex::getParallelism).sum();
+	}
+
+	public static List<JobVertex> computeUpstreamJobVertexes(List<JobVertex> sortedJobVertexes, JobVertexID jobVertexID){
+		JobVertex target = fromSortedList(sortedJobVertexes, jobVertexID);
+
+		List<JobVertex> upstreamVertexes = new LinkedList<>();
+		Deque<JobVertex> unexplored = target.getInputs().stream().map(je -> je.getSource().getProducer()).distinct().collect(Collectors.toCollection(ArrayDeque::new));
+
+		while (!unexplored.isEmpty()) {
+			JobVertex toExplore = unexplored.pop();
+			upstreamVertexes.add(toExplore);
+
+			toExplore.getInputs().forEach(jobEdge -> unexplored.add(jobEdge.getSource().getProducer()));
+		}
+
+		return upstreamVertexes.stream().distinct().collect(Collectors.toList());
+	}
+
+    public static List<JobVertex> computeNonDirectlyUpstreamJobVertexes(List<JobVertex> sortedJobVertexes, JobVertexID jobVertexID) {
+		List<JobVertex> upstream = computeUpstreamJobVertexes(sortedJobVertexes, jobVertexID);
+		upstream.removeAll(computeDirectlyUpstreamJobVertexes(sortedJobVertexes, jobVertexID));
+		return upstream;
+    }
+
+	public static List<JobVertex> computeDirectlyUpstreamJobVertexes(List<JobVertex> sortedJobVertexes, JobVertexID jobVertexID) {
+		JobVertex target = fromSortedList(sortedJobVertexes, jobVertexID);
+		return target.getInputs().stream().map(x -> x.getSource().getProducer()).distinct().collect(Collectors.toList());
 	}
 }

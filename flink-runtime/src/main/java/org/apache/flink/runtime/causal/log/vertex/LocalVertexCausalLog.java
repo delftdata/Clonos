@@ -23,45 +23,22 @@
  *
  */
 
-package org.apache.flink.runtime.causal.log;
+package org.apache.flink.runtime.causal.log.vertex;
 
-import org.apache.flink.runtime.causal.VertexId;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
-import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
+import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
+import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 
-public class LocalSegmentedCausalLog implements LocalCausalLog{
+public interface LocalVertexCausalLog extends VertexCausalLog {
 
-	public LocalSegmentedCausalLog(VertexId vertexId){
+	/**
+	 * Appends the provided determinants to the  log.
+	 * @param determinants to append
+	 */
+	void appendDeterminants(byte[] determinants, long checkpointID);
 
-	}
+	void appendSubpartitionDeterminants(byte[] determinants, long checkpointID, IntermediateResultPartitionID intermediateResultPartitionID, int subpartitionIndex);
 
-	@Override
-	public void appendDeterminants(byte[] determinants, long checkpointID) {
+	VertexCausalLogDelta getDeterminants(InputChannelID inputChannelID);
 
-	}
-
-	@Override
-	public void registerDownstreamConsumer(InputChannelID inputChannelID) {
-
-	}
-
-	@Override
-	public ByteBuf getDeterminants() {
-		return null;
-	}
-
-	@Override
-	public CausalLogDelta getNextDeterminantsForDownstream(InputChannelID consumer, long checkpointID) {
-		return null;
-	}
-
-	@Override
-	public void unregisterDownstreamConsumer(InputChannelID toCancel) {
-
-	}
-
-	@Override
-	public void notifyCheckpointComplete(long checkpointId) throws Exception {
-
-	}
 }

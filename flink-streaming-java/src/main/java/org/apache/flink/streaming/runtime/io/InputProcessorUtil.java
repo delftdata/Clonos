@@ -66,6 +66,6 @@ public class InputProcessorUtil {
 			barrierHandler.registerCheckpointEventHandler(checkpointedTask);
 		}
 
-		return new CausalBufferHandler(checkpointedTask.getJobCausalLoggingManager(), checkpointedTask.getRecoveryManager(), barrierHandler, inputGate.getNumberOfInputChannels());
+		return new CausalBufferHandler(checkpointedTask, checkpointedTask.getJobCausalLog(), checkpointedTask.getRecoveryManager(), barrierHandler, inputGate.getNumberOfInputChannels());
 	}
 }

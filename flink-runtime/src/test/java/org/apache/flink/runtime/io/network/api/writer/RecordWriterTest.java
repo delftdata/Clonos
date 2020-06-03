@@ -417,10 +417,6 @@ public class RecordWriterTest {
 
 		}
 
-		@Override
-		public IntermediateDataSetID getIntermediateDataSetID() {
-			return null;
-		}
 
 		@Override
 		public BufferProvider getBufferProvider() {
@@ -497,11 +493,6 @@ public class RecordWriterTest {
 		@Override
 		public void notifyCheckpointComplete(long checkpointId) {
 
-		}
-
-		@Override
-		public IntermediateDataSetID getIntermediateDataSetID() {
-			return null;
 		}
 
 		@Override

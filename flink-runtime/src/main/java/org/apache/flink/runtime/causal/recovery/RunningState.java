@@ -26,7 +26,7 @@
 package org.apache.flink.runtime.causal.recovery;
 
 import org.apache.flink.runtime.causal.DeterminantResponseEvent;
-import org.apache.flink.runtime.causal.VertexId;
+import org.apache.flink.runtime.causal.VertexID;
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
 import org.apache.flink.runtime.io.network.api.DeterminantRequestEvent;
 import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
@@ -47,7 +47,7 @@ public class RunningState extends AbstractState {
 		super(context);
 		while (!context.unansweredInFlighLogRequests.isEmpty()) {
 			InFlightLogRequestEvent req = context.unansweredInFlighLogRequests.poll();
-			RecordWriter rw = context.intermediateDataSetIDToRecordWriter.get(req.getIntermediateDataSetID());
+			RecordWriter rw = context.intermediateResultPartitionIDRecordWriterMap.get(req.getIntermediateResultPartitionID());
 			PipelinedSubpartition subpartitionRequested = ((PipelinedSubpartition)rw.getResultPartition().getResultSubpartitions()[req.getSubpartitionIndex()]);
 			subpartitionRequested.requestReplay(req.getCheckpointId(), req.getNumberOfBuffersToSkip());
 		}
@@ -56,9 +56,9 @@ public class RunningState extends AbstractState {
 	@Override
 	public void notifyInFlightLogRequestEvent(InFlightLogRequestEvent e) {
 		LOG.info("Received an InflightLogRequest {}", e);
-		RecordWriter rw = context.intermediateDataSetIDToRecordWriter.get(e.getIntermediateDataSetID());
+		RecordWriter rw = context.intermediateResultPartitionIDRecordWriterMap.get(e.getIntermediateResultPartitionID());
 		PipelinedSubpartition subpartitionRequested = ((PipelinedSubpartition)rw.getResultPartition().getResultSubpartitions()[e.getSubpartitionIndex()]);
-		LOG.info("Result partition intermedieateDataset to request replay from: {}", e.getIntermediateDataSetID());
+		LOG.info("intermediateResultPartition to request replay from: {}", e.getIntermediateResultPartitionID());
 		subpartitionRequested.requestReplay(e.getCheckpointId(), e.getNumberOfBuffersToSkip());
 	}
 
@@ -66,12 +66,13 @@ public class RunningState extends AbstractState {
 	public void notifyDeterminantRequestEvent(DeterminantRequestEvent e, int channelRequestArrivedFrom) {
 		LOG.info("Received a determinant request {} on channel {}", e, channelRequestArrivedFrom);
 		//Since we are in running state, we can simply reply
-		VertexId vertex = e.getFailedVertex();
+		VertexID vertex = e.getFailedVertex();
+
 		try {
 			//todo we cant just .array(). Fixing for tests to work
-			DeterminantResponseEvent responseEvent = new DeterminantResponseEvent(vertex, context.jobCausalLoggingManager.getDeterminantsOfVertex(vertex).array());
+			DeterminantResponseEvent responseEvent = new DeterminantResponseEvent(context.jobCausalLog.getDeterminantsOfVertex(vertex));
 			LOG.info("Responding with: {}", responseEvent);
-			context.inputGate.sendTaskEvent(responseEvent);
+			context.inputGate.getInputChannel(channelRequestArrivedFrom).sendTaskEvent(responseEvent);
 		} catch (IOException | InterruptedException ex) {
 			ex.printStackTrace();
 		}

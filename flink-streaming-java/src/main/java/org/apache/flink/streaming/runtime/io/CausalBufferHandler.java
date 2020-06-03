@@ -17,7 +17,8 @@
  */
 package org.apache.flink.streaming.runtime.io;
 
-import org.apache.flink.runtime.causal.log.IJobCausalLoggingManager;
+import org.apache.flink.runtime.causal.EpochProvider;
+import org.apache.flink.runtime.causal.log.job.IJobCausalLog;
 import org.apache.flink.runtime.causal.determinant.OrderDeterminant;
 import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 import org.apache.flink.runtime.event.AbstractEvent;
@@ -35,8 +36,9 @@ public class CausalBufferHandler implements CheckpointBarrierHandler {
 
 	private static final Logger LOG = LoggerFactory.getLogger(CausalBufferHandler.class);
 	private final IRecoveryManager recoveryManager;
+	private final EpochProvider epochProvider;
 
-	private IJobCausalLoggingManager causalLoggingManager;
+	private IJobCausalLog causalLoggingManager;
 
 	private Queue<BufferOrEvent>[] bufferedBuffersPerChannel;
 
@@ -45,7 +47,8 @@ public class CausalBufferHandler implements CheckpointBarrierHandler {
 	//This is just to reduce the complexity of going over bufferedBuffersPerChannel
 	private int numUnprocessedBuffers;
 
-	public CausalBufferHandler(IJobCausalLoggingManager causalLoggingManager, IRecoveryManager recoveryManager, CheckpointBarrierHandler wrapped, int numInputChannels) {
+	public CausalBufferHandler(EpochProvider epochProvider, IJobCausalLog causalLoggingManager, IRecoveryManager recoveryManager, CheckpointBarrierHandler wrapped, int numInputChannels) {
+		this.epochProvider = epochProvider;
 		this.causalLoggingManager = causalLoggingManager;
 		this.recoveryManager = recoveryManager;
 		this.wrapped = wrapped;
@@ -96,7 +99,7 @@ public class CausalBufferHandler implements CheckpointBarrierHandler {
 				}
 			}
 		}
-		causalLoggingManager.appendDeterminant(new OrderDeterminant((byte) toReturn.getChannelIndex()));
+		causalLoggingManager.appendDeterminant(new OrderDeterminant((byte) toReturn.getChannelIndex()), epochProvider.getCurrentEpochID());
 		return toReturn;
 	}
 

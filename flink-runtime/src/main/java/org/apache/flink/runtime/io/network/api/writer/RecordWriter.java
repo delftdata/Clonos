@@ -138,7 +138,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 
 	protected void sendToTarget(T record, int targetChannel) throws IOException, InterruptedException {
 		RecordSerializer<T> serializer = serializers[targetChannel];
-		LOG.info("RecordWriter send to target");
+		LOG.debug("RecordWriter send to target");
 
 		SerializationResult result = serializer.addRecord(record);
 

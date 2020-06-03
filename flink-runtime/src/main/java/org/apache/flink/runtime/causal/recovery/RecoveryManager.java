@@ -25,15 +25,18 @@
 
 package org.apache.flink.runtime.causal.recovery;
 
-import org.apache.flink.runtime.causal.log.JobCausalLoggingManager;
+import org.apache.flink.runtime.causal.EpochProvider;
+import org.apache.flink.runtime.causal.log.job.JobCausalLog;
 import org.apache.flink.runtime.causal.DeterminantResponseEvent;
 import org.apache.flink.runtime.causal.VertexGraphInformation;
-import org.apache.flink.runtime.causal.VertexId;
+import org.apache.flink.runtime.causal.VertexID;
+import org.apache.flink.runtime.causal.log.vertex.VertexCausalLogDelta;
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
 import org.apache.flink.runtime.io.network.api.DeterminantRequestEvent;
 import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
-import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
+import org.apache.flink.runtime.io.network.partition.consumer.RemoteInputChannel;
+import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -46,9 +49,9 @@ public class RecoveryManager implements IRecoveryManager{
 
 	final VertexGraphInformation vertexGraphInformation;
 	final CompletableFuture<Void> readyToReplayFuture;
-	final JobCausalLoggingManager jobCausalLoggingManager;
+	final JobCausalLog jobCausalLog;
 
-	final Map<VertexId, UnansweredDeterminantRequest> unansweredDeterminantRequests;
+	final Map<VertexID, UnansweredDeterminantRequest> unansweredDeterminantRequests;
 
 	final Queue<InFlightLogRequestEvent> unansweredInFlighLogRequests;
 
@@ -60,8 +63,9 @@ public class RecoveryManager implements IRecoveryManager{
 
 	long finalRestoredCheckpointId;
 
-	Map<IntermediateDataSetID, RecordWriter> intermediateDataSetIDToRecordWriter;
+	Map<IntermediateResultPartitionID, RecordWriter> intermediateResultPartitionIDRecordWriterMap;
 
+	EpochProvider epochProvider;
 
 	public static final SinkRecoveryStrategy sinkRecoveryStrategy = SinkRecoveryStrategy.TRANSACTIONAL;
 
@@ -70,8 +74,8 @@ public class RecoveryManager implements IRecoveryManager{
 		KAFKA
 	}
 
-	public RecoveryManager(JobCausalLoggingManager jobCausalLoggingManager, CompletableFuture<Void> readyToReplayFuture, VertexGraphInformation vertexGraphInformation) {
-		this.jobCausalLoggingManager = jobCausalLoggingManager;
+	public RecoveryManager(EpochProvider epochProvider, JobCausalLog jobCausalLog, CompletableFuture<Void> readyToReplayFuture, VertexGraphInformation vertexGraphInformation) {
+		this.jobCausalLog = jobCausalLog;
 		this.readyToReplayFuture = readyToReplayFuture;
 		this.vertexGraphInformation = vertexGraphInformation;
 
@@ -86,14 +90,18 @@ public class RecoveryManager implements IRecoveryManager{
 
 		LOG.info("Starting recovery manager in state {}", currentState);
 
-		this.intermediateDataSetIDToRecordWriter = new HashMap<>();
+		this.intermediateResultPartitionIDRecordWriterMap = new HashMap<>();
+
+		this.epochProvider = epochProvider;
 	}
 
 	public void setRecordWriters(List<RecordWriter> recordWriters) {
 		this.recordWriters = recordWriters;
 
 		for(RecordWriter recordWriter : recordWriters){
-			this.intermediateDataSetIDToRecordWriter.put(recordWriter.getResultPartition().getIntermediateDataSetID(), recordWriter);
+			IntermediateResultPartitionID intermediateResultPartitionID = recordWriter.getResultPartition().getPartitionId().getPartitionId();
+			LOG.info("Registering a record writer with intermediateResultPartition {}", intermediateResultPartitionID);
+			this.intermediateResultPartitionIDRecordWriterMap.put(intermediateResultPartitionID, recordWriter);
 		}
 	}
 
@@ -130,13 +138,13 @@ public class RecoveryManager implements IRecoveryManager{
 
 
 	@Override
-	public synchronized void notifyNewChannel(InputGate gate, int channelIndex, int numberOfBuffersRemoved) {
-		this.currentState.notifyNewInputChannel(gate, channelIndex, numberOfBuffersRemoved);
+	public synchronized void notifyNewChannel(RemoteInputChannel inputChannel, int consumedSupartitionIndex, int numberBuffersRemoved) {
+		this.currentState.notifyNewInputChannel(inputChannel, consumedSupartitionIndex, numberBuffersRemoved);
 	}
 
 	@Override
-	public synchronized void notifyNewOutputChannel(IntermediateDataSetID intermediateDataSetID, int index) {
-		this.currentState.notifyNewOutputChannel(intermediateDataSetID, index);
+	public synchronized void notifyNewOutputChannel(IntermediateResultPartitionID intermediateResultPartitionID, int index) {
+		this.currentState.notifyNewOutputChannel(intermediateResultPartitionID, index);
 	}
 
 	@Override
@@ -153,18 +161,11 @@ public class RecoveryManager implements IRecoveryManager{
 	//============== Check state ==========================
 	@Override
 	public boolean isRunning() {
-		//todo figure out a way to fix this spaghetti code
-		if(currentState instanceof ReplayingState && ((ReplayingState) currentState).isDone())
-			((ReplayingState) currentState).finish();
-
 		return currentState instanceof RunningState;
 	}
 
 	@Override
 	public boolean isReplaying() {
-		//todo figure out a way to fix this spaghetti code
-		if(currentState instanceof ReplayingState && ((ReplayingState) currentState).isDone())
-			((ReplayingState) currentState).finish();
 		return currentState instanceof ReplayingState;
 	}
 
@@ -200,34 +201,25 @@ public class RecoveryManager implements IRecoveryManager{
 	}
 
 	@Override
-	public RecordWriter getRecordWriterByIntermediateDataSetID(IntermediateDataSetID intermediateDataSetID) {
-		return intermediateDataSetIDToRecordWriter.get(intermediateDataSetID);
+	public RecordWriter getRecordWriterByIntermediateResultPartitionID(IntermediateResultPartitionID intermediateResultPartitionID) {
+		return intermediateResultPartitionIDRecordWriterMap.get(intermediateResultPartitionID);
 	}
 
 	public static class UnansweredDeterminantRequest {
 		private int numResponsesReceived;
-		byte[] determinants;
-		VertexId vertexId;
 		int requestingChannel;
+		VertexCausalLogDelta vertexCausalLogDelta;
 
-		public UnansweredDeterminantRequest(VertexId vertexId, int requestingChannel){
-			this.vertexId = vertexId;
-			this.determinants = new byte[0];
+		public UnansweredDeterminantRequest(VertexID vertexId, int requestingChannel){
 			this.numResponsesReceived = 0;
 			this.requestingChannel = requestingChannel;
+			this.vertexCausalLogDelta = new VertexCausalLogDelta();
 		}
 
 		public int getNumResponsesReceived() {
 			return numResponsesReceived;
 		}
 
-		public byte[] getDeterminants() {
-			return determinants;
-		}
-
-		public VertexId getVertexId() {
-			return vertexId;
-		}
 
 		public int getRequestingChannel() {
 			return requestingChannel;
@@ -237,8 +229,8 @@ public class RecoveryManager implements IRecoveryManager{
 			numResponsesReceived++;
 		}
 
-		public void setDeterminants(byte[] determinants) {
-			this.determinants = determinants;
+		public VertexCausalLogDelta getVertexCausalLogDelta() {
+			return vertexCausalLogDelta;
 		}
 	}
 

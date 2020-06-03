@@ -74,5 +74,4 @@ public interface ResultPartitionWriter {
 
 	void notifyCheckpointComplete(long checkpointId);
 
-    IntermediateDataSetID getIntermediateDataSetID();
 }

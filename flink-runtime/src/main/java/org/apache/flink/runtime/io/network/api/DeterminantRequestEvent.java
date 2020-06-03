@@ -19,27 +19,27 @@ package org.apache.flink.runtime.io.network.api;
 
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataOutputView;
-import org.apache.flink.runtime.causal.VertexId;
+import org.apache.flink.runtime.causal.VertexID;
 import org.apache.flink.runtime.event.AbstractEvent;
 
 import java.io.IOException;
 
 public class DeterminantRequestEvent extends AbstractEvent {
 
-	private VertexId failedVertex;
+	private VertexID failedVertex;
 
-	public DeterminantRequestEvent(VertexId failedVertex) {
+	public DeterminantRequestEvent(VertexID failedVertex) {
 		this.failedVertex = failedVertex;
 	}
 
 	public DeterminantRequestEvent() {
 	}
 
-	public VertexId getFailedVertex() {
+	public VertexID getFailedVertex() {
 		return failedVertex;
 	}
 
-	public void setFailedVertex(VertexId failedVertex) {
+	public void setFailedVertex(VertexID failedVertex) {
 		this.failedVertex = failedVertex;
 	}
 
@@ -50,7 +50,7 @@ public class DeterminantRequestEvent extends AbstractEvent {
 
 	@Override
 	public void read(DataInputView in) throws IOException {
-		this.setFailedVertex(new VertexId(in.readShort()));
+		this.setFailedVertex(new VertexID(in.readShort()));
 	}
 
 	@Override

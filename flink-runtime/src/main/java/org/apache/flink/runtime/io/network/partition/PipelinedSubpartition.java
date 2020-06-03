@@ -18,7 +18,7 @@
 
 package org.apache.flink.runtime.io.network.partition;
 
-import org.apache.flink.runtime.causal.log.IJobCausalLoggingManager;
+import org.apache.flink.runtime.causal.log.job.IJobCausalLog;
 import org.apache.flink.runtime.causal.determinant.BufferBuiltDeterminant;
 import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 import org.apache.flink.runtime.inflightlogging.InFlightLog;
@@ -73,7 +73,8 @@ public class PipelinedSubpartition extends ResultSubpartition {
 	// ------------------------------------------------------------------------
 
 	private InFlightLog inFlightLog;
-	private IJobCausalLoggingManager causalLoggingManager;
+	private IJobCausalLog causalLoggingManager;
+	private IRecoveryManager recoveryManager;
 
 	private long nextCheckpointId;
 
@@ -87,8 +88,11 @@ public class PipelinedSubpartition extends ResultSubpartition {
 	private AtomicBoolean downstreamFailed;
 
 	private InFlightLogIterator<Buffer> inflightReplayIterator;
-	private IRecoveryManager recoveryManager;
-	private boolean logNext = true;
+	private boolean nextIsNotDeterminantRequest = true;
+
+	private long currentEpochID;
+
+	private AtomicBoolean isRecovering;
 
 	PipelinedSubpartition(int index, ResultPartition parent) {
 		super(index, parent);
@@ -97,13 +101,19 @@ public class PipelinedSubpartition extends ResultSubpartition {
 		this.checkpointIds = new LinkedList<>();
 		this.nextCheckpointId = -1L;
 		this.downstreamFailed = new AtomicBoolean(false);
+		this.currentEpochID = 0L;
+		this.isRecovering = new AtomicBoolean(false);
 	}
+
+	public void setIsRecovering(boolean isRecovering){
+		this.isRecovering.set(isRecovering);
+	}
+
 
 	public void setRecoveryManager(IRecoveryManager recoveryManager) {
 		this.recoveryManager = recoveryManager;
 	}
-
-	public void setCausalLoggingManager(IJobCausalLoggingManager causalLoggingManager) {
+	public void setCausalLoggingManager(IJobCausalLog causalLoggingManager) {
 		this.causalLoggingManager = causalLoggingManager;
 	}
 
@@ -115,6 +125,10 @@ public class PipelinedSubpartition extends ResultSubpartition {
 	public void notifyCheckpointComplete(long checkpointId) {
 		LOG.debug("PipelinedSubpartition notified of checkpoint {} completion", checkpointId);
 		this.inFlightLog.notifyCheckpointComplete(checkpointId);
+	}
+
+	public void setCurrentEpochID(long currentEpochID){
+		this.currentEpochID = currentEpochID;
 	}
 
 	@Override
@@ -129,7 +143,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 				return;
 			}
 			flushRequested = !buffers.isEmpty();
-			if (recoveryManager.isRunning())
+			if (!isRecovering.get())
 				notifyDataAvailable();
 		}
 	}
@@ -139,8 +153,8 @@ public class PipelinedSubpartition extends ResultSubpartition {
 			if (buffers.isEmpty()) {
 				return;
 			}
+			nextIsNotDeterminantRequest = false;
 			notifyDataAvailable();
-			logNext = false;
 		}
 	}
 
@@ -172,7 +186,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 				isFinished = true;
 				flush();
 			} else {
-				if (recoveryManager.isRunning())
+				if (!isRecovering.get())
 					maybeNotifyDataAvailable();
 			}
 		}
@@ -226,6 +240,11 @@ public class PipelinedSubpartition extends ResultSubpartition {
 			return null;
 		}
 
+		if (nextIsNotDeterminantRequest && isRecovering.get()){
+			LOG.info("WE ARE STILL REPLAYING STOP REQUESTING BUFFERS");
+			return null;
+		}
+
 		if (inflightReplayIterator != null) {
 			LOG.info("We are replaying, get inflight logs next buffer");
 			return getReplayedBuffer();
@@ -239,13 +258,15 @@ public class PipelinedSubpartition extends ResultSubpartition {
 		synchronized (buffers) {
 			Buffer buffer = inflightReplayIterator.next();
 
+			long epoch = inflightReplayIterator.getEpoch();
+
 			if (!inflightReplayIterator.hasNext())
 				inflightReplayIterator = null;
 
 			return new BufferAndBacklog(buffer,
 				inflightReplayIterator != null || isAvailableUnsafe(),
 				getBuffersInBacklog() + (inflightReplayIterator != null ? inflightReplayIterator.numberRemaining() : 0),
-				_recoveryNextBufferIsEvent(), inflightReplayIterator.getEpoch());
+				_recoveryNextBufferIsEvent(), epoch);
 		}
 	}
 
@@ -274,10 +295,9 @@ public class PipelinedSubpartition extends ResultSubpartition {
 				BufferConsumer bufferConsumer = buffers.peek();
 				checkpointId = checkpointIds.peek();
 
-				//I feel like these two statements should be synchornized on a lock.
+
 				buffer = bufferConsumer.build();
-				if (logNext)
-					causalLoggingManager.appendDeterminant(new BufferBuiltDeterminant(parent.getIntermediateDataSetID(), (byte) index, buffer.readableBytes()), checkpointId);
+
 
 
 				checkState(bufferConsumer.isFinished() || buffers.size() == 1,
@@ -297,6 +317,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 				if (buffer.readableBytes() > 0) {
 					break;
 				}
+
 				buffer.recycleBuffer();
 				buffer = null;
 				if (!bufferConsumer.isFinished()) {
@@ -308,17 +329,23 @@ public class PipelinedSubpartition extends ResultSubpartition {
 				return null;
 			}
 
+			if (nextIsNotDeterminantRequest)
+				causalLoggingManager.appendSubpartitionDeterminants(new BufferBuiltDeterminant(buffer.readableBytes()), currentEpochID, this.parent.getPartitionId().getPartitionId(), this.index);
 
 			LOG.debug("Done getting buffer from queue\n\tbuffers: {}\n\tcheckpo: {}", "[" + buffers.stream().map(x -> "*").collect(Collectors.joining(", ")) + "]", "[" + checkpointIds.stream().map(x -> x + "").collect(Collectors.joining(", ")) + "]");
 			updateStatistics(buffer);
 			BufferAndBacklog result;
-			if (logNext) {
+			LOG.info("Creating BufferAndBacklog with epochID {}, logNext {}", currentEpochID, nextIsNotDeterminantRequest);
+			if (nextIsNotDeterminantRequest) {
 				logBuffer(buffer, checkpointId);
-				result = new BufferAndBacklog(buffer, isAvailableUnsafe(), getBuffersInBacklog(), _nextBufferIsEvent());
+				result = new BufferAndBacklog(buffer, isAvailableUnsafe(), getBuffersInBacklog(), _nextBufferIsEvent(), currentEpochID);
 			} else {
-				result = new BufferAndBacklog(buffer, false, getBuffersInBacklog(), _nextBufferIsEvent());
-				logNext = true;
+				result = new BufferAndBacklog(buffer, false, getBuffersInBacklog(), _nextBufferIsEvent(), currentEpochID);
+				nextIsNotDeterminantRequest = true;
 			}
+			//We do this after the determinant and sending the BufferAndBacklog because a checkpoint x belongs to epoch x-1
+			if(checkpointId != -1L)
+				currentEpochID = checkpointId;
 			LOG.debug("POST LOG\n\tbuffers: {}\n\tcheckpo: {}", "[" + buffers.stream().map(x -> "*").collect(Collectors.joining(", ")) + "]", "[" + checkpointIds.stream().map(x -> x + "").collect(Collectors.joining(", ")) + "]");
 			// Do not report last remaining buffer on buffers as available to read (assuming it's unfinished).
 			// It will be reported for reading either on flush or when the number of buffers in the queue
@@ -375,10 +402,10 @@ public class PipelinedSubpartition extends ResultSubpartition {
 			}
 
 			//If we are recovering, when we conclude, we must notify of data availability.
-			if (!buffers.isEmpty() && recoveryManager.isRunning()) {
+			if (recoveryManager.isRunning()) {
 				notifyDataAvailable();
-			} else if (recoveryManager.isWaitingConnections()) {
-				recoveryManager.notifyNewOutputChannel(this.parent.getIntermediateDataSetID(), this.index);
+			} else {
+				recoveryManager.notifyNewOutputChannel(this.parent.getPartitionId().getPartitionId(), this.index);
 			}
 		}
 
@@ -466,50 +493,61 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 	public void buildAndLogBuffer(int bufferSize) {
 		LOG.info("building buffer and discarding result");
+		while(true) {
+			synchronized (buffers) {
+				LOG.info("Acquired buffers lock to build and discard");
 
-		synchronized (buffers) {
-			Buffer buffer = null;
-			long checkpointId = 0;
+				if (!buffers.isEmpty() && buffers.peek().getUnreadBytes() >= bufferSize) {
 
-			if (buffers.isEmpty()) {
-				flushRequested = false;
+					LOG.info("There are enough bytes to build the requested buffer!");
+					BufferConsumer bufferConsumer = buffers.peek();
+					long checkpointId = checkpointIds.peek();
+
+
+					//This assumes that the input buffers which are before this close in the determinant log have been
+					// fully processed, thus the bufferconsumer will have this amount of data.
+					//I feel like these two statements should be synchornized on a lock.
+					causalLoggingManager.appendSubpartitionDeterminants(new BufferBuiltDeterminant(bufferSize), currentEpochID, this.parent.getPartitionId().getPartitionId(), this.index);
+					Buffer buffer = bufferConsumer.build(bufferSize);
+					//We do this after the determinant because a checkpoint x belongs to epoch x-1
+					if (checkpointId != -1)
+						currentEpochID = checkpointId;
+
+
+					checkState(bufferConsumer.isFinished() || buffers.size() == 1,
+						"When there are multiple buffers, an unfinished bufferConsumer can not be at the head of the buffers queue.");
+
+					if (buffers.size() == 1) {
+						// turn off flushRequested flag if we drained all of the available data
+						flushRequested = false;
+					}
+
+					if (bufferConsumer.isFinished()) {
+						buffers.pop().close();
+						checkpointIds.pop();
+						decreaseBuffersInBacklogUnsafe(bufferConsumer.isBuffer());
+					}
+
+					if (buffer.readableBytes() <= 0) {
+						buffer.recycleBuffer();
+						buffer = null;
+					}
+
+					if (buffer != null) {
+						updateStatistics(buffer);
+						logBuffer(buffer, checkpointId);
+					}
+					break;
+				}
 			}
 
-			BufferConsumer bufferConsumer = buffers.peek();
-			checkpointId = checkpointIds.peek();
-
-			//This assumes that the input buffers which are before this close in the determinant log have been
-			// fully processed, thus the bufferconsumer will have this amount of data.
-			//I feel like these two statements should be synchornized on a lock.
-			causalLoggingManager.appendDeterminant(new BufferBuiltDeterminant(parent.getIntermediateDataSetID(), (byte) index, bufferSize), checkpointId);
-			buffer = bufferConsumer.build(bufferSize);
-
-
-			checkState(bufferConsumer.isFinished() || buffers.size() == 1,
-				"When there are multiple buffers, an unfinished bufferConsumer can not be at the head of the buffers queue.");
-
-			if (buffers.size() == 1) {
-				// turn off flushRequested flag if we drained all of the available data
-				flushRequested = false;
-			}
-
-			if (bufferConsumer.isFinished()) {
-				buffers.pop().close();
-				checkpointIds.pop();
-				decreaseBuffersInBacklogUnsafe(bufferConsumer.isBuffer());
-			}
-
-			if (buffer.readableBytes() <= 0) {
-				buffer.recycleBuffer();
-				buffer = null;
-			}
-
-			if (buffer != null) {
-				updateStatistics(buffer);
-				logBuffer(buffer, checkpointId);
+			try {
+				Thread.sleep(5);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
 			}
 		}
-
+		LOG.info("Done building and discarding");
 
 	}
 }

@@ -124,7 +124,6 @@ public class LocalInputChannelTest {
 				"Test Name",
 				taskActions,
 				jobId,
-				new IntermediateDataSetID(),
 				partitionIds[i],
 				ResultPartitionType.PIPELINED,
 				parallelism,

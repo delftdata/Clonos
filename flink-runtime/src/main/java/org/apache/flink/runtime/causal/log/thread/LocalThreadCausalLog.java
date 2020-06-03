@@ -23,15 +23,12 @@
  *
  */
 
-package org.apache.flink.runtime.causal.log;
+package org.apache.flink.runtime.causal.log.thread;
 
-public interface UpstreamCausalLog extends CausalLog {
-
+public interface LocalThreadCausalLog extends ThreadCausalLog {
 	/**
-	 * Process a {@link CausalLogDelta}.
-	 * This involves using the provided offset to determine if any new determinants are present and appending only those.
-	 * @param causalLogDelta
+	 * Appends the provided determinants to the  log.
+	 * @param determinants to append
 	 */
-	void processUpstreamVertexCausalLogDelta(CausalLogDelta causalLogDelta, long checkpointID);
-
+	void appendDeterminants(byte[] determinants, long checkpointID);
 }

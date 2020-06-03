@@ -216,7 +216,6 @@ public class ResultPartitionTest {
 			"TestTask",
 			mock(TaskActions.class),
 			new JobID(),
-			new IntermediateDataSetID(),
 			new ResultPartitionID(),
 			type,
 			1,

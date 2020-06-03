@@ -19,8 +19,8 @@
 package org.apache.flink.runtime.io.network.netty;
 
 import org.apache.flink.annotation.VisibleForTesting;
-import org.apache.flink.runtime.causal.log.TMCausalLog;
-import org.apache.flink.runtime.causal.log.CausalLogDelta;
+import org.apache.flink.runtime.causal.log.job.CausalLogDelta;
+import org.apache.flink.runtime.causal.log.tm.TMCausalLog;
 import org.apache.flink.runtime.io.network.NetworkSequenceViewReader;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
@@ -28,6 +28,7 @@ import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.netty.NettyMessage.ErrorResponse;
 import org.apache.flink.runtime.io.network.netty.exception.RemoteTransportException;
 import org.apache.flink.runtime.io.network.partition.ProducerFailedException;
+import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannel.BufferAndAvailability;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
 
@@ -46,7 +47,6 @@ import javax.annotation.Nullable;
 import java.io.IOException;
 import java.net.SocketAddress;
 import java.util.ArrayDeque;
-import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -148,8 +148,11 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 
 	public void notifyReaderCreated(final NetworkSequenceViewReader reader) {
 		allReaders.put(reader.getReceiverId(), reader);
+	}
+	public void notifyReaderCreated(final NetworkSequenceViewReader reader, ResultPartitionID partitionId, int queueIndex) {
+		allReaders.put(reader.getReceiverId(), reader);
 		if(tmCausalLog != null)
-			tmCausalLog.registerNewDownstreamConsumer(reader.getJobID(), reader.getReceiverId());
+			tmCausalLog.registerNewDownstreamConsumer(reader.getJobID(), reader.getReceiverId(), partitionId.getPartitionId(), queueIndex);
 	}
 
 	public void cancel(InputChannelID receiverId) {
@@ -267,12 +270,11 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 						registerAvailableReader(reader);
 					}
 
-					List<CausalLogDelta> deltas = tmCausalLog.getNextDeterminantsForDownstream(reader.getReceiverId(), next.getEpochID());
+					CausalLogDelta delta = tmCausalLog.getNextDeterminantsForDownstream(reader.getReceiverId(), next.getEpochID());
 
 					BufferResponse msg = new BufferResponse(
 						next.buffer(),
-						deltas,
-						next.getEpochID(),
+						delta,
 						reader.getSequenceNumber(),
 						reader.getReceiverId(),
 						next.buffersInBacklog());

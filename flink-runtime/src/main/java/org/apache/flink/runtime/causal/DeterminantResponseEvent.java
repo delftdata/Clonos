@@ -19,6 +19,7 @@ package org.apache.flink.runtime.causal;
 
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataOutputView;
+import org.apache.flink.runtime.causal.log.vertex.VertexCausalLogDelta;
 import org.apache.flink.runtime.event.TaskEvent;
 
 import java.io.IOException;
@@ -26,12 +27,10 @@ import java.util.Arrays;
 
 public class DeterminantResponseEvent extends TaskEvent {
 
-	VertexId vertexId;
-	byte[] determinants;
+	VertexCausalLogDelta vertexCausalLogDelta;
 
-	public DeterminantResponseEvent(VertexId vertexId, byte[] determinants) {
-		this.vertexId = vertexId;
-		this.determinants = determinants;
+	public DeterminantResponseEvent(VertexCausalLogDelta vertexCausalLogDelta) {
+		this.vertexCausalLogDelta = vertexCausalLogDelta;
 	}
 
 	public DeterminantResponseEvent() {
@@ -40,35 +39,24 @@ public class DeterminantResponseEvent extends TaskEvent {
 
 	@Override
 	public void write(DataOutputView out) throws IOException {
-		out.writeShort(vertexId.getVertexId());
-		out.writeInt(determinants.length);
-		out.write(determinants);
+		vertexCausalLogDelta.write(out);
 	}
 
 	@Override
 	public void read(DataInputView in) throws IOException {
-		this.vertexId = new VertexId(in.readShort());
-
-		int logDeltaLength = in.readInt();
-		byte[] logDelta = new byte[logDeltaLength];
-		in.read(logDelta);
-		this.determinants = logDelta;
+		this.vertexCausalLogDelta = new VertexCausalLogDelta();
+		this.vertexCausalLogDelta.read(in);
 
 	}
 
-	public VertexId getVertexId() {
-		return vertexId;
-	}
-
-	public byte[] getDeterminants() {
-		return determinants;
+	public VertexCausalLogDelta getVertexCausalLogDelta() {
+		return vertexCausalLogDelta;
 	}
 
 	@Override
 	public String toString() {
 		return "DeterminantResponseEvent{" +
-			"vertexId=" + vertexId +
-			", determinants=" + Arrays.toString(determinants) +
+			"vertexCausalLogDelta=" + vertexCausalLogDelta +
 			'}';
 	}
 }

@@ -23,7 +23,7 @@ import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.SimpleCounter;
-import org.apache.flink.runtime.causal.log.IJobCausalLoggingManager;
+import org.apache.flink.runtime.causal.log.job.IJobCausalLog;
 import org.apache.flink.runtime.event.AbstractEvent;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
@@ -91,7 +91,7 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 
 	private final Object lock;
 
-	private final IJobCausalLoggingManager causalLoggingManager;
+	private final IJobCausalLog causalLoggingManager;
 
 	// ---------------- Status and Watermark Valves ------------------
 
@@ -167,7 +167,7 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 		this.recordWriterOutputs = recordWriterOutputs;
 
 		this.lock = checkNotNull(lock);
-		causalLoggingManager = checkpointedTask.getJobCausalLoggingManager();
+		causalLoggingManager = checkpointedTask.getJobCausalLog();
 
 		StreamElementSerializer<IN1> ser1 = new StreamElementSerializer<>(inputSerializer1);
 		this.deserializationDelegate1 = new NonReusingDeserializationDelegate<>(ser1);

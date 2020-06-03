@@ -82,6 +82,7 @@ public class NetworkEnvironmentTest {
 
 		final NetworkEnvironment network = new NetworkEnvironment(
 			new NetworkBufferPool(numBuffers, memorySegmentSize),
+			new NetworkBufferPool(numBuffers, memorySegmentSize),
 			new LocalConnectionManager(),
 			new ResultPartitionManager(),
 			new TaskEventDispatcher(),
@@ -93,7 +94,7 @@ public class NetworkEnvironmentTest {
 			0,
 			2,
 			8,
-			enableCreditBasedFlowControl);
+			enableCreditBasedFlowControl,0);
 
 		// result partitions
 		ResultPartition rp1 = createResultPartition(ResultPartitionType.PIPELINED, 2);
@@ -198,6 +199,7 @@ public class NetworkEnvironmentTest {
 	private void testRegisterTaskWithLimitedBuffers(int bufferPoolSize) throws Exception {
 		final NetworkEnvironment network = new NetworkEnvironment(
 			new NetworkBufferPool(bufferPoolSize, memorySegmentSize),
+			new NetworkBufferPool(bufferPoolSize, memorySegmentSize),
 			new LocalConnectionManager(),
 			new ResultPartitionManager(),
 			new TaskEventDispatcher(),
@@ -209,7 +211,7 @@ public class NetworkEnvironmentTest {
 			0,
 			2,
 			8,
-			enableCreditBasedFlowControl);
+			enableCreditBasedFlowControl,0);
 
 		final ConnectionManager connManager = createDummyConnectionManager();
 
@@ -308,7 +310,6 @@ public class NetworkEnvironmentTest {
 			"TestTask-" + partitionType + ":" + channels,
 			mock(TaskActions.class),
 			new JobID(),
-			new IntermediateDataSetID(),
 			new ResultPartitionID(),
 			partitionType,
 			channels,

@@ -34,7 +34,7 @@ import org.apache.flink.runtime.JobException;
 import org.apache.flink.runtime.accumulators.StringifiedAccumulatorResult;
 import org.apache.flink.runtime.blob.BlobWriter;
 import org.apache.flink.runtime.blob.PermanentBlobKey;
-import org.apache.flink.runtime.causal.VertexId;
+import org.apache.flink.runtime.causal.VertexID;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.jobgraph.*;
@@ -220,7 +220,7 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 		for (int i = 0; i < numTaskVertices; i++) {
 			ExecutionVertex vertex = new ExecutionVertex(
 				this,
-				new VertexId((short) (numVerticesCreated + i)),
+				new VertexID((short) (numVerticesCreated + i)),
 				i,
 				producedDataSets,
 				timeout,

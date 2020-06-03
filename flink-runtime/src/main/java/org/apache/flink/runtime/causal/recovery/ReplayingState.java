@@ -26,61 +26,85 @@
 package org.apache.flink.runtime.causal.recovery;
 
 import org.apache.flink.runtime.causal.determinant.*;
+import org.apache.flink.runtime.causal.log.thread.SubpartitionThreadLogDelta;
+import org.apache.flink.runtime.causal.log.vertex.VertexCausalLogDelta;
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
+import org.apache.flink.runtime.io.network.partition.PipelinedSubpartition;
+import org.apache.flink.runtime.io.network.partition.ResultSubpartition;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.io.network.partition.consumer.RemoteInputChannel;
 import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
+import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
+import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.util.LinkedList;
-import java.util.Queue;
+import java.util.*;
 
 /**
  * In this state we do the actual process of recovery. Once done transition to {@link RunningState}
- *
+ * <p>
  * A downstream failure in this state does not matter, requests simply get added to the queue of unanswered requests.
  * Only when we finish our recovery do we answer those requests.
- *
+ * <p>
  * Upstream failures in this state mean that perhaps the upstream will not have sent all buffers. This means we must resend
  * replay requests.
  */
 public class ReplayingState extends AbstractState {
 
-	ByteBuffer recoveryBuffer;
 	DeterminantEncodingStrategy determinantEncodingStrategy;
-	Determinant nextDeterminant;
-	Queue<NonMainThreadDeterminant> toProcess;
-	private boolean isDone;
 
-	public ReplayingState(RecoveryManager context, byte[] determinantsToRecoverFrom) {
+	ByteBuf mainThreadRecoveryBuffer;
+
+	List<Thread> recoveryThreads;
+
+
+	public ReplayingState(RecoveryManager context, VertexCausalLogDelta recoveryDeterminants) {
 		super(context);
 
-		determinantEncodingStrategy = context.jobCausalLoggingManager.getDeterminantEncodingStrategy();
-		recoveryBuffer = ByteBuffer.wrap(determinantsToRecoverFrom);
+		determinantEncodingStrategy = context.jobCausalLog.getDeterminantEncodingStrategy();
 
-		toProcess = new LinkedList<>();
-		isDone = false;
-		fillQueue();
 
-		context.readyToReplayFuture.complete(null);//allow task to start running
+
+
+		recoveryThreads = new LinkedList<>();
+		createSubpartitionRecoveryThreads(recoveryDeterminants);
+
+		if(recoveryDeterminants.getMainThreadDelta() != null)
+			this.mainThreadRecoveryBuffer = recoveryDeterminants.getMainThreadDelta().getRawDeterminants();
+
+		checkFinished();
+	}
+
+	private void createSubpartitionRecoveryThreads(VertexCausalLogDelta recoveryDeterminants) {
+
+		for (Map.Entry<IntermediateResultPartitionID, SortedMap<Integer, SubpartitionThreadLogDelta>> partitionEntry : recoveryDeterminants.getPartitionDeltas().entrySet()) {
+			ResultSubpartition[] subpartitions = context.intermediateResultPartitionIDRecordWriterMap.get(partitionEntry.getKey()).getResultPartition().getResultSubpartitions();
+
+			for (Map.Entry<Integer, SubpartitionThreadLogDelta> subpartitionEntry : partitionEntry.getValue().entrySet()) {
+				LOG.info("Created recovery thread for Partition {} subpartition index {} with buffer {}", partitionEntry.getKey(), subpartitionEntry.getKey(), subpartitionEntry.getValue().getRawDeterminants());
+				PipelinedSubpartition pipelinedSubpartition = (PipelinedSubpartition) subpartitions[subpartitionEntry.getKey()];
+				Thread t = new SubpartitionRecoveryThread(subpartitionEntry.getValue().getRawDeterminants(), pipelinedSubpartition, determinantEncodingStrategy);
+				recoveryThreads.add(t);
+				t.start();
+			}
+		}
+
 	}
 
 	@Override
-	public void notifyNewInputChannel(InputGate gate, int channelIndex, int numberOfBuffersRemoved){
+	public void notifyNewInputChannel(RemoteInputChannel remoteInputChannel, int consumedSubpartitionIndex, int numberOfBuffersRemoved) {
 		//we got notified of a new input channel while we were replaying
 		//This means that  we now have to wait for the upstream to finish recovering before we do.
 		//Furthermore, we have to resend the inflight log request, and ask to skip X buffers
-		IntermediateDataSetID intermediateDataSetID = ((SingleInputGate)gate).getConsumedResultId();
-		int subpartitionIndex = ((SingleInputGate) gate).getConsumedSubpartitionIndex();
 
+		LOG.info("Got notified of new input channel event, while in state " + this.getClass() + " requesting upstream to replay and skip numberOfBuffersRemoved");
+		IntermediateResultPartitionID id = remoteInputChannel.getPartitionId().getPartitionId();
 		try {
-			((RemoteInputChannel)gate.getInputChannel(channelIndex)).sendTaskEvent(new InFlightLogRequestEvent(intermediateDataSetID, subpartitionIndex, context.finalRestoredCheckpointId, numberOfBuffersRemoved));
+			remoteInputChannel.sendTaskEvent(new InFlightLogRequestEvent(id, consumedSubpartitionIndex, context.finalRestoredCheckpointId, numberOfBuffersRemoved));
 		} catch (IOException | InterruptedException e) {
 			e.printStackTrace();
 		}
-		LOG.info("Got notified of unexpected NewChannel event, while in state " + this.getClass());
 	}
 
 
@@ -88,70 +112,87 @@ public class ReplayingState extends AbstractState {
 
 	@Override
 	public int replayRandomInt() {
-		drainQueue();
-		if(!(nextDeterminant instanceof RNGDeterminant))
+		Determinant nextDeterminant = determinantEncodingStrategy.decodeNext(mainThreadRecoveryBuffer);
+		if (!(nextDeterminant instanceof RNGDeterminant))
 			throw new RuntimeException("Unexpected Determinant type: Expected RNG, but got: " + nextDeterminant);
-
-		int toReturn = ((RNGDeterminant) nextDeterminant).getNumber();
-		fillQueue();
-		return toReturn;
+		checkFinished();
+		return ((RNGDeterminant) nextDeterminant).getNumber();
 	}
 
 	@Override
 	public byte replayNextChannel() {
-		drainQueue();
-		if(!(nextDeterminant instanceof OrderDeterminant))
+		Determinant nextDeterminant = determinantEncodingStrategy.decodeNext(mainThreadRecoveryBuffer);
+		if (!(nextDeterminant instanceof OrderDeterminant))
 			throw new RuntimeException("Unexpected Determinant type: Expected Order, but got: " + nextDeterminant);
 
-		byte toReturn = ((OrderDeterminant) nextDeterminant).getChannel();
-		fillQueue();
-		return toReturn;
+		checkFinished();
+		return ((OrderDeterminant) nextDeterminant).getChannel();
 	}
 
 	@Override
 	public long replayNextTimestamp() {
-		drainQueue();
-		if(!(nextDeterminant instanceof TimestampDeterminant))
+		Determinant nextDeterminant = determinantEncodingStrategy.decodeNext(mainThreadRecoveryBuffer);
+		if (!(nextDeterminant instanceof TimestampDeterminant))
 			throw new RuntimeException("Unexpected Determinant type: Expected Timestamp, but got: " + nextDeterminant);
 
-		long toReturn = ((TimestampDeterminant) nextDeterminant).getTimestamp();
-		fillQueue();
-		return toReturn;
+		checkFinished();
+		return ((TimestampDeterminant) nextDeterminant).getTimestamp();
 	}
 
-	private void drainQueue(){
-		while(!toProcess.isEmpty()) {
-			LOG.info("Processing off main thread determinant {}", toProcess.peek());
-			toProcess.poll().process(context);
+	private void checkFinished() {
+		if(mainThreadRecoveryBuffer == null || !mainThreadRecoveryBuffer.isReadable()) {
+			LOG.info("Main thread is recovered, waiting for subpartitions");
+			//Main thread is finished, wait for all subpartition threads to finish, then go to running state
+			//for (Thread recoveryThread : recoveryThreads) {
+			//	try {
+			//		recoveryThread.join();
+			//	} catch (InterruptedException e) {
+			//		e.printStackTrace();
+			//	}
+			//}
+			LOG.info("All subpartition threads done recovering!");
+			context.setState(new RunningState(context));
 		}
-	}
-
-	private void fillQueue(){
-		nextDeterminant = determinantEncodingStrategy.decodeNext(recoveryBuffer);
-		//We must synchronously process the non main thread determinants
-		while (nextDeterminant instanceof NonMainThreadDeterminant) {
-			toProcess.add((NonMainThreadDeterminant) nextDeterminant);
-			nextDeterminant = determinantEncodingStrategy.decodeNext(recoveryBuffer);
-		}
-
-		if(nextDeterminant == null) {
-			//we cant immediately drain the queue. We need to return the determinant first, then process it and end the replay
-			isDone = true;
-
-		}
-	}
-
-	public boolean isDone(){
-		return isDone;
-	}
-
-	public void finish(){
-		drainQueue();
-		context.setState(new RunningState(context));
 	}
 
 	@Override
 	public String toString() {
 		return "ReplayingState{}";
 	}
+
+	private static class SubpartitionRecoveryThread extends Thread {
+		private final PipelinedSubpartition pipelinedSubpartition;
+		private final ByteBuf recoveryBuffer;
+		private final DeterminantEncodingStrategy determinantEncodingStrategy;
+
+		public SubpartitionRecoveryThread(ByteBuf recoveryBuffer, PipelinedSubpartition pipelinedSubpartition, DeterminantEncodingStrategy determinantEncodingStrategy) {
+			this.recoveryBuffer = recoveryBuffer;
+			this.pipelinedSubpartition = pipelinedSubpartition;
+			this.determinantEncodingStrategy = determinantEncodingStrategy;
+		}
+
+		@Override
+		public void run() {
+			//1. Netty has been told that there is no data.
+			pipelinedSubpartition.setIsRecovering(true);
+			//2. Rebuild in-fligh log and subpartition state
+			while (recoveryBuffer.isReadable()) {
+
+				Determinant determinant = determinantEncodingStrategy.decodeNext(recoveryBuffer);
+
+				if (!(determinant instanceof BufferBuiltDeterminant))
+					throw new RuntimeException("Subpartition has corrupt recovery buffer");
+				BufferBuiltDeterminant bufferBuiltDeterminant = (BufferBuiltDeterminant) determinant;
+
+				LOG.info("Requesting to build and log buffer with {} bytes", bufferBuiltDeterminant.getNumberOfBytes());
+				pipelinedSubpartition.buildAndLogBuffer(bufferBuiltDeterminant.getNumberOfBytes());
+				LOG.info("Finished building and logging one buffer in supartition recovery thread");
+			}
+			//3. Tell netty to restart requesting buffers.
+			pipelinedSubpartition.setIsRecovering(false);
+			pipelinedSubpartition.notifyDataAvailable();
+			LOG.info("Done recovering pipelined subpartition");
+		}
+	}
+
 }

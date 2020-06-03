@@ -100,7 +100,7 @@ public abstract class InputChannel {
 	// Properties
 	// ------------------------------------------------------------------------
 
-	int getChannelIndex() {
+	public int getChannelIndex() {
 		return channelIndex;
 	}
 
@@ -108,6 +108,7 @@ public abstract class InputChannel {
 		return partitionId;
 	}
 
+	public SingleInputGate getInputGate(){return inputGate;}
 
 	/**
 	 * Notifies the owning {@link SingleInputGate} that this channel became non-empty.

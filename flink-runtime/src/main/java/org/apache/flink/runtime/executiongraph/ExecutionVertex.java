@@ -25,7 +25,7 @@ import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.runtime.JobException;
 import org.apache.flink.runtime.blob.PermanentBlobKey;
-import org.apache.flink.runtime.causal.VertexId;
+import org.apache.flink.runtime.causal.VertexID;
 import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.deployment.*;
@@ -52,7 +52,6 @@ import javax.annotation.Nullable;
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
-import java.util.stream.Collectors;
 
 import static org.apache.flink.runtime.execution.ExecutionState.FINISHED;
 import static org.apache.flink.runtime.execution.ExecutionState.RUNNING;
@@ -75,7 +74,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 
 	private final ExecutionEdge[][] inputEdges;
 
-	private final VertexId vertexId;
+	private final VertexID vertexId;
 
 	private final int subTaskIndex;
 
@@ -138,7 +137,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 	 */
 	public ExecutionVertex(
 		ExecutionJobVertex jobVertex,
-		VertexId vertexId,
+		VertexID vertexId,
 		int subTaskIndex,
 		IntermediateResult[] producedDataSets,
 		Time timeout,
@@ -842,7 +841,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 		}
 	}
 
-	public VertexId getVertexId() {
+	public VertexID getVertexId() {
 		return vertexId;
 	}
 

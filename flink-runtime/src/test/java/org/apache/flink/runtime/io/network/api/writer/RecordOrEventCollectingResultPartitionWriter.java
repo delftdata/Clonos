@@ -92,8 +92,4 @@ public class RecordOrEventCollectingResultPartitionWriter<T> extends AbstractCol
 
 	}
 
-	@Override
-	public IntermediateDataSetID getIntermediateDataSetID() {
-		return null;
-	}
 }
