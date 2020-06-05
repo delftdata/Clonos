@@ -28,6 +28,7 @@ import org.apache.flink.runtime.causal.VertexGraphInformation;
 import org.apache.flink.runtime.causal.VertexID;
 import org.apache.flink.runtime.causal.determinant.*;
 import org.apache.flink.runtime.causal.log.vertex.*;
+import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferPool;
 import org.apache.flink.runtime.io.network.partition.ResultPartition;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
@@ -57,9 +58,12 @@ public class JobCausalLog implements IJobCausalLog {
 
 	ConcurrentSet<InputChannelID> registeredConsumers;
 
-	public JobCausalLog(VertexGraphInformation vertexGraphInformation, ResultPartition[] resultPartitionsOfLocalVertex, BufferPool bufferPool) {
+	BufferPool bufferPool;
 
+	public JobCausalLog(VertexGraphInformation vertexGraphInformation, ResultPartition[] resultPartitionsOfLocalVertex, BufferPool bufferPool) {
 		this.myVertexID = vertexGraphInformation.getThisTasksVertexID();
+		this.bufferPool = bufferPool;
+
 		LOG.info("Creating new CausalLoggingManager for id {}, with upstreams {} ", myVertexID, String.join(", ", vertexGraphInformation.getUpstreamVertexes().stream().map(Object::toString).collect(Collectors.toList())));
 		this.determinantEncodingStrategy = new SimpleDeterminantEncodingStrategy();
 
@@ -103,7 +107,7 @@ public class JobCausalLog implements IJobCausalLog {
 	@Override
 	public void processUpstreamVertexCausalLogDelta(VertexCausalLogDelta d, long checkpointID) {
 		upstreamDeterminantLogs
-			.computeIfAbsent(d.getVertexId(), BasicUpstreamVertexCausalLog::new)
+			.computeIfAbsent(d.getVertexId(), k -> new BasicUpstreamVertexCausalLog(k, bufferPool))
 			.processUpstreamCausalLogDelta(d, checkpointID);
 
 	}
@@ -129,7 +133,7 @@ public class JobCausalLog implements IJobCausalLog {
 	@Override
 	public VertexCausalLogDelta getDeterminantsOfVertex(VertexID vertexId) {
 		LOG.info("Got request for determinants of vertexID {}", vertexId);
-		return upstreamDeterminantLogs.computeIfAbsent(vertexId, BasicUpstreamVertexCausalLog::new).getDeterminants();
+		return upstreamDeterminantLogs.computeIfAbsent(vertexId, k -> new BasicUpstreamVertexCausalLog(vertexId, bufferPool)).getDeterminants();
 	}
 
 	@Override

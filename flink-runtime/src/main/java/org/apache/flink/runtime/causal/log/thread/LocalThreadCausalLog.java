@@ -30,5 +30,5 @@ public interface LocalThreadCausalLog extends ThreadCausalLog {
 	 * Appends the provided determinants to the  log.
 	 * @param determinants to append
 	 */
-	void appendDeterminants(byte[] determinants, long checkpointID);
+	void appendDeterminants(byte[] determinants, long epochID);
 }

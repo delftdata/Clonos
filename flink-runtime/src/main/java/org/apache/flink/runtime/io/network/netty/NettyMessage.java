@@ -369,6 +369,7 @@ public abstract class NettyMessage {
 
 		void releaseBuffer() {
 			buffer.release();
+			causalLogDelta.release();
 		}
 
 		// --------------------------------------------------------------------
@@ -387,6 +388,7 @@ public abstract class NettyMessage {
 					// in order to forward the buffer to netty, it needs an allocator set
 					((Buffer) buffer).setAllocator(allocator);
 				}
+				//TODO may need to set allocator for our bytebufs?????
 
 				// only allocate header buffer - we will combine it with the data buffer below
 				headerBuf = allocateBuffer(allocator, ID, messageHeaderLength + causalLogDelta.getHeaderSize() , buffer.readableBytes() + causalLogDelta.getBodySize(), false);
@@ -412,6 +414,7 @@ public abstract class NettyMessage {
 					headerBuf.release();
 				}
 				buffer.release();
+				causalLogDelta.release();
 
 				ExceptionUtils.rethrowIOException(t);
 				return null; // silence the compiler

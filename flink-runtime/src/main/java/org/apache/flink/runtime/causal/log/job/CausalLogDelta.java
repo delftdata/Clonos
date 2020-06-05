@@ -53,6 +53,11 @@ public class CausalLogDelta implements NettyMessageWritable {
 		return vertexCausalLogDeltas;
 	}
 
+	public void release(){
+		for(VertexCausalLogDelta v: vertexCausalLogDeltas)
+			v.release();
+	}
+
 	@Override
 	public int getHeaderSize() {
 		return Long.BYTES +  + Short.BYTES + Arrays.stream(vertexCausalLogDeltas).mapToInt(VertexCausalLogDelta::getHeaderSize).sum();

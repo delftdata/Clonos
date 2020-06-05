@@ -32,6 +32,6 @@ public interface UpstreamThreadCausalLog extends ThreadCausalLog {
 	 * This involves using the provided offset to determine if any new determinants are present and appending only those.
 	 * @param causalLogDelta
 	 */
-	void processUpstreamVertexCausalLogDelta(ThreadLogDelta causalLogDelta, long checkpointID);
+	void processUpstreamVertexCausalLogDelta(ThreadLogDelta causalLogDelta, long epochID);
 
 }

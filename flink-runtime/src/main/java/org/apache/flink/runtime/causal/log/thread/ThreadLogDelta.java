@@ -45,7 +45,7 @@ public class ThreadLogDelta {
 	public ThreadLogDelta(ByteBuf rawDeterminants, int offsetFromEpoch) {
 		this.rawDeterminants = rawDeterminants;
 		this.offsetFromEpoch = offsetFromEpoch;
-		this.bufferSize = rawDeterminants.capacity();
+		this.bufferSize = rawDeterminants.readableBytes();
 	}
 
 	public ThreadLogDelta(int offsetFromEpoch, int bufferSize){
@@ -65,17 +65,8 @@ public class ThreadLogDelta {
 		return offsetFromEpoch;
 	}
 
-	public void setOffsetFromEpoch(int offsetFromEpoch){
-		this.offsetFromEpoch = offsetFromEpoch;
-	}
-
-
 	public int getBufferSize() {
 		return bufferSize;
-	}
-
-	public void setBufferSize(int bufferSize) {
-		this.bufferSize = bufferSize;
 	}
 
 	@Override

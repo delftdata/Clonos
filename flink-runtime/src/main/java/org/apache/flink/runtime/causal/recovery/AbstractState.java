@@ -109,7 +109,7 @@ public abstract class AbstractState implements State {
 				VertexCausalLogDelta fulfilledRequest = context.unansweredDeterminantRequests.remove(e.getVertexCausalLogDelta().getVertexId()).getVertexCausalLogDelta();
 				try {
 					context.inputGate.getInputChannel(udr.getRequestingChannel()).sendTaskEvent(new DeterminantResponseEvent(fulfilledRequest));
-					//todo where does the memory for this get freed?
+					fulfilledRequest.release();
 				} catch (IOException | InterruptedException ex) {
 					ex.printStackTrace();
 				}

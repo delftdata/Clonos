@@ -36,9 +36,12 @@ import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 import org.apache.flink.shaded.netty4.io.netty.buffer.CompositeByteBuf;
 import org.apache.flink.shaded.netty4.io.netty.buffer.Unpooled;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.*;
+import java.util.stream.Collectors;
 
 public class VertexCausalLogDelta implements NettyMessageWritable, IOReadableWritable {
 
@@ -50,6 +53,8 @@ public class VertexCausalLogDelta implements NettyMessageWritable, IOReadableWri
 	ThreadLogDelta mainThreadDelta;
 
 	SortedMap<IntermediateResultPartitionID, SortedMap<Integer, SubpartitionThreadLogDelta>> partitionDeltas;
+
+	 Logger LOG = LoggerFactory.getLogger(VertexCausalLogDelta.class);
 
 	public VertexCausalLogDelta() {
 
@@ -321,5 +326,14 @@ public class VertexCausalLogDelta implements NettyMessageWritable, IOReadableWri
 			", mainThreadDelta=" + mainThreadDelta +
 			", partitionDeltas=" + partitionDeltas +
 			'}';
+	}
+
+	public void release() {
+		boolean mainDestroyed = true;
+		if(mainThreadDelta != null)
+			mainDestroyed = mainThreadDelta.getRawDeterminants().release();
+		List<Boolean> destroyed = partitionDeltas.values().stream().flatMap(m -> m.values().stream()).map(s -> s.getRawDeterminants().release()).collect(Collectors.toList());
+
+		LOG.info("Call to release. Main destroyed: {}, Subpart destroyed: {}", mainDestroyed, "["+destroyed.stream().map(Object::toString).collect(Collectors.joining(", ")) + "]");
 	}
 }

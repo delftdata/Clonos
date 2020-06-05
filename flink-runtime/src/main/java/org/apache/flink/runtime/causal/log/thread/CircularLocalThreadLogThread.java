@@ -90,7 +90,7 @@ public class CircularLocalThreadLogThread implements LocalThreadCausalLog {
 	}
 
 	@Override
-	public synchronized void appendDeterminants(byte[] determinants, long checkpointID) {
+	public synchronized void appendDeterminants(byte[] determinants, long epochID) {
 		while (!hasSpaceFor(determinants.length))
 			grow();
 

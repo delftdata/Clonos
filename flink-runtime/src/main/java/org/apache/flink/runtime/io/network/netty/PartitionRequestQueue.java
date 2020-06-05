@@ -237,6 +237,7 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 		// gate and the consumed views as the local input channels.
 
 		BufferAndAvailability next = null;
+		CausalLogDelta delta = null;
 		try {
 			while (true) {
 				NetworkSequenceViewReader reader = pollAvailableReader();
@@ -270,7 +271,7 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 						registerAvailableReader(reader);
 					}
 
-					CausalLogDelta delta = tmCausalLog.getNextDeterminantsForDownstream(reader.getReceiverId(), next.getEpochID());
+					delta = tmCausalLog.getNextDeterminantsForDownstream(reader.getReceiverId(), next.getEpochID());
 
 					BufferResponse msg = new BufferResponse(
 						next.buffer(),
@@ -298,6 +299,9 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 		} catch (Throwable t) {
 			if (next != null) {
 				next.buffer().recycleBuffer();
+			}
+			if(delta != null){
+				delta.release();
 			}
 
 			throw new IOException(t.getMessage(), t);

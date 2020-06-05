@@ -65,12 +65,10 @@ public class ReplayingState extends AbstractState {
 		determinantEncodingStrategy = context.jobCausalLog.getDeterminantEncodingStrategy();
 
 
-
-
 		recoveryThreads = new LinkedList<>();
 		createSubpartitionRecoveryThreads(recoveryDeterminants);
 
-		if(recoveryDeterminants.getMainThreadDelta() != null)
+		if (recoveryDeterminants.getMainThreadDelta() != null)
 			this.mainThreadRecoveryBuffer = recoveryDeterminants.getMainThreadDelta().getRawDeterminants();
 
 		checkFinished();
@@ -140,19 +138,12 @@ public class ReplayingState extends AbstractState {
 	}
 
 	private void checkFinished() {
-		if(mainThreadRecoveryBuffer == null || !mainThreadRecoveryBuffer.isReadable()) {
-			LOG.info("Main thread is recovered, waiting for subpartitions");
-			//Main thread is finished, wait for all subpartition threads to finish, then go to running state
-			//for (Thread recoveryThread : recoveryThreads) {
-			//	try {
-			//		recoveryThread.join();
-			//	} catch (InterruptedException e) {
-			//		e.printStackTrace();
-			//	}
-			//}
-			LOG.info("All subpartition threads done recovering!");
+		if (mainThreadRecoveryBuffer == null || !mainThreadRecoveryBuffer.isReadable()) {
+			if (mainThreadRecoveryBuffer != null)
+				mainThreadRecoveryBuffer.release();
 			context.setState(new RunningState(context));
 		}
+
 	}
 
 	@Override
@@ -191,6 +182,7 @@ public class ReplayingState extends AbstractState {
 			//3. Tell netty to restart requesting buffers.
 			pipelinedSubpartition.setIsRecovering(false);
 			pipelinedSubpartition.notifyDataAvailable();
+			recoveryBuffer.release();
 			LOG.info("Done recovering pipelined subpartition");
 		}
 	}

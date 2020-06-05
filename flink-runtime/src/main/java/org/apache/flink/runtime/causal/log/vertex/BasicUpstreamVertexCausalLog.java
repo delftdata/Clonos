@@ -26,10 +26,8 @@
 package org.apache.flink.runtime.causal.log.vertex;
 
 import org.apache.flink.runtime.causal.VertexID;
-import org.apache.flink.runtime.causal.log.thread.ReplicatedThreadCausalLog;
-import org.apache.flink.runtime.causal.log.thread.SubpartitionThreadLogDelta;
-import org.apache.flink.runtime.causal.log.thread.ThreadLogDelta;
-import org.apache.flink.runtime.causal.log.thread.UpstreamThreadCausalLog;
+import org.apache.flink.runtime.causal.log.thread.*;
+import org.apache.flink.runtime.io.network.buffer.BufferPool;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
@@ -53,11 +51,13 @@ public class BasicUpstreamVertexCausalLog implements UpstreamVertexCausalLog {
 	//MPMC
 	ConcurrentMap<IntermediateResultPartitionID, ConcurrentMap<Integer, UpstreamThreadCausalLog>> subpartitionLogs;
 
+	BufferPool bufferPool;
 
-	public BasicUpstreamVertexCausalLog(VertexID vertexId){
+	public BasicUpstreamVertexCausalLog(VertexID vertexId, BufferPool bufferPool){
 		LOG.info("Creating new UpstreamVertexCausalLog for vertexID {}", vertexId);
 		this.vertexId = vertexId;
-		mainThreadLog = new ReplicatedThreadCausalLog();
+		this.bufferPool = bufferPool;
+		mainThreadLog = new NetworkBufferBasedContiguousUpstreamThreadCausalLog(bufferPool);
 		subpartitionLogs = new ConcurrentHashMap<>(5);
 	}
 
@@ -74,7 +74,7 @@ public class BasicUpstreamVertexCausalLog implements UpstreamVertexCausalLog {
 					new ConcurrentHashMap<>(10));
 
 			for(SubpartitionThreadLogDelta logDelta : entry.getValue().values()) {
-				UpstreamThreadCausalLog threadLog = idsLogs.computeIfAbsent(logDelta.getSubpartitionIndex(),  k -> new ReplicatedThreadCausalLog());
+				UpstreamThreadCausalLog threadLog = idsLogs.computeIfAbsent(logDelta.getSubpartitionIndex(),  k -> new NetworkBufferBasedContiguousUpstreamThreadCausalLog(bufferPool));
 				threadLog.processUpstreamVertexCausalLogDelta(logDelta, checkpointID);
 			}
 		}

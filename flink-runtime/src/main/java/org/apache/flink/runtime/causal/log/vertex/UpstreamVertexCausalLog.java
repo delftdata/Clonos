@@ -27,6 +27,6 @@ package org.apache.flink.runtime.causal.log.vertex;
 
 public interface UpstreamVertexCausalLog extends VertexCausalLog {
 
-	void processUpstreamCausalLogDelta(VertexCausalLogDelta causalLogDelta, long checkpointID);
+	void processUpstreamCausalLogDelta(VertexCausalLogDelta causalLogDelta, long epochID);
 
 }

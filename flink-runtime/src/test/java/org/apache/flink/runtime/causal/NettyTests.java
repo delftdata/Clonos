@@ -59,6 +59,48 @@ public class NettyTests {
 	}
 
 	@Test
+	public void CompositeByteBufferReleaseTest() {
+
+		ByteBuf b1 = Unpooled.buffer();
+
+		b1.writeBytes("Hello ".getBytes());
+
+
+		ByteBuf b2 = Unpooled.buffer();
+		b2.writeBytes("world".getBytes());
+
+		CompositeByteBuf cb = Unpooled.compositeBuffer();
+		cb.addComponents(true, b1.retain(), b2.retain());
+
+		assert b1.refCnt() == 2;
+		assert cb.refCnt() == 1;
+
+		byte[] read1 = new byte[cb.readableBytes()];
+		cb.readBytes(read1);
+		assert new String(read1).equals("Hello world");
+
+		assert cb.release();
+		assert b1.refCnt() == 1;
+		assert cb.refCnt() == 0;
+
+		CompositeByteBuf cb2 = Unpooled.compositeBuffer();
+		cb2.addComponents(true, b1.retain(), b2.retain());
+
+		assert b1.refCnt() == 2;
+		assert cb2.refCnt() == 1;
+
+		byte[] read2 = new byte[cb2.readableBytes()];
+		cb2.readBytes(read2);
+		assert new String(read2).equals("Hello world");
+
+		assert cb2.release();
+		assert b1.refCnt() == 1;
+		assert cb2.refCnt() == 0;
+
+		//So it appears that we can indeed dispose of composite byte bufs without disposing of their components
+	}
+
+	@Test
 	public void WrappedTest() {
 
 		ByteBuf b1 = Unpooled.buffer();
@@ -80,5 +122,19 @@ public class NettyTests {
 		assert b1.readerIndex() == 0;
 		assert new String(bytes2).equals("Hello world");
 
+	}
+
+
+	@Test
+	public void SliceTest() {
+
+		ByteBuf b1 = Unpooled.buffer();
+		b1.writeBytes("Hello world".getBytes());
+
+		ByteBuf slice = b1.slice(0, 5).asReadOnly().retain();
+		assert b1.refCnt() == 1;
+		assert slice.refCnt() == 1;
+		assert slice.release();
+		assert b1.refCnt() == 0;
 	}
 }

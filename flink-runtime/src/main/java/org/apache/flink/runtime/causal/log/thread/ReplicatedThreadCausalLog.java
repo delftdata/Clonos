@@ -54,17 +54,13 @@ public class ReplicatedThreadCausalLog implements UpstreamThreadCausalLog {
 	}
 
 	@Override
-	public void registerDownstreamConsumer(InputChannelID inputChannelID) {
-	}
-
-	@Override
 	public ByteBuf getDeterminants() {
 		return Unpooled.wrappedBuffer(checkpointIDToEpoch.values().stream().map(Epoch::getDeterminants).toArray(ByteBuf[]::new));
 	}
 
 	@Override
-	public void processUpstreamVertexCausalLogDelta(ThreadLogDelta causalLogDelta, long checkpointID) {
-		Epoch epoch = checkpointIDToEpoch.computeIfAbsent(checkpointID, Epoch::new);
+	public void processUpstreamVertexCausalLogDelta(ThreadLogDelta causalLogDelta, long epochID) {
+		Epoch epoch = checkpointIDToEpoch.computeIfAbsent(epochID, Epoch::new);
 		//todo change to a nonblocking strategy
 		synchronized (epoch){
 			epoch.addSegment(causalLogDelta.rawDeterminants, causalLogDelta.offsetFromEpoch);
@@ -95,10 +91,6 @@ public class ReplicatedThreadCausalLog implements UpstreamThreadCausalLog {
 
 	}
 
-	@Override
-	public void unregisterDownstreamConsumer(InputChannelID toCancel) {
-		consumerIDToOffset.remove(toCancel);
-	}
 
 	@Override
 	public void notifyCheckpointComplete(long checkpointId) throws Exception {
