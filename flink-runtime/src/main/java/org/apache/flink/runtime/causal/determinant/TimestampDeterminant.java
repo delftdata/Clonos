@@ -17,7 +17,7 @@
  */
 package org.apache.flink.runtime.causal.determinant;
 
-public class TimestampDeterminant extends Determinant {
+public final class TimestampDeterminant extends Determinant {
 	long timestamp;
 
 

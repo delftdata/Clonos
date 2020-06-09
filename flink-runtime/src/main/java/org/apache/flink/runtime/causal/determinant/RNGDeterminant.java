@@ -17,7 +17,7 @@
  */
 package org.apache.flink.runtime.causal.determinant;
 
-public class RNGDeterminant extends Determinant {
+public final class RNGDeterminant extends Determinant {
 	int number;
 
 	public RNGDeterminant(int number) {

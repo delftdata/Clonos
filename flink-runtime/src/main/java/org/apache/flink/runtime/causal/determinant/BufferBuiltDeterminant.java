@@ -30,7 +30,7 @@ import org.apache.flink.runtime.io.network.partition.PipelinedSubpartition;
 import org.apache.flink.runtime.io.network.partition.ResultSubpartition;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 
-public class BufferBuiltDeterminant extends Determinant{
+public final class BufferBuiltDeterminant extends Determinant{
 
 
 	private int numberOfBytes;
@@ -45,10 +45,10 @@ public class BufferBuiltDeterminant extends Determinant{
 		return numberOfBytes;
 	}
 
-	//@Override
-	//public void process(RecoveryManager recoveryManager) {
-	//	ResultSubpartition subpartition = recoveryManager.getRecordWriterByIntermediateDataSetID(intermediateDataSetID).getResultPartition().getResultSubpartitions()[subpartitionIndex];
-	//	//We know it is a PipelinedSubpartition for sure.
-	//	((PipelinedSubpartition)subpartition).buildAndLogBuffer(numberOfBytes);
-	//}
+	@Override
+	public String toString() {
+		return "BufferBuiltDeterminant{" +
+			"numberOfBytes=" + numberOfBytes +
+			'}';
+	}
 }

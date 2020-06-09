@@ -105,10 +105,10 @@ public class JobCausalLog implements IJobCausalLog {
 	}
 
 	@Override
-	public void processUpstreamVertexCausalLogDelta(VertexCausalLogDelta d, long checkpointID) {
+	public void processUpstreamVertexCausalLogDelta(VertexCausalLogDelta d, long epochID) {
 		upstreamDeterminantLogs
 			.computeIfAbsent(d.getVertexId(), k -> new BasicUpstreamVertexCausalLog(k, bufferPool))
-			.processUpstreamCausalLogDelta(d, checkpointID);
+			.processUpstreamCausalLogDelta(d, epochID);
 
 	}
 
@@ -142,13 +142,15 @@ public class JobCausalLog implements IJobCausalLog {
 		List<VertexCausalLogDelta> results = new LinkedList<>();
 		for (VertexID key : this.upstreamDeterminantLogs.keySet()) {
 			UpstreamVertexCausalLog upstreamVertexCausalLog = upstreamDeterminantLogs.get(key);
-			LOG.info("Determinant log pre processing: {}", upstreamVertexCausalLog);
+			LOG.info("Upstream log pre processing: {}", upstreamVertexCausalLog);
 			VertexCausalLogDelta causalLogDelta = upstreamVertexCausalLog.getNextDeterminantsForDownstream(inputChannelID, epochID);
 			if (causalLogDelta.hasUpdates())
 				results.add(causalLogDelta);
-			LOG.info("Determinant log post processing: {}", upstreamDeterminantLogs.get(key));
+			LOG.info("Upstream log post processing: {}", upstreamDeterminantLogs.get(key));
 		}
+		LOG.info("Local log pre processing: {}", localCausalLog);
 		VertexCausalLogDelta vertexCausalLogDelta = localCausalLog.getNextDeterminantsForDownstream(inputChannelID, epochID);
+		LOG.info("Local log post processing: {}", localCausalLog);
 		if(vertexCausalLogDelta.hasUpdates())
 			results.add(vertexCausalLogDelta);
 		return results;

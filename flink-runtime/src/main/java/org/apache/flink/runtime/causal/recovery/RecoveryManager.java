@@ -42,6 +42,8 @@ import org.slf4j.LoggerFactory;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 public class RecoveryManager implements IRecoveryManager{
 
@@ -51,11 +53,11 @@ public class RecoveryManager implements IRecoveryManager{
 	final CompletableFuture<Void> readyToReplayFuture;
 	final JobCausalLog jobCausalLog;
 
-	final Map<VertexID, UnansweredDeterminantRequest> unansweredDeterminantRequests;
+	final ConcurrentMap<VertexID, UnansweredDeterminantRequest> unansweredDeterminantRequests;
 
-	final Queue<InFlightLogRequestEvent> unansweredInFlighLogRequests;
+	ConcurrentMap<IntermediateResultPartitionID,ConcurrentMap<Integer,InFlightLogRequestEvent>> unansweredInFlighLogRequests;
 
-	final Map<Long, Boolean> incompleteStateRestorations;
+	final ConcurrentMap<Long, Boolean> incompleteStateRestorations;
 
 	State currentState;
 	InputGate inputGate;
@@ -79,10 +81,9 @@ public class RecoveryManager implements IRecoveryManager{
 		this.readyToReplayFuture = readyToReplayFuture;
 		this.vertexGraphInformation = vertexGraphInformation;
 
-		this.unansweredInFlighLogRequests = new LinkedList<>();
-		this.unansweredDeterminantRequests = new HashMap<>();
+		this.unansweredDeterminantRequests = new ConcurrentHashMap<>();
 
-		this.incompleteStateRestorations = new HashMap<>();
+		this.incompleteStateRestorations = new ConcurrentHashMap<>();
 
 		this.finalRestoredCheckpointId = 0;
 
@@ -97,11 +98,13 @@ public class RecoveryManager implements IRecoveryManager{
 
 	public void setRecordWriters(List<RecordWriter> recordWriters) {
 		this.recordWriters = recordWriters;
-
+		unansweredInFlighLogRequests = new ConcurrentHashMap<>(recordWriters.size());
 		for(RecordWriter recordWriter : recordWriters){
 			IntermediateResultPartitionID intermediateResultPartitionID = recordWriter.getResultPartition().getPartitionId().getPartitionId();
 			LOG.info("Registering a record writer with intermediateResultPartition {}", intermediateResultPartitionID);
 			this.intermediateResultPartitionIDRecordWriterMap.put(intermediateResultPartitionID, recordWriter);
+
+			unansweredInFlighLogRequests.put(intermediateResultPartitionID, new ConcurrentHashMap<>(recordWriter.getResultPartition().getNumberOfSubpartitions()));
 		}
 	}
 

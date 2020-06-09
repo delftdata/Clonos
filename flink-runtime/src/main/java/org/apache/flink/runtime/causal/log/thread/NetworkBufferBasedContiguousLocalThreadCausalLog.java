@@ -27,7 +27,7 @@ package org.apache.flink.runtime.causal.log.thread;
 
 import org.apache.flink.runtime.io.network.buffer.BufferPool;
 
-public class NetworkBufferBasedContiguousLocalThreadCausalLog extends NetworkBufferBasedContiguousThreadCausalLog implements LocalThreadCausalLog {
+public final class NetworkBufferBasedContiguousLocalThreadCausalLog extends NetworkBufferBasedContiguousThreadCausalLog implements LocalThreadCausalLog {
 
 	public NetworkBufferBasedContiguousLocalThreadCausalLog(BufferPool bufferPool) {
 		super(bufferPool);
@@ -37,14 +37,17 @@ public class NetworkBufferBasedContiguousLocalThreadCausalLog extends NetworkBuf
 	@Override
 	public void appendDeterminants(byte[] determinants, long epochID) {
 		readLock.lock();
-		int writeIndex = writerIndex.get();
-		epochStartOffsets.computeIfAbsent(epochID, k -> new EpochStartOffset(k, writeIndex));
+		try {
+			int writeIndex = writerIndex.get();
+			epochStartOffsets.computeIfAbsent(epochID, k -> new EpochStartOffset(k, writeIndex));
 
-		while (notEnoughSpaceFor(determinants.length))
-			addComponent();
+			while (notEnoughSpaceFor(determinants.length))
+				addComponent();
 
-		buf.writeBytes(determinants);
-		writerIndex.addAndGet(determinants.length);
-		readLock.unlock();
+			buf.writeBytes(determinants);
+			writerIndex.addAndGet(determinants.length);
+		} finally {
+			readLock.unlock();
+		}
 	}
 }

@@ -526,19 +526,14 @@ public class SingleInputGate implements InputGate {
 
 				LOG.debug("{}: Input channel {} has been updated to {}.", owningTaskName, current, newChannel);
 
-
 				inputChannels.put(partitionId, newChannel);
 				inputChannelArray[newChannel.getChannelIndex()] = newChannel;
 
 				try {
-					if (isStandby) {
-						newChannel.requestSubpartition(consumedSubpartitionIndex);
-						requestedPartitionsFlag.set(true);
+					newChannel.requestSubpartition(consumedSubpartitionIndex);
+					requestedPartitionsFlag.set(true);
+					if(isStandby)
 						recoveryManager.notifyNewChannel((RemoteInputChannel) newChannel, consumedSubpartitionIndex, ((RemoteInputChannel)current).getNumberOfBuffersRemoved());
-					} else {
-						newChannel.requestSubpartition(consumedSubpartitionIndex);
-						requestedPartitionsFlag.set(true);
-					}
 				} catch (IOException e) {
 					LOG.error("{}: Request subpartition or send task event for input channel {} failed. Ignoring failure and sending fail trigger for producer (chances are it is dead).",
 						owningTaskName, newChannel, e);
@@ -759,9 +754,11 @@ public class SingleInputGate implements InputGate {
 
 		final Buffer buffer = result.get().buffer();
 		if (buffer.isBuffer()) {
+			LOG.debug("Buffer is a buffer!");
 			return Optional.of(new BufferOrEvent(buffer, currentChannel.getChannelIndex(), moreAvailable));
 		}
 		else {
+			LOG.debug("Buffer is an event!");
 			final AbstractEvent event = EventSerializer.fromBuffer(buffer, getClass().getClassLoader());
 
 			if (event.getClass() == EndOfPartitionEvent.class) {

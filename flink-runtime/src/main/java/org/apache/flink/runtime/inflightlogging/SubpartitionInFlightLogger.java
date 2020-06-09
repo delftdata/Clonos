@@ -31,9 +31,12 @@ public class SubpartitionInFlightLogger implements InFlightLog {
 	private final SortedMap<Long, List<Buffer>> slicedLog;
 
 	public SubpartitionInFlightLogger() {
+		this(0l);
+	}
+	public SubpartitionInFlightLogger(long startingEpoch) {
 		slicedLog = new TreeMap<>();
 		//Perhaps we should use array lists, initialized to the size of the previous epoch.
-		slicedLog.put(0l, new LinkedList<>());
+		slicedLog.put(startingEpoch, new LinkedList<>());
 	}
 
 

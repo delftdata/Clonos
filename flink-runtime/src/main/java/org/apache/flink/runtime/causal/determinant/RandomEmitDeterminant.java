@@ -17,7 +17,7 @@
  */
 package org.apache.flink.runtime.causal.determinant;
 
-public class RandomEmitDeterminant extends Determinant {
+public final class RandomEmitDeterminant extends Determinant {
 	byte channel;
 
 	public RandomEmitDeterminant(byte channel) {

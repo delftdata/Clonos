@@ -57,7 +57,7 @@ public class VertexCausalLogDelta implements NettyMessageWritable, IOReadableWri
 	 Logger LOG = LoggerFactory.getLogger(VertexCausalLogDelta.class);
 
 	public VertexCausalLogDelta() {
-
+		partitionDeltas = new TreeMap<>();
 	}
 
 	/**
@@ -118,7 +118,7 @@ public class VertexCausalLogDelta implements NettyMessageWritable, IOReadableWri
 
 		if (mainThreadDelta != null) {
 			byteBuf.writeInt(mainThreadDelta.getOffsetFromEpoch());
-			byteBuf.writeInt(mainThreadDelta.getRawDeterminants().capacity());
+			byteBuf.writeInt(mainThreadDelta.getRawDeterminants().readableBytes());
 		}
 
 		for (Map.Entry<IntermediateResultPartitionID, SortedMap<Integer, SubpartitionThreadLogDelta>> entry : partitionDeltas.entrySet()) {
@@ -128,7 +128,7 @@ public class VertexCausalLogDelta implements NettyMessageWritable, IOReadableWri
 			for (SubpartitionThreadLogDelta subpartitionLogDelta : entry.getValue().values()) {
 				byteBuf.writeShort(subpartitionLogDelta.getSubpartitionIndex());
 				byteBuf.writeInt(subpartitionLogDelta.getOffsetFromEpoch());
-				byteBuf.writeInt(subpartitionLogDelta.getRawDeterminants().capacity());
+				byteBuf.writeInt(subpartitionLogDelta.getRawDeterminants().readableBytes());
 			}
 		}
 	}
@@ -195,7 +195,7 @@ public class VertexCausalLogDelta implements NettyMessageWritable, IOReadableWri
 
 		if (mainThreadDelta != null) {
 			out.writeInt(mainThreadDelta.getOffsetFromEpoch());
-			out.writeInt(mainThreadDelta.getRawDeterminants().capacity());
+			out.writeInt(mainThreadDelta.getRawDeterminants().readableBytes());
 		}
 
 		for (Map.Entry<IntermediateResultPartitionID, SortedMap<Integer, SubpartitionThreadLogDelta>> entry : partitionDeltas.entrySet()) {
@@ -205,7 +205,7 @@ public class VertexCausalLogDelta implements NettyMessageWritable, IOReadableWri
 			for (SubpartitionThreadLogDelta subpartitionLogDelta : entry.getValue().values()) {
 				out.writeShort(subpartitionLogDelta.getSubpartitionIndex());
 				out.writeInt(subpartitionLogDelta.getOffsetFromEpoch());
-				out.writeInt(subpartitionLogDelta.getRawDeterminants().capacity());
+				out.writeInt(subpartitionLogDelta.getRawDeterminants().readableBytes());
 			}
 		}
 

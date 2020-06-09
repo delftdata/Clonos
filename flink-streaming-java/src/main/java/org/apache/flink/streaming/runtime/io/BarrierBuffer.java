@@ -210,8 +210,10 @@ public class BarrierBuffer implements CheckpointBarrierHandler {
 			BufferOrEvent bufferOrEvent = next.get();
 			Optional<BufferOrEvent> maybeBufferOrEventToForward = processBufferOrEvent(bufferOrEvent);
 
-			if (maybeBufferOrEventToForward.isPresent())
+			if (maybeBufferOrEventToForward.isPresent()) {
+				LOG.info("Returning {}", maybeBufferOrEventToForward);
 				return maybeBufferOrEventToForward.get();
+			}
 		}
 	}
 

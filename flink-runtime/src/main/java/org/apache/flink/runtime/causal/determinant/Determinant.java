@@ -65,4 +65,6 @@ public abstract class Determinant {
 	public BufferBuiltDeterminant asBufferBuiltDeterminant() {
 		return (BufferBuiltDeterminant) this;
 	}
+
+
 }

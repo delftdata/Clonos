@@ -28,7 +28,7 @@ package org.apache.flink.runtime.causal.log.thread;
 import org.apache.flink.runtime.io.network.buffer.BufferPool;
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 
-public class NetworkBufferBasedContiguousUpstreamThreadCausalLog extends NetworkBufferBasedContiguousThreadCausalLog implements UpstreamThreadCausalLog {
+public final class NetworkBufferBasedContiguousUpstreamThreadCausalLog extends NetworkBufferBasedContiguousThreadCausalLog implements UpstreamThreadCausalLog {
 
 	public NetworkBufferBasedContiguousUpstreamThreadCausalLog(BufferPool bufferPool) {
 		super(bufferPool);
@@ -38,32 +38,33 @@ public class NetworkBufferBasedContiguousUpstreamThreadCausalLog extends Network
 	@Override
 	public void processUpstreamVertexCausalLogDelta(ThreadLogDelta causalLogDelta, long epochID) {
 
-
 		int determinantSize = causalLogDelta.getBufferSize();
 		if (determinantSize > 0) {
 			int offsetFromEpoch = causalLogDelta.getOffsetFromEpoch();
 
 			readLock.lock();
-			synchronized (buf) {
-				int writeIndex = writerIndex.get();
-				EpochStartOffset epochStartOffset = epochStartOffsets.computeIfAbsent(epochID, k -> new EpochStartOffset(k, writeIndex));
+			try {
+				synchronized (buf) {
+					int writeIndex = writerIndex.get();
+					EpochStartOffset epochStartOffset = epochStartOffsets.computeIfAbsent(epochID, k -> new EpochStartOffset(k, writeIndex));
 
-				int currentOffsetFromEpoch = writeIndex - epochStartOffset.getOffset();
+					int currentOffsetFromEpoch = writeIndex - epochStartOffset.getOffset();
 
-				int numNewDeterminants = (offsetFromEpoch + determinantSize) - currentOffsetFromEpoch;
+					int numNewDeterminants = (offsetFromEpoch + determinantSize) - currentOffsetFromEpoch;
 
-				while (notEnoughSpaceFor(numNewDeterminants))
-					addComponent();
+					while (notEnoughSpaceFor(numNewDeterminants))
+						addComponent();
 
-				ByteBuf deltaBuf = causalLogDelta.getRawDeterminants();
-				LOG.info("Processing upstream delta for epoch {}, buf {}, offset {}, currentOffset {}, numNewDeterminants {}, ", epochID, deltaBuf, offsetFromEpoch, currentOffsetFromEpoch, numNewDeterminants);
-				deltaBuf.readerIndex(determinantSize - numNewDeterminants);
-				//add the new determinants
-				buf.writeBytes(deltaBuf, numNewDeterminants);
-				writerIndex.addAndGet(numNewDeterminants);
+					ByteBuf deltaBuf = causalLogDelta.getRawDeterminants();
+					deltaBuf.readerIndex(determinantSize - numNewDeterminants);
+					//add the new determinants
+					buf.writeBytes(deltaBuf, numNewDeterminants);
+					writerIndex.addAndGet(numNewDeterminants);
+				}
+
+			} finally {
+				readLock.unlock();
 			}
-
-			readLock.unlock();
 		}
 	}
 }

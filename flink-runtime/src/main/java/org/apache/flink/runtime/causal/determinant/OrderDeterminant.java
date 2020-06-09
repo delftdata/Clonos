@@ -17,7 +17,7 @@
  */
 package org.apache.flink.runtime.causal.determinant;
 
-public class OrderDeterminant extends Determinant {
+public final class OrderDeterminant extends Determinant {
 
 	private byte channel;
 

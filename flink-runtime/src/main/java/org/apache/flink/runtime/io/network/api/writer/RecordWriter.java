@@ -108,7 +108,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 		}
 	}
 
-	public ResultPartitionWriter getResultPartition(){
+	public ResultPartitionWriter getResultPartition() {
 		return targetPartition;
 	}
 
@@ -170,9 +170,21 @@ public class RecordWriter<T extends IOReadableWritable> {
 	public void broadcastEvent(AbstractEvent event) throws IOException, InterruptedException {
 		LOG.debug("{}: RecordWriter broadcast event {}.", targetPartition.getTaskName(), event);
 
-		for (int targetChannel = 0; targetChannel < numChannels; targetChannel++)
-			emitEvent(event, targetChannel);
+		try (BufferConsumer eventBufferConsumer = EventSerializer.toBufferConsumer(event)) {
+			for (int targetChannel = 0; targetChannel < numChannels; targetChannel++) {
+				RecordSerializer<T> serializer = serializers[targetChannel];
+
+				tryFinishCurrentBufferBuilder(targetChannel, serializer);
+
+				// retain the buffer so that it can be recycled by each channel of targetPartition
+				targetPartition.addBufferConsumer(eventBufferConsumer.copy(), targetChannel);
+			}
+			if (flushAlways) {
+				flushAll();
+			}
+		}
 	}
+
 
 	public void emitEvent(AbstractEvent event, int targetChannel) throws IOException, InterruptedException {
 		LOG.debug("{}: RecordWriter replay {}.", targetPartition.getTaskName(), event);

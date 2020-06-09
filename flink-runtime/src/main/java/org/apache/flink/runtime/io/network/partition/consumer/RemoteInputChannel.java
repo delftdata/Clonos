@@ -146,6 +146,20 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 
 	}
 
+	public RemoteInputChannel(
+		SingleInputGate inputGate,
+		int channelIndex,
+		ResultPartitionID partitionId,
+		ConnectionID connectionId,
+		ConnectionManager connectionManager,
+		int initialBackOff,
+		int maxBackoff,
+		TaskIOMetricGroup metrics, int initialCredit) {
+
+		this(inputGate, channelIndex, partitionId, connectionId, connectionManager, initialBackOff, maxBackoff, metrics);
+		this.initialCredit = initialCredit;
+	}
+
 	/**
 	 * Assigns exclusive buffers to this input channel, and this method should be called only once
 	 * after this input channel is created.
@@ -721,6 +735,24 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 	public RemoteInputChannel toNewRemoteInputChannel(ResultPartitionID newPartitionId,
 			ConnectionID newProducerAddress, ConnectionManager connectionManager,
 			int initialBackoff, int maxBackoff, TaskIOMetricGroup metrics) throws IOException {
+		LOG.info("Transforming remote input channel.");
+		//Wait for all data we have received to be processed.
+		//This is to ensure correctness, otherwise, we may have the determinants, but not have  processed the data.
+		//If we instead deduplicated at the receiver, we could disregard this.
+		while(true){
+			synchronized (receivedBuffers) {
+				if (receivedBuffers.isEmpty())
+					break;
+				else
+					LOG.info("There is still data to be processed, waiting.");
+			}
+			try {
+				Thread.sleep(5l);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+		}
+		LOG.info("All data has been processed, releasing.");
 		releaseAllResources();
 		RemoteInputChannel newRemoteInputChannel = new RemoteInputChannel(inputGate, channelIndex, newPartitionId,
 				checkNotNull(newProducerAddress), connectionManager, initialBackoff,

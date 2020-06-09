@@ -79,7 +79,7 @@ public class BasicLocalVertexCausalLog implements LocalVertexCausalLog {
 
 	@Override
 	public void appendDeterminants(byte[] determinants, long epochID) {
-		LOG.info("Appending determinants to main thread.");
+		LOG.info("Appending determinants to main thread, epochID {}.", epochID);
 		mainThreadLog.appendDeterminants(determinants, epochID);
 	}
 
@@ -153,5 +153,21 @@ public class BasicLocalVertexCausalLog implements LocalVertexCausalLog {
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
+	}
+
+	@Override
+	public String toString() {
+		return "BasicLocalVertexCausalLog{" +
+			"vertexId=" + vertexId +
+			", mainThreadLog=" + mainThreadLog +
+			", subpartitionLogs=" + representSubpartitionLogsAsString() +
+			", totalSubpartitions=" + totalSubpartitions +
+			'}';
+	}
+
+	private String representSubpartitionLogsAsString() {
+		return "{" + subpartitionLogs.entrySet().stream().map(
+			x -> x.getKey() + "->" + Arrays.toString(x.getValue())).collect(Collectors.joining(", "))
+			+ "}";
 	}
 }

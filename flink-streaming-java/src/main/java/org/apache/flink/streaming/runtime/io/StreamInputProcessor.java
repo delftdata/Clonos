@@ -212,6 +212,7 @@ public class StreamInputProcessor<IN> {
 				}
 			}
 
+			LOG.info("Getting next BufferOrEvent");
 			final BufferOrEvent	bufferOrEvent = barrierHandler.getNextNonBlocked();
 			if (bufferOrEvent != null) {
 				if (bufferOrEvent.isBuffer()) {

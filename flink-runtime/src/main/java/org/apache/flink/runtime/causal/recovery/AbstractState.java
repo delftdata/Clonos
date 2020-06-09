@@ -31,18 +31,13 @@ import org.apache.flink.runtime.event.InFlightLogRequestEvent;
 import org.apache.flink.runtime.io.network.api.DeterminantRequestEvent;
 import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
 import org.apache.flink.runtime.io.network.partition.PipelinedSubpartition;
-import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.io.network.partition.ResultSubpartition;
-import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.io.network.partition.consumer.RemoteInputChannel;
-import org.apache.flink.runtime.jobgraph.IntermediateDataSet;
-import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.rmi.Remote;
 
 public abstract class AbstractState implements State {
 
@@ -73,7 +68,7 @@ public abstract class AbstractState implements State {
 	public void notifyInFlightLogRequestEvent(InFlightLogRequestEvent e) {
 		//we got an inflight log request while still recovering. Since we must finish recovery first before
 		//answering, we store it, and when we enter the running state we immediately process it.
-		context.unansweredInFlighLogRequests.add(e);
+		context.unansweredInFlighLogRequests.get(e.getIntermediateResultPartitionID()).put(e.getSubpartitionIndex(), e);
 	}
 
 	@Override
@@ -86,7 +81,7 @@ public abstract class AbstractState implements State {
 
 		for (RecordWriter recordWriter : context.recordWriters)
 			for(ResultSubpartition rs : recordWriter.getResultPartition().getResultSubpartitions())
-				((PipelinedSubpartition)rs).setCurrentEpochID(context.finalRestoredCheckpointId);
+				((PipelinedSubpartition)rs).setStartingEpoch(context.finalRestoredCheckpointId);
 
 			context.epochProvider.setCurrentEpochID(context.finalRestoredCheckpointId);
 	}

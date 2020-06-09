@@ -46,7 +46,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
 
 /**
- *	Thread level causal log.
+ * Thread level causal log.
  * Local versions, main thread and subpartition thread are SPMC and SPSC respectively.
  * Upstream version is MPMC.
  * We have to be conservative and treat all as MPMC.
@@ -58,7 +58,7 @@ public class NetworkBufferBasedContiguousThreadCausalLog implements ThreadCausal
 
 	protected final BufferPool bufferPool;
 
-	CompositeByteBuf buf;
+	protected CompositeByteBuf buf;
 
 	@GuardedBy("buf")
 	protected ConcurrentMap<Long, EpochStartOffset> epochStartOffsets;
@@ -72,6 +72,8 @@ public class NetworkBufferBasedContiguousThreadCausalLog implements ThreadCausal
 	//Writers compare and set to reserve space in the buffer.
 	protected AtomicInteger writerIndex;
 
+	protected long earliestEpoch;
+
 	public NetworkBufferBasedContiguousThreadCausalLog(BufferPool bufferPool) {
 		buf = Unpooled.compositeBuffer();
 		this.bufferPool = bufferPool;
@@ -84,51 +86,62 @@ public class NetworkBufferBasedContiguousThreadCausalLog implements ThreadCausal
 		epochLock = new ReentrantReadWriteLock();
 		readLock = epochLock.readLock();
 		writeLock = epochLock.writeLock();
+
+		earliestEpoch = 0l;
 	}
 
 	@Override
 	public ByteBuf getDeterminants() {
-			ByteBuf result;
+		ByteBuf result;
+		int startIndex = 0;
 
+		readLock.lock();
+		try {
+			EpochStartOffset offset = epochStartOffsets.get(earliestEpoch);
+			if (offset != null)
+				startIndex = offset.getOffset();
 
-			readLock.lock();
 			synchronized (buf) {
-				result = buf.asReadOnly().slice(0, writerIndex.get()).retain();
+				result = buf.asReadOnly().slice(startIndex, writerIndex.get()-startIndex).retain();
 			}
+		} finally {
 			readLock.unlock();
-
-			return result;
+		}
+		return result;
 	}
 
 	@Override
 	public ThreadLogDelta getNextDeterminantsForDownstream(InputChannelID consumer, long epochID) {
 		//If a request is coming for the next determinants, then the epoch MUST already exist.
-		EpochStartOffset epochStartOffset = epochStartOffsets.get(epochID);
-		if (epochStartOffset == null)
-			return new ThreadLogDelta(Unpooled.EMPTY_BUFFER, 0);
-		ConsumerOffset consumerOffset = channelOffsetMap.computeIfAbsent(consumer, k -> new ConsumerOffset(epochStartOffset));
-
-		long currentConsumerEpochID = consumerOffset.getEpochStart().getId();
-		if (currentConsumerEpochID != epochID) {
-			if (currentConsumerEpochID > epochID)
-				throw new RuntimeException("Consumer went backwards!");
-			//if (currentConsumerEpochID + 1 != epochID)
-			//	throw new RuntimeException("Consumer skipped an epoch!");
-			consumerOffset.epochStart = epochStartOffset;
-			consumerOffset.offset = 0;
-		}
-
 		readLock.lock();
-		int physicalConsumerOffset = consumerOffset.epochStart.offset + consumerOffset.offset;
+		try {
+			EpochStartOffset epochStartOffset = epochStartOffsets.get(epochID);
+			if (epochStartOffset == null)
+				return new ThreadLogDelta(Unpooled.EMPTY_BUFFER, 0);
+			ConsumerOffset consumerOffset = channelOffsetMap.computeIfAbsent(consumer, k -> new ConsumerOffset(epochStartOffset));
 
-		int numBytesToSend = computeNumberOfBytesToSend(epochID, physicalConsumerOffset);
+			long currentConsumerEpochID = consumerOffset.getEpochStart().getId();
+			if (currentConsumerEpochID != epochID) {
+				if (currentConsumerEpochID > epochID)
+					throw new RuntimeException("Consumer went backwards!");
+				//if (currentConsumerEpochID + 1 != epochID)
+				//	throw new RuntimeException("Consumer skipped an epoch!");
+				consumerOffset.epochStart = epochStartOffset;
+				consumerOffset.offset = 0;
+			}
 
-		ByteBuf update = buf.asReadOnly().slice(physicalConsumerOffset, numBytesToSend).retain();
+			int physicalConsumerOffset = consumerOffset.epochStart.offset + consumerOffset.offset;
 
-		ThreadLogDelta toReturn = new ThreadLogDelta(update, consumerOffset.getOffset());
-		consumerOffset.setOffset(consumerOffset.getOffset() + numBytesToSend);
-		readLock.unlock();
-		return toReturn;
+			int numBytesToSend = computeNumberOfBytesToSend(epochID, physicalConsumerOffset);
+
+			ByteBuf update = buf.asReadOnly().slice(physicalConsumerOffset, numBytesToSend).retain();
+
+			ThreadLogDelta toReturn = new ThreadLogDelta(update, consumerOffset.getOffset());
+			consumerOffset.setOffset(consumerOffset.getOffset() + numBytesToSend);
+			return toReturn;
+		} finally {
+			readLock.unlock();
+		}
 	}
 
 	private int computeNumberOfBytesToSend(long epochID, int physicalConsumerOffset) {
@@ -147,21 +160,25 @@ public class NetworkBufferBasedContiguousThreadCausalLog implements ThreadCausal
 	public void notifyCheckpointComplete(long checkpointId) throws Exception {
 		LOG.info("Notify checkpoint complete for id {}", checkpointId);
 		writeLock.lock();
-		LOG.info("Acquired writer lock!");
-		EpochStartOffset followingEpoch = epochStartOffsets.computeIfAbsent(checkpointId, k -> new EpochStartOffset(k, writerIndex.get()));
-		for (Long epochID : epochStartOffsets.keySet())
-			if (epochID < checkpointId)
-				epochStartOffsets.remove(epochID);
+		try {
+			EpochStartOffset followingEpoch = epochStartOffsets.computeIfAbsent(checkpointId, k -> new EpochStartOffset(k, writerIndex.get()));
+			for (Long epochID : epochStartOffsets.keySet())
+				if (epochID < checkpointId)
+					epochStartOffsets.remove(epochID);
 
-		int followingEpochOffset = followingEpoch.getOffset();
-		buf.readerIndex(followingEpochOffset);
-		buf.discardReadComponents();
-		int move = followingEpochOffset - buf.readerIndex();
+			int followingEpochOffset = followingEpoch.getOffset();
+			buf.readerIndex(followingEpochOffset);
+			buf.discardReadComponents();
+			int move = followingEpochOffset - buf.readerIndex();
 
-		for (EpochStartOffset epochStartOffset : epochStartOffsets.values())
-			epochStartOffset.setOffset(epochStartOffset.getOffset() - move);
-		LOG.info("State of Buf: {}", buf);
-		writeLock.unlock();
+			for (EpochStartOffset epochStartOffset : epochStartOffsets.values())
+				epochStartOffset.setOffset(epochStartOffset.getOffset() - move);
+			LOG.info("Offsets moved by {} bytes", move);
+			writerIndex.set(writerIndex.get() - move);
+			earliestEpoch = checkpointId;
+		} finally {
+			writeLock.unlock();
+		}
 	}
 
 
@@ -169,13 +186,14 @@ public class NetworkBufferBasedContiguousThreadCausalLog implements ThreadCausal
 	public String toString() {
 		return "NetworkBufferBasedContiguousLocalThreadCausalLog{" +
 			"buf=" + buf +
+			", earliestEpoch=" + earliestEpoch +
+			", writerIndex=" + writerIndex.get() +
 			", epochStartOffsets=[" + epochStartOffsets.entrySet().stream().map(Objects::toString).collect(Collectors.joining(", ")) + "]" +
 			", channelOffsetMap={" + channelOffsetMap.entrySet().stream().map(x -> x.getKey() + " -> " + x.getValue()).collect(Collectors.joining(", ")) + "}" +
 			'}';
 	}
 
 	protected boolean notEnoughSpaceFor(int length) {
-		LOG.info("Has Space? Determinent length {}, writable bytes {}, capacity {}", length, buf.writableBytes(), buf.capacity());
 		return buf.writableBytes() < length;
 	}
 
@@ -188,13 +206,10 @@ public class NetworkBufferBasedContiguousThreadCausalLog implements ThreadCausal
 		} catch (IOException | InterruptedException e) {
 			e.printStackTrace();
 		}
-		LOG.info("Requested buffer {}", buffer);
 		ByteBuf byteBuf = buffer.asByteBuf();
 		//The writer index movement tricks netty into adding to the composite capacity.
-		LOG.info("CompBuf before: {}", buf);
 		byteBuf.writerIndex(byteBuf.capacity());
 		buf.addComponent(byteBuf);
-		LOG.info("CompBuf after: {}", buf);
 	}
 
 	protected static class EpochStartOffset {

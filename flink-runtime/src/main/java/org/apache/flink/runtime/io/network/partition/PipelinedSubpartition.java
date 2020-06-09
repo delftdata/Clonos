@@ -105,14 +105,20 @@ public class PipelinedSubpartition extends ResultSubpartition {
 		this.isRecovering = new AtomicBoolean(false);
 	}
 
-	public void setIsRecovering(boolean isRecovering){
+	public void setIsRecovering(boolean isRecovering) {
+		LOG.info("Set isRecovering to {}", isRecovering);
 		this.isRecovering.set(isRecovering);
 	}
 
+	public void setStartingEpoch(long currentEpochID) {
+		this.currentEpochID = currentEpochID;
+		this.inFlightLog = new SubpartitionInFlightLogger(currentEpochID);
+	}
 
 	public void setRecoveryManager(IRecoveryManager recoveryManager) {
 		this.recoveryManager = recoveryManager;
 	}
+
 	public void setCausalLoggingManager(IJobCausalLog causalLoggingManager) {
 		this.causalLoggingManager = causalLoggingManager;
 	}
@@ -127,9 +133,6 @@ public class PipelinedSubpartition extends ResultSubpartition {
 		this.inFlightLog.notifyCheckpointComplete(checkpointId);
 	}
 
-	public void setCurrentEpochID(long currentEpochID){
-		this.currentEpochID = currentEpochID;
-	}
 
 	@Override
 	public boolean add(BufferConsumer bufferConsumer) {
@@ -240,8 +243,8 @@ public class PipelinedSubpartition extends ResultSubpartition {
 			return null;
 		}
 
-		if (nextIsNotDeterminantRequest && isRecovering.get()){
-			LOG.info("WE ARE STILL REPLAYING STOP REQUESTING BUFFERS");
+		if (nextIsNotDeterminantRequest && isRecovering.get()) {
+			LOG.info("WE ARE STILL RECOVERING THIS SUBPARTITION STOP REQUESTING BUFFERS");
 			return null;
 		}
 
@@ -299,7 +302,6 @@ public class PipelinedSubpartition extends ResultSubpartition {
 				buffer = bufferConsumer.build();
 
 
-
 				checkState(bufferConsumer.isFinished() || buffers.size() == 1,
 					"When there are multiple buffers, an unfinished bufferConsumer can not be at the head of the buffers queue.");
 
@@ -344,7 +346,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 				nextIsNotDeterminantRequest = true;
 			}
 			//We do this after the determinant and sending the BufferAndBacklog because a checkpoint x belongs to epoch x-1
-			if(checkpointId != -1L)
+			if (checkpointId != -1L)
 				currentEpochID = checkpointId;
 			LOG.debug("POST LOG\n\tbuffers: {}\n\tcheckpo: {}", "[" + buffers.stream().map(x -> "*").collect(Collectors.joining(", ")) + "]", "[" + checkpointIds.stream().map(x -> x + "").collect(Collectors.joining(", ")) + "]");
 			// Do not report last remaining buffer on buffers as available to read (assuming it's unfinished).
@@ -493,7 +495,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 	public void buildAndLogBuffer(int bufferSize) {
 		LOG.info("building buffer and discarding result");
-		while(true) {
+		while (true) {
 			synchronized (buffers) {
 				LOG.info("Acquired buffers lock to build and discard");
 
@@ -525,18 +527,13 @@ public class PipelinedSubpartition extends ResultSubpartition {
 					if (bufferConsumer.isFinished()) {
 						buffers.pop().close();
 						checkpointIds.pop();
-						decreaseBuffersInBacklogUnsafe(bufferConsumer.isBuffer());
 					}
 
-					if (buffer.readableBytes() <= 0) {
-						buffer.recycleBuffer();
-						buffer = null;
-					}
+					if (buffer.readableBytes() == 0)
+						throw new RuntimeException("Requested to rebuild buffer with 0 bytes.");
 
-					if (buffer != null) {
-						updateStatistics(buffer);
-						logBuffer(buffer, checkpointId);
-					}
+					updateStatistics(buffer);
+					logBuffer(buffer, checkpointId);
 					break;
 				}
 			}
