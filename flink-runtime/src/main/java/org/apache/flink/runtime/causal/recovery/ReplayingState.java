@@ -62,7 +62,6 @@ public class ReplayingState extends AbstractState {
 		LOG.info("Entered replaying state with delta: {}", recoveryDeterminants);
 		determinantEncodingStrategy = context.jobCausalLog.getDeterminantEncodingStrategy();
 
-
 		recoveryThreads = new LinkedList<>();
 		createSubpartitionRecoveryThreads(recoveryDeterminants);
 

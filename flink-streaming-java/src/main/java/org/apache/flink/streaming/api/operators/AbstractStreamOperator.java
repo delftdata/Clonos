@@ -245,6 +245,7 @@ public abstract class AbstractStreamOperator<OUT>
 		try {
 			StateInitializationContext initializationContext = new StateInitializationContextImpl(
 				context.isRestored(), // information whether we restore or start for the first time
+				!containingTask.getRecoveryManager().isRunning(),
 				operatorStateBackend, // access to operator state backend
 				keyedStateStore, // access to keyed state backend
 				keyedStateInputs, // access to keyed state stream

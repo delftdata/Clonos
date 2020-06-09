@@ -42,6 +42,12 @@ public interface ManagedInitializationContext {
 	boolean isRestored();
 
 	/**
+	 * Returns true, if the task is only loading a state snapshot for a standby task.
+	 */
+	boolean isStandby();
+
+
+	/**
 	 * Returns an interface that allows for registering operator state with the backend.
 	 */
 	OperatorStateStore getOperatorStateStore();

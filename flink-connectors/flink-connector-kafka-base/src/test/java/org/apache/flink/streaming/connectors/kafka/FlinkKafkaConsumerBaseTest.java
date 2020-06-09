@@ -946,6 +946,11 @@ public class FlinkKafkaConsumerBaseTest {
 		}
 
 		@Override
+		public boolean isStandby() {
+			return false;
+		}
+
+		@Override
 		public OperatorStateStore getOperatorStateStore() {
 			return operatorStateStore;
 		}

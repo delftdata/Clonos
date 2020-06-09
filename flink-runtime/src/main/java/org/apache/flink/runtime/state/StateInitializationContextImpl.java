@@ -28,6 +28,7 @@ public class StateInitializationContextImpl implements StateInitializationContex
 
 	/** Signal whether any state to restore was found */
 	private final boolean restored;
+	private final boolean isStandby;
 
 	private final OperatorStateStore operatorStateStore;
 
@@ -38,12 +39,14 @@ public class StateInitializationContextImpl implements StateInitializationContex
 
 	public StateInitializationContextImpl(
 			boolean restored,
+			boolean isStandby,
 			OperatorStateStore operatorStateStore,
 			KeyedStateStore keyedStateStore,
 			Iterable<KeyGroupStatePartitionStreamProvider> rawKeyedStateInputs,
 			Iterable<StatePartitionStreamProvider> rawOperatorStateInputs) {
 
 		this.restored = restored;
+		this.isStandby = isStandby;
 		this.operatorStateStore = operatorStateStore;
 		this.keyedStateStore = keyedStateStore;
 		this.rawOperatorStateInputs = rawOperatorStateInputs;
@@ -53,6 +56,11 @@ public class StateInitializationContextImpl implements StateInitializationContex
 	@Override
 	public boolean isRestored() {
 		return restored;
+	}
+
+	@Override
+	public boolean isStandby() {
+	return isStandby;
 	}
 
 	@Override

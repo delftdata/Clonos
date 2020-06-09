@@ -583,6 +583,7 @@ public class FlinkKafkaProducer011<IN>
 	 */
 	@Override
 	public void open(Configuration configuration) throws Exception {
+
 		if (logFailuresOnly) {
 			callback = new Callback() {
 				@Override

@@ -201,6 +201,7 @@ public class StateInitializationContextImplTest {
 		this.initializationContext =
 				new StateInitializationContextImpl(
 						stateContext.isRestored(),
+						false,
 						stateContext.operatorStateBackend(),
 						mock(KeyedStateStore.class),
 						stateContext.rawKeyedStateInputs(),
