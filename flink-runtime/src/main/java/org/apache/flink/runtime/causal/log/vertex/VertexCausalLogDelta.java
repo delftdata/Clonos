@@ -48,7 +48,7 @@ public class VertexCausalLogDelta implements NettyMessageWritable, IOReadableWri
 	/**
 	 * The {@link VertexID} of the vertex that this delta refers to
 	 */
-	VertexID vertexId;
+	VertexID vertexID;
 
 	ThreadLogDelta mainThreadDelta;
 
@@ -57,14 +57,19 @@ public class VertexCausalLogDelta implements NettyMessageWritable, IOReadableWri
 	 Logger LOG = LoggerFactory.getLogger(VertexCausalLogDelta.class);
 
 	public VertexCausalLogDelta() {
+		this(null);
+	}
+
+	public VertexCausalLogDelta(VertexID vertexID) {
 		partitionDeltas = new TreeMap<>();
+		this.vertexID = vertexID;
 	}
 
 	/**
 	 * When creatign a VertexCausalLogDelta pass null for mainThreadDelta if no update and an empty map for the subpartition deltas if no updates.
 	 */
-	public VertexCausalLogDelta(VertexID vertexId, ThreadLogDelta mainThreadDelta, Map<IntermediateResultPartitionID, Map<Integer, SubpartitionThreadLogDelta>> partitionDeltas) {
-		this.vertexId = vertexId;
+	public VertexCausalLogDelta(VertexID vertexID, ThreadLogDelta mainThreadDelta, Map<IntermediateResultPartitionID, Map<Integer, SubpartitionThreadLogDelta>> partitionDeltas) {
+		this.vertexID = vertexID;
 		this.mainThreadDelta = mainThreadDelta;
 		this.partitionDeltas = new TreeMap<>();
 
@@ -75,11 +80,11 @@ public class VertexCausalLogDelta implements NettyMessageWritable, IOReadableWri
 	}
 
 	public VertexID getVertexId() {
-		return vertexId;
+		return vertexID;
 	}
 
 	public void setVertexId(VertexID vertexId) {
-		this.vertexId = vertexId;
+		this.vertexID = vertexId;
 	}
 
 
@@ -112,7 +117,7 @@ public class VertexCausalLogDelta implements NettyMessageWritable, IOReadableWri
 
 	@Override
 	public void writeHeaderTo(ByteBuf byteBuf) {
-		byteBuf.writeShort(vertexId.getVertexId());
+		byteBuf.writeShort(vertexID.getVertexId());
 		byteBuf.writeBoolean(mainThreadDelta != null);
 		byteBuf.writeShort(partitionDeltas.size());
 
@@ -144,7 +149,7 @@ public class VertexCausalLogDelta implements NettyMessageWritable, IOReadableWri
 
 	@Override
 	public void readHeaderFrom(ByteBuf byteBuf) {
-		this.vertexId = new VertexID(byteBuf.readShort());
+		this.vertexID = new VertexID(byteBuf.readShort());
 		boolean hasMainThread = byteBuf.readBoolean();
 		short numPartitionUpdates = byteBuf.readShort();
 
@@ -189,7 +194,7 @@ public class VertexCausalLogDelta implements NettyMessageWritable, IOReadableWri
 
 	@Override
 	public void write(DataOutputView out) throws IOException {
-		out.writeShort(vertexId.getVertexId());
+		out.writeShort(vertexID.getVertexId());
 		out.writeBoolean(mainThreadDelta != null);
 		out.writeShort(partitionDeltas.size());
 
@@ -226,7 +231,7 @@ public class VertexCausalLogDelta implements NettyMessageWritable, IOReadableWri
 
 	@Override
 	public void read(DataInputView in) throws IOException {
-		this.vertexId = new VertexID(in.readShort());
+		this.vertexID = new VertexID(in.readShort());
 		boolean hasMainThread = in.readBoolean();
 		short numPartitionUpdates = in.readShort();
 
@@ -322,7 +327,7 @@ public class VertexCausalLogDelta implements NettyMessageWritable, IOReadableWri
 	@Override
 	public String toString() {
 		return "VertexCausalLogDelta{" +
-			"vertexId=" + vertexId +
+			"vertexId=" + vertexID +
 			", mainThreadDelta=" + mainThreadDelta +
 			", partitionDeltas=" + partitionDeltas +
 			'}';

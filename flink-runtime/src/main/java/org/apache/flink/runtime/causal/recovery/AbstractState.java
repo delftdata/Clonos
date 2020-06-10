@@ -116,6 +116,18 @@ public abstract class AbstractState implements State {
 
 	@Override
 	public void notifyDeterminantRequestEvent(DeterminantRequestEvent e,int channelRequestArrivedFrom) {
+		LOG.info("Received determinant request!");
+		if(!context.vertexGraphInformation.hasDownstream() && RecoveryManager.sinkRecoveryStrategy == RecoveryManager.SinkRecoveryStrategy.TRANSACTIONAL) {
+			try {
+				context.inputGate.getInputChannel(channelRequestArrivedFrom).sendTaskEvent(new DeterminantResponseEvent(new VertexCausalLogDelta()));
+			} catch (IOException ex) {
+				ex.printStackTrace();
+			} catch (InterruptedException ex) {
+				ex.printStackTrace();
+			}
+			return;
+		}
+
 		context.unansweredDeterminantRequests.put(e.getFailedVertex(), new RecoveryManager.UnansweredDeterminantRequest(e.getFailedVertex(), channelRequestArrivedFrom));
 		for (RecordWriter recordWriter : context.recordWriters) {
 			LOG.info("Recurring determinant request to RecordWriter {}", recordWriter);
