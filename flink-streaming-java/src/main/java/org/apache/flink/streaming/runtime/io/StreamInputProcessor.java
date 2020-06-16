@@ -121,6 +121,11 @@ public class StreamInputProcessor<IN> {
 	private final IRecoveryManager recoveryManager;
 	private final RecordCountProvider recordCountProvider;
 
+	/**
+	 * Used for performance to short circuit the check for if is recovering.
+	 */
+	private boolean isRecovering;
+
 	@SuppressWarnings("unchecked")
 	public StreamInputProcessor(
 		SingleInputGate[] inputGates,
@@ -136,6 +141,7 @@ public class StreamInputProcessor<IN> {
 		WatermarkGauge watermarkGauge) throws IOException {
 
 		this.recoveryManager = checkpointedTask.getRecoveryManager();
+		this.isRecovering = !recoveryManager.isRunning();
 		this.recordCountProvider = checkpointedTask.getRecordCountProvider();
 		InputGate inputGate = InputGateUtil.createInputGate(inputGates);
 		checkpointedTask.getRecoveryManager().setInputGate(inputGate);
@@ -194,7 +200,8 @@ public class StreamInputProcessor<IN> {
 				if (result.isFullRecord()) {
 					StreamElement recordOrMark = deserializationDelegate.getInstance();
 
-					if(recoveryManager.isReplaying())
+					//This short circuits on isRecovering if it is false, hopefully achieving higher performance when running
+					if(isRecovering && (isRecovering = recoveryManager.isReplaying()))
 						recoveryManager.checkAsyncEvent();
 
 					if (recordOrMark.isWatermark()) {
@@ -224,7 +231,8 @@ public class StreamInputProcessor<IN> {
 				}
 			}
 
-			if(recoveryManager.isReplaying())
+			//This short circuits on isRecovering if it is false, hopefully achieving higher performance when running
+			if(isRecovering && (isRecovering = recoveryManager.isReplaying()))
 				recoveryManager.checkAsyncEvent();
 
 			LOG.info("Getting next BufferOrEvent");

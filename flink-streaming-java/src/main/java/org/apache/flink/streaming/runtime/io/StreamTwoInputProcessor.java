@@ -24,6 +24,7 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.SimpleCounter;
 import org.apache.flink.runtime.causal.log.job.IJobCausalLog;
+import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 import org.apache.flink.runtime.event.AbstractEvent;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
@@ -91,7 +92,8 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 
 	private final Object lock;
 
-	private final IJobCausalLog causalLoggingManager;
+	private IRecoveryManager recoveryManager;
+	private boolean isRecovering;
 
 	// ---------------- Status and Watermark Valves ------------------
 
@@ -167,7 +169,9 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 		this.recordWriterOutputs = recordWriterOutputs;
 
 		this.lock = checkNotNull(lock);
-		causalLoggingManager = checkpointedTask.getJobCausalLog();
+
+		this.recoveryManager = checkpointedTask.getRecoveryManager();
+		this.isRecovering = !recoveryManager.isRunning();
 
 		StreamElementSerializer<IN1> ser1 = new StreamElementSerializer<>(inputSerializer1);
 		this.deserializationDelegate1 = new NonReusingDeserializationDelegate<>(ser1);
@@ -236,6 +240,8 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 				}
 
 				if (result.isFullRecord()) {
+					if(isRecovering && (isRecovering = recoveryManager.isReplaying()))
+						recoveryManager.checkAsyncEvent();
 					if (currentChannel < numInputChannels1) {
 						StreamElement recordOrWatermark = deserializationDelegate1.getInstance();
 						if (recordOrWatermark.isWatermark()) {
@@ -288,6 +294,9 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 					}
 				}
 			}
+
+			if(isRecovering && (isRecovering = recoveryManager.isReplaying()))
+				recoveryManager.checkAsyncEvent();
 
 			LOG.debug("barrierHandler.getNextNonBlocked().");
 			final BufferOrEvent bufferOrEvent = barrierHandler.getNextNonBlocked();

@@ -82,6 +82,7 @@ public class Kafka09Fetcher<T> extends AbstractFetcher<T, TopicPartition> {
 	 */
 	private volatile boolean running = true;
 
+
 	// ------------------------------------------------------------------------
 
 	public Kafka09Fetcher(
@@ -180,7 +181,9 @@ public class Kafka09Fetcher<T> extends AbstractFetcher<T, TopicPartition> {
 							running = false;
 							break;
 						}
-						recoveryManager.checkAsyncEvent();
+						//This short circuits on isRecovering if it is false, hopefully achieving higher performance when running
+						if(isRecovering && (isRecovering = recoveryManager.isReplaying()))
+							recoveryManager.checkAsyncEvent();
 						// emit the actual record. this also updates offset state atomically
 						// and deals with timestamps and watermark generation
 						emitRecord(value, partition, record.offset(), record);

@@ -140,6 +140,7 @@ public abstract class AbstractFetcher<T, KPH> {
 	private final MetricGroup legacyCommittedOffsetsMetricGroup;
 
 	protected final IRecoveryManager recoveryManager;
+	protected boolean isRecovering;
 
 	protected AbstractFetcher(
 		SourceContext<T> sourceContext,
@@ -175,6 +176,9 @@ public abstract class AbstractFetcher<T, KPH> {
 		this.legacyCommittedOffsetsMetricGroup = consumerMetricGroup.addGroup(LEGACY_COMMITTED_OFFSETS_METRICS_GROUP);
 
 		this.recoveryManager = recoveryManager;
+		isRecovering = false;
+		if(recoveryManager != null)
+			isRecovering = !recoveryManager.isRunning();
 
 		// figure out what we watermark mode we will be using
 		this.watermarksPeriodic = watermarksPeriodic;
