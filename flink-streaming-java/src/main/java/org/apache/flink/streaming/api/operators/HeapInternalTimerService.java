@@ -22,6 +22,7 @@ import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.typeutils.CompatibilityResult;
 import org.apache.flink.api.common.typeutils.CompatibilityUtil;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
+import org.apache.flink.runtime.causal.determinant.ProcessingTimeCallbackID;
 import org.apache.flink.runtime.state.InternalPriorityQueue;
 import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.state.KeyGroupedInternalPriorityQueue;
@@ -95,13 +96,24 @@ public class HeapInternalTimerService<K, N> implements InternalTimerService<N>, 
 	/** The restored timers snapshot, if any. */
 	private InternalTimersSnapshot<K, N> restoredTimersSnapshot;
 
+	private final ProcessingTimeCallbackID processingTimeCallbackID;
+
 	HeapInternalTimerService(
 		KeyGroupRange localKeyGroupRange,
 		KeyContext keyContext,
 		ProcessingTimeService processingTimeService,
 		KeyGroupedInternalPriorityQueue<TimerHeapInternalTimer<K, N>> processingTimeTimersQueue,
 		KeyGroupedInternalPriorityQueue<TimerHeapInternalTimer<K, N>> eventTimeTimersQueue) {
+		this("", localKeyGroupRange, keyContext, processingTimeService, processingTimeTimersQueue, eventTimeTimersQueue);
+	}
 
+		HeapInternalTimerService(
+			String name,
+			KeyGroupRange localKeyGroupRange,
+			KeyContext keyContext,
+			ProcessingTimeService processingTimeService,
+			KeyGroupedInternalPriorityQueue<TimerHeapInternalTimer<K, N>> processingTimeTimersQueue,
+			KeyGroupedInternalPriorityQueue<TimerHeapInternalTimer<K, N>> eventTimeTimersQueue) {
 		this.keyContext = checkNotNull(keyContext);
 		this.processingTimeService = checkNotNull(processingTimeService);
 		this.localKeyGroupRange = checkNotNull(localKeyGroupRange);
@@ -114,6 +126,7 @@ public class HeapInternalTimerService<K, N> implements InternalTimerService<N>, 
 			startIdx = Math.min(keyGroupIdx, startIdx);
 		}
 		this.localKeyGroupRangeStartIdx = startIdx;
+		this.processingTimeCallbackID = new ProcessingTimeCallbackID(name);
 	}
 
 	/**
@@ -183,7 +196,7 @@ public class HeapInternalTimerService<K, N> implements InternalTimerService<N>, 
 
 	@Override
 	public long currentProcessingTime() {
-		return processingTimeService.getCurrentProcessingTime();
+		return processingTimeService.getCurrentProcessingTimeCausal();
 	}
 
 	@Override
@@ -244,6 +257,11 @@ public class HeapInternalTimerService<K, N> implements InternalTimerService<N>, 
 				nextTimer = processingTimeService.registerTimer(timer.getTimestamp(), this);
 			}
 		}
+	}
+
+	@Override
+	public ProcessingTimeCallbackID getID() {
+		return processingTimeCallbackID;
 	}
 
 	public void advanceWatermark(long time) throws Exception {
@@ -367,4 +385,6 @@ public class HeapInternalTimerService<K, N> implements InternalTimerService<N>, 
 		return (this.keyDeserializer != null && !this.keyDeserializer.equals(restoredSnapshot.getKeySerializer())) ||
 			(this.namespaceDeserializer != null && !this.namespaceDeserializer.equals(restoredSnapshot.getNamespaceSerializer()));
 	}
+
+
 }

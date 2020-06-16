@@ -38,6 +38,8 @@ import java.util.List;
  */
 public interface IJobCausalLog extends CheckpointListener {
 
+	void setCheckpointLock(Object lock);
+
 	void registerDownstreamConsumer(InputChannelID inputChannelID, IntermediateResultPartitionID intermediateResultPartitionID, int consumedSubpartition);
 
 	void unregisterDownstreamConsumer(InputChannelID toCancel);

@@ -59,4 +59,6 @@ public interface State {
 	byte replayNextChannel();
 
 	long replayNextTimestamp();
+
+    void checkAsyncEvent();
 }

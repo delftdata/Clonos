@@ -18,6 +18,11 @@
 package org.apache.flink.streaming.api.operators;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.runtime.causal.EpochProvider;
+import org.apache.flink.runtime.causal.RecordCountProvider;
+import org.apache.flink.runtime.causal.determinant.ProcessingTimeCallbackID;
+import org.apache.flink.runtime.causal.log.job.IJobCausalLog;
+import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
@@ -28,6 +33,7 @@ import org.apache.flink.streaming.runtime.streamstatus.StreamStatusMaintainer;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeCallback;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeService;
 
+import java.util.UUID;
 import java.util.concurrent.ScheduledFuture;
 
 /**
@@ -74,6 +80,8 @@ public class StreamSource<OUT, SRC extends SourceFunction<OUT>>
 
 		final long watermarkInterval = getRuntimeContext().getExecutionConfig().getAutoWatermarkInterval();
 
+		final RecordCountProvider recordCountProvider = getContainingTask().getRecordCountProvider();
+
 		this.ctx = StreamSourceContexts.getSourceContext(
 			timeCharacteristic,
 			getProcessingTimeService(),
@@ -81,7 +89,7 @@ public class StreamSource<OUT, SRC extends SourceFunction<OUT>>
 			streamStatusMaintainer,
 			collector,
 			watermarkInterval,
-			-1);
+			-1, recordCountProvider);
 
 		try {
 			userFunction.run(ctx);
@@ -144,6 +152,9 @@ public class StreamSource<OUT, SRC extends SourceFunction<OUT>>
 
 			latencyMarkTimer = processingTimeService.scheduleAtFixedRate(
 				new ProcessingTimeCallback() {
+
+					ProcessingTimeCallbackID id = new ProcessingTimeCallbackID(ProcessingTimeCallbackID.Type.LATENCY);
+
 					@Override
 					public void onProcessingTime(long timestamp) throws Exception {
 						try {
@@ -155,6 +166,12 @@ public class StreamSource<OUT, SRC extends SourceFunction<OUT>>
 							LOG.warn("Error while emitting latency marker.", t);
 						}
 					}
+
+					@Override
+					public ProcessingTimeCallbackID getID() {
+						return id;
+					}
+
 				},
 				0L,
 				latencyTrackingInterval);

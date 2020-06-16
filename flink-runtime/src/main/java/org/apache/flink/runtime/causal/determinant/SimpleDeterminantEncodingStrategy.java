@@ -18,13 +18,13 @@
 package org.apache.flink.runtime.causal.determinant;
 
 
-import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
+import org.apache.flink.core.memory.DataInputDeserializer;
+import org.apache.flink.core.memory.DataOutputSerializer;
+import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
-import org.apache.flink.util.AbstractID;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.LinkedList;
-import java.util.List;
 
 public class SimpleDeterminantEncodingStrategy implements DeterminantEncodingStrategy {
 	/*
@@ -33,10 +33,15 @@ public class SimpleDeterminantEncodingStrategy implements DeterminantEncodingStr
 	@Override
 	public byte[] encode(Determinant determinant) {
 		if (determinant.isOrderDeterminant()) return encodeOrderDeterminant(determinant.asOrderDeterminant());
-		if (determinant.isRandomEmitDeterminant()) return encodeRandomEmitDeterminant(determinant.asRandomEmitDeterminant());
-		if (determinant.isTimestampDeterminant()) return encodeTimestampDeterminant(determinant.asTimestampDeterminant());
+		if (determinant.isRandomEmitDeterminant())
+			return encodeRandomEmitDeterminant(determinant.asRandomEmitDeterminant());
+		if (determinant.isTimestampDeterminant())
+			return encodeTimestampDeterminant(determinant.asTimestampDeterminant());
 		if (determinant.isRNGDeterminant()) return encodeRNGDeterminant(determinant.asRNGDeterminant());
-		if (determinant.isBufferBuiltDeterminant()) return encodeBufferBuiltDeterminant(determinant.asBufferBuiltDeterminant());
+		if (determinant.isBufferBuiltDeterminant())
+			return encodeBufferBuiltDeterminant(determinant.asBufferBuiltDeterminant());
+		if (determinant.isTimerTriggerDeterminant())
+			return encodeTimerTriggerDeterminant(determinant.asTimerTriggerDeterminant());
 		throw new UnknownDeterminantTypeException();
 	}
 
@@ -54,14 +59,17 @@ public class SimpleDeterminantEncodingStrategy implements DeterminantEncodingStr
 
 	@Override
 	public Determinant decodeNext(ByteBuf b) {
-		if(!b.isReadable())
+		if (b == null)
+			return null;
+		if (!b.isReadable())
 			return null;
 		byte tag = b.readByte();
 		if (tag == Determinant.ORDER_DETERMINANT_TAG) return decodeOrderDeterminant(b);
-		if (tag == Determinant.RANDOMEMIT_DETERMINANT_TAG) return decodeRandomEmitDeterminant(b);
+		if (tag == Determinant.RANDOM_EMIT_DETERMINANT_TAG) return decodeRandomEmitDeterminant(b);
 		if (tag == Determinant.TIMESTAMP_DETERMINANT_TAG) return decodeTimestampDeterminant(b);
 		if (tag == Determinant.RNG_DETERMINANT_TAG) return decodeRNGDeterminant(b);
 		if (tag == Determinant.BUFFER_BUILT_TAG) return decodeBufferBuiltDeterminant(b);
+		if (tag == Determinant.TIMER_TRIGGER_DETERMINANT) return decodeTimerTriggerDeterminant(b);
 		throw new CorruptDeterminantArrayException();
 	}
 
@@ -94,7 +102,7 @@ public class SimpleDeterminantEncodingStrategy implements DeterminantEncodingStr
 
 	private byte[] encodeRandomEmitDeterminant(RandomEmitDeterminant randomEmitDeterminant) {
 		byte[] bytes = new byte[2];
-		bytes[0] = Determinant.RANDOMEMIT_DETERMINANT_TAG;
+		bytes[0] = Determinant.RANDOM_EMIT_DETERMINANT_TAG;
 		bytes[1] = randomEmitDeterminant.getChannel();
 		return bytes;
 	}
@@ -110,6 +118,7 @@ public class SimpleDeterminantEncodingStrategy implements DeterminantEncodingStr
 		b.putInt(rngDeterminant.getNumber());
 		return b.array();
 	}
+
 	private Determinant decodeBufferBuiltDeterminant(ByteBuf b) {
 		int bytes = b.readInt();
 		return new BufferBuiltDeterminant(bytes);
@@ -122,5 +131,40 @@ public class SimpleDeterminantEncodingStrategy implements DeterminantEncodingStr
 		b.putInt(asBufferBuiltDeterminant.getNumberOfBytes());
 		return b.array();
 
+	}
+
+	private byte[] encodeTimerTriggerDeterminant(TimerTriggerDeterminant determinant) {
+		ProcessingTimeCallbackID id = determinant.getProcessingTimeCallbackID();
+		//1 (Tag), 4 (record count), 8 (ts), 1 (type ordinal), if internal: 4 (length of name), l (name bytes)
+		byte[] bytes = new byte[1 + 4 + 8 + 1 + (id.getType() == ProcessingTimeCallbackID.Type.INTERNAL ? 4 + id.getName().getBytes().length : 0)];
+
+		ByteBuffer b = ByteBuffer.wrap(bytes);
+		b.put(Determinant.TIMER_TRIGGER_DETERMINANT);
+		b.putInt(determinant.getRecordCount());
+		b.putLong(determinant.getTimestamp());
+		b.put((byte) id.getType().ordinal());
+		if (id.getType() == ProcessingTimeCallbackID.Type.INTERNAL) {
+			b.putInt(id.getName().getBytes().length);
+			b.put(id.getName().getBytes());
+		}
+
+		return b.array();
+	}
+
+	private Determinant decodeTimerTriggerDeterminant(ByteBuf b) {
+		int recordCount = b.readInt();
+		long timestamp = b.readLong();
+		ProcessingTimeCallbackID.Type type = ProcessingTimeCallbackID.Type.values()[b.readByte()];
+		ProcessingTimeCallbackID id;
+		if (type == ProcessingTimeCallbackID.Type.INTERNAL) {
+			int numBytesOfName = b.readInt();
+			byte[] nameBytes = new byte[numBytesOfName];
+			b.readBytes(nameBytes);
+			id = new ProcessingTimeCallbackID(new String(nameBytes));
+		} else {
+			id = new ProcessingTimeCallbackID(type);
+		}
+
+		return new TimerTriggerDeterminant(id, recordCount, timestamp);
 	}
 }

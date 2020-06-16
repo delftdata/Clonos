@@ -20,9 +20,12 @@ package org.apache.flink.streaming.connectors.kafka.internal;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.metrics.MetricGroup;
+import org.apache.flink.runtime.causal.RecordCountProvider;
+import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 import org.apache.flink.streaming.api.functions.AssignerWithPeriodicWatermarks;
 import org.apache.flink.streaming.api.functions.AssignerWithPunctuatedWatermarks;
 import org.apache.flink.streaming.api.functions.source.SourceFunction.SourceContext;
+import org.apache.flink.streaming.api.operators.StreamingRuntimeContext;
 import org.apache.flink.streaming.connectors.kafka.internals.AbstractFetcher;
 import org.apache.flink.streaming.connectors.kafka.internals.KafkaCommitCallback;
 import org.apache.flink.streaming.connectors.kafka.internals.KafkaTopicPartition;
@@ -59,60 +62,89 @@ public class Kafka09Fetcher<T> extends AbstractFetcher<T, TopicPartition> {
 
 	// ------------------------------------------------------------------------
 
-	/** The schema to convert between Kafka's byte messages, and Flink's objects. */
+	/**
+	 * The schema to convert between Kafka's byte messages, and Flink's objects.
+	 */
 	private final KeyedDeserializationSchema<T> deserializer;
 
-	/** The handover of data and exceptions between the consumer thread and the task thread. */
+	/**
+	 * The handover of data and exceptions between the consumer thread and the task thread.
+	 */
 	private final Handover handover;
 
-	/** The thread that runs the actual KafkaConsumer and hand the record batches to this fetcher. */
+	/**
+	 * The thread that runs the actual KafkaConsumer and hand the record batches to this fetcher.
+	 */
 	private final KafkaConsumerThread consumerThread;
 
-	/** Flag to mark the main work loop as alive. */
+	/**
+	 * Flag to mark the main work loop as alive.
+	 */
 	private volatile boolean running = true;
 
 	// ------------------------------------------------------------------------
 
 	public Kafka09Fetcher(
-			SourceContext<T> sourceContext,
-			Map<KafkaTopicPartition, Long> assignedPartitionsWithInitialOffsets,
-			SerializedValue<AssignerWithPeriodicWatermarks<T>> watermarksPeriodic,
-			SerializedValue<AssignerWithPunctuatedWatermarks<T>> watermarksPunctuated,
-			ProcessingTimeService processingTimeProvider,
-			long autoWatermarkInterval,
-			ClassLoader userCodeClassLoader,
-			String taskNameWithSubtasks,
-			KeyedDeserializationSchema<T> deserializer,
-			Properties kafkaProperties,
-			long pollTimeout,
-			MetricGroup subtaskMetricGroup,
-			MetricGroup consumerMetricGroup,
-			boolean useMetrics) throws Exception {
+		SourceContext<T> sourceContext,
+		Map<KafkaTopicPartition, Long> assignedPartitionsWithInitialOffsets,
+		SerializedValue<AssignerWithPeriodicWatermarks<T>> watermarksPeriodic,
+		SerializedValue<AssignerWithPunctuatedWatermarks<T>> watermarksPunctuated,
+		ProcessingTimeService processingTimeProvider,
+		long autoWatermarkInterval,
+		ClassLoader userCodeClassLoader,
+		String taskNameWithSubtasks,
+		KeyedDeserializationSchema<T> deserializer,
+		Properties kafkaProperties,
+		long pollTimeout,
+		MetricGroup subtaskMetricGroup,
+		MetricGroup consumerMetricGroup,
+		boolean useMetrics) throws Exception {
+		this(sourceContext, assignedPartitionsWithInitialOffsets, watermarksPeriodic, watermarksPunctuated,
+			processingTimeProvider, autoWatermarkInterval, userCodeClassLoader, taskNameWithSubtasks, deserializer,
+			kafkaProperties, pollTimeout, subtaskMetricGroup, consumerMetricGroup, useMetrics, null);
+	}
+
+
+	public Kafka09Fetcher(SourceContext<T> sourceContext,
+						  Map<KafkaTopicPartition, Long> assignedPartitionsWithInitialOffsets,
+						  SerializedValue<AssignerWithPeriodicWatermarks<T>> watermarksPeriodic,
+						  SerializedValue<AssignerWithPunctuatedWatermarks<T>> watermarksPunctuated,
+						  ProcessingTimeService processingTimeProvider,
+						  long autoWatermarkInterval,
+						  ClassLoader userCodeClassLoader,
+						  String taskNameWithSubtasks,
+						  KeyedDeserializationSchema<T> deserializer,
+						  Properties kafkaProperties,
+						  long pollTimeout,
+						  MetricGroup subtaskMetricGroup,
+						  MetricGroup consumerMetricGroup,
+						  boolean useMetrics,
+						  IRecoveryManager recoveryManager) throws Exception {
 		super(
-				sourceContext,
-				assignedPartitionsWithInitialOffsets,
-				watermarksPeriodic,
-				watermarksPunctuated,
-				processingTimeProvider,
-				autoWatermarkInterval,
-				userCodeClassLoader,
-				consumerMetricGroup,
-				useMetrics);
+			sourceContext,
+			assignedPartitionsWithInitialOffsets,
+			watermarksPeriodic,
+			watermarksPunctuated,
+			processingTimeProvider,
+			autoWatermarkInterval,
+			userCodeClassLoader,
+			consumerMetricGroup,
+			useMetrics, recoveryManager);
 
 		this.deserializer = deserializer;
 		this.handover = new Handover();
 
 		this.consumerThread = new KafkaConsumerThread(
-				LOG,
-				handover,
-				kafkaProperties,
-				unassignedPartitionsQueue,
-				createCallBridge(),
-				getFetcherName() + " for " + taskNameWithSubtasks,
-				pollTimeout,
-				useMetrics,
-				consumerMetricGroup,
-				subtaskMetricGroup);
+			LOG,
+			handover,
+			kafkaProperties,
+			unassignedPartitionsQueue,
+			createCallBridge(),
+			getFetcherName() + " for " + taskNameWithSubtasks,
+			pollTimeout,
+			useMetrics,
+			consumerMetricGroup,
+			subtaskMetricGroup);
 	}
 
 	// ------------------------------------------------------------------------
@@ -136,27 +168,26 @@ public class Kafka09Fetcher<T> extends AbstractFetcher<T, TopicPartition> {
 				for (KafkaTopicPartitionState<TopicPartition> partition : subscribedPartitionStates()) {
 
 					List<ConsumerRecord<byte[], byte[]>> partitionRecords =
-							records.records(partition.getKafkaPartitionHandle());
+						records.records(partition.getKafkaPartitionHandle());
 
 					for (ConsumerRecord<byte[], byte[]> record : partitionRecords) {
 						final T value = deserializer.deserialize(
-								record.key(), record.value(),
-								record.topic(), record.partition(), record.offset());
+							record.key(), record.value(),
+							record.topic(), record.partition(), record.offset());
 
 						if (deserializer.isEndOfStream(value)) {
 							// end of stream signaled
 							running = false;
 							break;
 						}
-
+						recoveryManager.checkAsyncEvent();
 						// emit the actual record. this also updates offset state atomically
 						// and deals with timestamps and watermark generation
 						emitRecord(value, partition, record.offset(), record);
 					}
 				}
 			}
-		}
-		finally {
+		} finally {
 			// this signals the consumer thread that no more work is to be done
 			consumerThread.shutdown();
 		}
@@ -164,8 +195,7 @@ public class Kafka09Fetcher<T> extends AbstractFetcher<T, TopicPartition> {
 		// on a clean exit, wait for the runner thread
 		try {
 			consumerThread.join();
-		}
-		catch (InterruptedException e) {
+		} catch (InterruptedException e) {
 			// may be the result of a wake-up interruption after an exception.
 			// we ignore this here and only restore the interruption state
 			Thread.currentThread().interrupt();
@@ -186,10 +216,10 @@ public class Kafka09Fetcher<T> extends AbstractFetcher<T, TopicPartition> {
 	// ------------------------------------------------------------------------
 
 	protected void emitRecord(
-			T record,
-			KafkaTopicPartitionState<TopicPartition> partition,
-			long offset,
-			@SuppressWarnings("UnusedParameters") ConsumerRecord<?, ?> consumerRecord) throws Exception {
+		T record,
+		KafkaTopicPartitionState<TopicPartition> partition,
+		long offset,
+		@SuppressWarnings("UnusedParameters") ConsumerRecord<?, ?> consumerRecord) throws Exception {
 
 		// the 0.9 Fetcher does not try to extract a timestamp
 		emitRecord(record, partition, offset);
@@ -217,8 +247,8 @@ public class Kafka09Fetcher<T> extends AbstractFetcher<T, TopicPartition> {
 
 	@Override
 	protected void doCommitInternalOffsetsToKafka(
-			Map<KafkaTopicPartition, Long> offsets,
-			@Nonnull KafkaCommitCallback commitCallback) throws Exception {
+		Map<KafkaTopicPartition, Long> offsets,
+		@Nonnull KafkaCommitCallback commitCallback) throws Exception {
 
 		@SuppressWarnings("unchecked")
 		List<KafkaTopicPartitionState<TopicPartition>> partitions = subscribedPartitionStates();

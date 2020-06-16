@@ -210,6 +210,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 	private final TimeService timeService;
 	private long currentEpochID;
+	private final RecordCountProvider recordCountProvider;
 
 	// ------------------------------------------------------------------------
 
@@ -258,10 +259,12 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 
 		VertexGraphInformation vertexGraphInformation = new VertexGraphInformation(sortedJobVertexes, jobVertexID, subtaskIndex);
+		recordCountProvider = new RecordCountProviderImpl();
 
 		SingleInputGate[] inputGates = environment.getContainingTask().getAllInputGates();
 		this.jobCausalLog = environment.getJobCausalLog();
-		this.recoveryManager = new RecoveryManager(this, jobCausalLog, readyToReplayFuture, vertexGraphInformation);
+		this.jobCausalLog.setCheckpointLock(getCheckpointLock());
+		this.recoveryManager = new RecoveryManager(this, jobCausalLog, readyToReplayFuture, vertexGraphInformation, recordCountProvider);
 		this.timeService = new TimeService(jobCausalLog, recoveryManager, this);
 
 		this.streamRecordWriters = createStreamRecordWriters(configuration, environment, this, jobCausalLog, recoveryManager);
@@ -288,7 +291,6 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		}
 
 		currentEpochID = 0l;
-
 	}
 
 	// ------------------------------------------------------------------------
@@ -340,8 +342,9 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 				ThreadFactory timerThreadFactory = new DispatcherThreadFactory(TRIGGER_THREAD_GROUP,
 					"Time Trigger for " + getName(), getUserCodeClassLoader());
 
-				timerService = new SystemProcessingTimeService(this, getCheckpointLock(), timerThreadFactory);
+				timerService = new SystemProcessingTimeService(this, getCheckpointLock(), timerThreadFactory, timeService, this, recordCountProvider, jobCausalLog, recoveryManager);
 			}
+			recoveryManager.setProcessingTimeService((ProcessingTimeForceable) timerService);
 
 			operatorChain = new OperatorChain<>(this, streamRecordWriters);
 			headOperator = operatorChain.getHeadOperator();
@@ -731,6 +734,14 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		return recoveryManager;
 	}
 
+	public RecordCountProvider getRecordCountProvider() {
+		return recordCountProvider;
+	}
+
+	public EpochProvider getEpochProvider() {
+		return this;
+	}
+
 	private boolean performCheckpoint(
 		CheckpointMetaData checkpointMetaData,
 		CheckpointOptions checkpointOptions,
@@ -764,6 +775,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 						checkpointMetaData.getCheckpointId(),
 						checkpointMetaData.getTimestamp(),
 						checkpointOptions);
+
+				recordCountProvider.resetRecordCount();
 
 				// Step (3): Take the state snapshot. This should be largely asynchronous, to not
 				//           impact progress of the streaming topology
@@ -966,6 +979,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	public String toString() {
 		return getName();
 	}
+
 
 
 	// ------------------------------------------------------------------------

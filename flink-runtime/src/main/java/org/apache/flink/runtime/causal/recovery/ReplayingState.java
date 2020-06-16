@@ -55,6 +55,7 @@ public class ReplayingState extends AbstractState {
 
 	List<Thread> recoveryThreads;
 
+	Determinant nextDeterminant;
 
 	public ReplayingState(RecoveryManager context, VertexCausalLogDelta recoveryDeterminants) {
 		super(context);
@@ -68,7 +69,7 @@ public class ReplayingState extends AbstractState {
 		if (recoveryDeterminants.getMainThreadDelta() != null)
 			this.mainThreadRecoveryBuffer = recoveryDeterminants.getMainThreadDelta().getRawDeterminants();
 
-		checkFinished();
+		prepareNext();
 	}
 
 	private void createSubpartitionRecoveryThreads(VertexCausalLogDelta recoveryDeterminants) {
@@ -107,41 +108,60 @@ public class ReplayingState extends AbstractState {
 
 	@Override
 	public int replayRandomInt() {
-		Determinant nextDeterminant = determinantEncodingStrategy.decodeNext(mainThreadRecoveryBuffer);
 		if (!(nextDeterminant instanceof RNGDeterminant))
 			throw new RuntimeException("Unexpected Determinant type: Expected RNG, but got: " + nextDeterminant);
-		checkFinished();
-		return ((RNGDeterminant) nextDeterminant).getNumber();
+		RNGDeterminant toReturn = (RNGDeterminant) nextDeterminant;
+		prepareNext();
+		return toReturn.getNumber();
 	}
 
 	@Override
 	public byte replayNextChannel() {
-		Determinant nextDeterminant = determinantEncodingStrategy.decodeNext(mainThreadRecoveryBuffer);
 		if (!(nextDeterminant instanceof OrderDeterminant))
 			throw new RuntimeException("Unexpected Determinant type: Expected Order, but got: " + nextDeterminant);
 
-		checkFinished();
-		return ((OrderDeterminant) nextDeterminant).getChannel();
+		OrderDeterminant toReturn = (OrderDeterminant) nextDeterminant;
+		prepareNext();
+		return toReturn.getChannel();
 	}
 
 	@Override
 	public long replayNextTimestamp() {
-		Determinant nextDeterminant = determinantEncodingStrategy.decodeNext(mainThreadRecoveryBuffer);
 		if (!(nextDeterminant instanceof TimestampDeterminant))
 			throw new RuntimeException("Unexpected Determinant type: Expected Timestamp, but got: " + nextDeterminant);
 
-		checkFinished();
-		return ((TimestampDeterminant) nextDeterminant).getTimestamp();
+		TimestampDeterminant toReturn = (TimestampDeterminant) nextDeterminant;
+		prepareNext();
+		return toReturn.getTimestamp();
 	}
 
-	private void checkFinished() {
-		if (mainThreadRecoveryBuffer == null || !mainThreadRecoveryBuffer.isReadable()) {
-			if (mainThreadRecoveryBuffer != null)
-				mainThreadRecoveryBuffer.release();
-			LOG.info("Finished recovering main thread! Transitioning to RunningState!");
-			context.setState(new RunningState(context));
+	@Override
+	public void checkAsyncEvent(){
+		LOG.info("Checking if an async event fired at this point");
+		if(nextDeterminant instanceof TimerTriggerDeterminant) {
+			LOG.info("Next determinant is of type timerTrigger : {}", nextDeterminant);
+			if (context.recordCountProvider.getRecordCount() == ((TimerTriggerDeterminant) nextDeterminant).getRecordCount()) {
+				LOG.info("We are at the same point in the stream, with record count: {}", ((TimerTriggerDeterminant) nextDeterminant).getRecordCount());
+				((TimerTriggerDeterminant) nextDeterminant).process(context);
+				prepareNext();
+			}
 		}
 
+	}
+
+	private void prepareNext() {
+		if (mainThreadRecoveryBuffer == null || !mainThreadRecoveryBuffer.isReadable())
+			finishReplaying();
+		else
+			nextDeterminant = determinantEncodingStrategy.decodeNext(mainThreadRecoveryBuffer);
+	}
+
+	private void finishReplaying() {
+		if (mainThreadRecoveryBuffer != null)
+			mainThreadRecoveryBuffer.release();
+		LOG.info("Finished recovering main thread! Transitioning to RunningState!");
+		context.setState(new RunningState(context));
+		context.processingTimeForceable.concludeReplay();
 	}
 
 	@Override

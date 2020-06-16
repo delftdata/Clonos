@@ -23,11 +23,13 @@
  *
  */
 
-package org.apache.flink.runtime.causal.determinant;
+package org.apache.flink.runtime.causal;
 
-import org.apache.flink.runtime.causal.recovery.RecoveryManager;
+import org.apache.flink.runtime.causal.determinant.ProcessingTimeCallbackID;
 
-public abstract class NonMainThreadDeterminant extends Determinant {
+public interface ProcessingTimeForceable {
 
-	public abstract void process(RecoveryManager recoveryManager);
+	void forceExecution(ProcessingTimeCallbackID id, long timestamp);
+
+	void concludeReplay();
 }

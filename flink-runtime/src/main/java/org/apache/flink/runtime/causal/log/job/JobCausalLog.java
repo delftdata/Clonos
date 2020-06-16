@@ -60,6 +60,8 @@ public class JobCausalLog implements IJobCausalLog {
 
 	BufferPool bufferPool;
 
+	Object lock;
+
 	public JobCausalLog(VertexGraphInformation vertexGraphInformation, ResultPartition[] resultPartitionsOfLocalVertex, BufferPool bufferPool) {
 		this.myVertexID = vertexGraphInformation.getThisTasksVertexID();
 		this.bufferPool = bufferPool;
@@ -76,6 +78,11 @@ public class JobCausalLog implements IJobCausalLog {
 	}
 
 	@Override
+	public void setCheckpointLock(Object lock){
+		this.lock = lock;
+	}
+
+	@Override
 	public void registerDownstreamConsumer(InputChannelID inputChannelID, IntermediateResultPartitionID consumedResultPartitionID, int consumedSubpartition) {
 		LOG.info("Registering new input channel at Job level");
 		for(VertexCausalLog causalLog : upstreamDeterminantLogs.values())
@@ -86,6 +93,7 @@ public class JobCausalLog implements IJobCausalLog {
 
 	@Override
 	public void appendDeterminant(Determinant determinant, long checkpointID) {
+		assert (Thread.holdsLock(lock));
 		LOG.info("Appending determinant {}", determinant);
 		localCausalLog.appendDeterminants(
 			this.determinantEncodingStrategy.encode(determinant),

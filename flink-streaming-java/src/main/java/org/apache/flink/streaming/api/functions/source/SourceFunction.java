@@ -162,6 +162,8 @@ public interface SourceFunction<T> extends Function, Serializable {
 	 */
 	void run(SourceContext<T> ctx) throws Exception;
 
+
+
 	/**
 	 * Cancels the source. Most sources will have a while loop inside the
 	 * {@link #run(SourceContext)} method. The implementation needs to ensure that the

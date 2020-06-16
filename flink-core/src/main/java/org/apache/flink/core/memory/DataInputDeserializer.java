@@ -38,6 +38,7 @@ public class DataInputDeserializer implements DataInputView, java.io.Serializabl
 	private int end;
 
 	private int position;
+	private int startPosition;
 
 	// ------------------------------------------------------------------------
 
@@ -74,6 +75,7 @@ public class DataInputDeserializer implements DataInputView, java.io.Serializabl
 		} else {
 			throw new IllegalArgumentException("The given buffer is neither an array-backed heap ByteBuffer, nor a direct ByteBuffer.");
 		}
+		this.startPosition = position;
 	}
 
 	public void setBuffer(byte[] buffer, int start, int len) {
@@ -87,6 +89,7 @@ public class DataInputDeserializer implements DataInputView, java.io.Serializabl
 
 		this.buffer = buffer;
 		this.position = start;
+		this.startPosition = position;
 		this.end = start + len;
 	}
 
@@ -374,6 +377,9 @@ public class DataInputDeserializer implements DataInputView, java.io.Serializabl
 		return read(b, 0, b.length);
 	}
 
+	public int getNumberBytesRead() {
+		return position - startPosition;
+	}
 	// ------------------------------------------------------------------------
 	//  Utilities
 	// ------------------------------------------------------------------------
@@ -385,4 +391,5 @@ public class DataInputDeserializer implements DataInputView, java.io.Serializabl
 	private static final long BASE_OFFSET = UNSAFE.arrayBaseOffset(byte[].class);
 
 	private static final boolean LITTLE_ENDIAN = (MemoryUtils.NATIVE_BYTE_ORDER == ByteOrder.LITTLE_ENDIAN);
+
 }

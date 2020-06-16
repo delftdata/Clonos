@@ -37,6 +37,7 @@ public class CausalBufferHandler implements CheckpointBarrierHandler {
 	private static final Logger LOG = LoggerFactory.getLogger(CausalBufferHandler.class);
 	private final IRecoveryManager recoveryManager;
 	private final EpochProvider epochProvider;
+	private final Object lock;
 
 	private IJobCausalLog causalLoggingManager;
 
@@ -47,7 +48,7 @@ public class CausalBufferHandler implements CheckpointBarrierHandler {
 	//This is just to reduce the complexity of going over bufferedBuffersPerChannel
 	private int numUnprocessedBuffers;
 
-	public CausalBufferHandler(EpochProvider epochProvider, IJobCausalLog causalLoggingManager, IRecoveryManager recoveryManager, CheckpointBarrierHandler wrapped, int numInputChannels) {
+	public CausalBufferHandler(EpochProvider epochProvider, IJobCausalLog causalLoggingManager, IRecoveryManager recoveryManager, CheckpointBarrierHandler wrapped, int numInputChannels, Object checkpointLock) {
 		this.epochProvider = epochProvider;
 		this.causalLoggingManager = causalLoggingManager;
 		this.recoveryManager = recoveryManager;
@@ -56,6 +57,7 @@ public class CausalBufferHandler implements CheckpointBarrierHandler {
 		for (int i = 0; i < numInputChannels; i++)
 			bufferedBuffersPerChannel[i] = new LinkedList<>();
 		numUnprocessedBuffers = 0;
+		this.lock = checkpointLock;
 	}
 
 
@@ -100,7 +102,9 @@ public class CausalBufferHandler implements CheckpointBarrierHandler {
 			}
 		}
 		LOG.info("Returning buffer from channel {} : {}", toReturn.getChannelIndex(), toReturn);
-		causalLoggingManager.appendDeterminant(new OrderDeterminant((byte) toReturn.getChannelIndex()), epochProvider.getCurrentEpochID());
+		synchronized (lock) {
+			causalLoggingManager.appendDeterminant(new OrderDeterminant((byte) toReturn.getChannelIndex()), epochProvider.getCurrentEpochID());
+		}
 		return toReturn;
 	}
 

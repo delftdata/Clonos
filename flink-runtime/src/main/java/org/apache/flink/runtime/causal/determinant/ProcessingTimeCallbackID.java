@@ -25,9 +25,43 @@
 
 package org.apache.flink.runtime.causal.determinant;
 
-import org.apache.flink.runtime.causal.recovery.RecoveryManager;
+import java.util.Objects;
 
-public abstract class NonMainThreadDeterminant extends Determinant {
+public class ProcessingTimeCallbackID{
 
-	public abstract void process(RecoveryManager recoveryManager);
+	public enum Type {
+		WATERMARK, TIMESTAMP_EXTRACTOR, TIMESTAMP_PERIODIC_WATERMARK_EXTRACTOR, TIMESTAMP_PUNCTUATED_WATERMARK_EXTRACTOR, IDLE, LATENCY, INTERNAL
+	}
+
+	private Type type;
+	private String name;
+
+	public ProcessingTimeCallbackID(Type type) {
+		this.type = type;
+	}
+
+	public ProcessingTimeCallbackID(String name) {
+		this.type = Type.INTERNAL;
+		this.name = name;
+	}
+
+	public Type getType() {
+		return type;
+	}
+
+	public String getName(){return name;}
+
+	@Override
+	public boolean equals(Object o) {
+		if (this == o) return true;
+		if (o == null || getClass() != o.getClass()) return false;
+		ProcessingTimeCallbackID that = (ProcessingTimeCallbackID) o;
+		return getType() == that.getType() &&
+			Objects.equals(getName(), that.getName());
+	}
+
+	@Override
+	public int hashCode() {
+		return Objects.hash(getType(), getName());
+	}
 }

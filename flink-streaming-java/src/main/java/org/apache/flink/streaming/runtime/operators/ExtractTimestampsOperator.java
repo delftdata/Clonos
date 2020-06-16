@@ -17,6 +17,7 @@
 
 package org.apache.flink.streaming.runtime.operators;
 
+import org.apache.flink.runtime.causal.determinant.ProcessingTimeCallbackID;
 import org.apache.flink.streaming.api.functions.TimestampExtractor;
 import org.apache.flink.streaming.api.operators.AbstractUdfStreamOperator;
 import org.apache.flink.streaming.api.operators.ChainingStrategy;
@@ -45,9 +46,12 @@ public class ExtractTimestampsOperator<T>
 
 	private transient long currentWatermark;
 
+	private transient ProcessingTimeCallbackID id;
+
 	public ExtractTimestampsOperator(TimestampExtractor<T> extractor) {
 		super(extractor);
 		chainingStrategy = ChainingStrategy.ALWAYS;
+		id = new ProcessingTimeCallbackID(ProcessingTimeCallbackID.Type.TIMESTAMP_EXTRACTOR);
 	}
 
 	@Override
@@ -84,6 +88,11 @@ public class ExtractTimestampsOperator<T>
 
 		long now = getProcessingTimeService().getCurrentProcessingTime();
 		getProcessingTimeService().registerTimer(now + watermarkInterval, this);
+	}
+
+	@Override
+	public ProcessingTimeCallbackID getID() {
+		return id;
 	}
 
 	@Override

@@ -29,12 +29,16 @@ import org.apache.flink.runtime.causal.EpochProvider;
 import org.apache.flink.runtime.causal.log.job.IJobCausalLog;
 import org.apache.flink.runtime.causal.determinant.TimestampDeterminant;
 import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class TimeService {
 
 	private final EpochProvider epochProvider;
 	private IJobCausalLog causalLoggingManager;
 	private IRecoveryManager recoveryManager;
+
+	private static final Logger LOG = LoggerFactory.getLogger(TimeService.class);
 
 	public TimeService(IJobCausalLog causalLoggingManager, IRecoveryManager recoveryManager, EpochProvider epochProvider){
 		this.causalLoggingManager = causalLoggingManager;
@@ -43,16 +47,27 @@ public class TimeService {
 	}
 
 	public long currentTimeMillis(){
-		while (!(recoveryManager.isRunning() || recoveryManager.isReplaying())); //Spin
-
-		if(recoveryManager.isReplaying())
-			return  recoveryManager.replayNextTimestamp();
-
-		long timestamp = System.currentTimeMillis();
-		causalLoggingManager.appendDeterminant(new TimestampDeterminant(timestamp), epochProvider.getCurrentEpochID());
-		return timestamp;
+		return checkState(System.currentTimeMillis());
 	}
 
 
+	public long nanoTime() {
+		return checkState(System.nanoTime());
+	}
 
+	private long checkState(long timestamp) {
+		long toReturn = timestamp;
+		while (!(recoveryManager.isRunning() || recoveryManager.isReplaying()))
+			LOG.info("Requested timestamp but neither running nor replaying");
+
+
+		if(recoveryManager.isReplaying()) {
+			LOG.info("We are replaying, returning the next timestamp from recovery manager");
+			toReturn = recoveryManager.replayNextTimestamp();
+		}
+
+		LOG.info("We are running, returning a fresh timestamp and recording it.");
+		causalLoggingManager.appendDeterminant(new TimestampDeterminant(toReturn), epochProvider.getCurrentEpochID());
+		return toReturn;
+	}
 }

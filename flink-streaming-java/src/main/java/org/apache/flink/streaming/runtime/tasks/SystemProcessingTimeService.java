@@ -19,6 +19,14 @@ package org.apache.flink.streaming.runtime.tasks;
 
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.time.Deadline;
+import org.apache.flink.runtime.causal.EpochProvider;
+import org.apache.flink.runtime.causal.ProcessingTimeForceable;
+import org.apache.flink.runtime.causal.RecordCountProvider;
+import org.apache.flink.runtime.causal.determinant.ProcessingTimeCallbackID;
+import org.apache.flink.runtime.causal.determinant.TimerTriggerDeterminant;
+import org.apache.flink.runtime.causal.log.job.JobCausalLog;
+import org.apache.flink.runtime.causal.recovery.RecoveryManager;
+import org.apache.flink.runtime.causal.services.TimeService;
 import org.apache.flink.util.Preconditions;
 
 import org.slf4j.Logger;
@@ -27,15 +35,9 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.Nonnull;
 
 import java.time.Duration;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.CancellationException;
-import java.util.concurrent.Delayed;
-import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
-import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -44,7 +46,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * A {@link ProcessingTimeService} which assigns as current processing time the result of calling
  * {@link System#currentTimeMillis()} and registers timers using a {@link ScheduledThreadPoolExecutor}.
  */
-public class SystemProcessingTimeService extends ProcessingTimeService {
+public class SystemProcessingTimeService extends ProcessingTimeService implements ProcessingTimeForceable {
 
 	private static final Logger LOG = LoggerFactory.getLogger(SystemProcessingTimeService.class);
 
@@ -54,28 +56,52 @@ public class SystemProcessingTimeService extends ProcessingTimeService {
 
 	// ------------------------------------------------------------------------
 
-	/** The containing task that owns this time service provider. */
+	/**
+	 * The containing task that owns this time service provider.
+	 */
 	private final AsyncExceptionHandler task;
 
-	/** The lock that timers acquire upon triggering. */
+	/**
+	 * The lock that timers acquire upon triggering.
+	 */
 	private final Object checkpointLock;
 
-	/** The executor service that schedules and calls the triggers of this task. */
+	/**
+	 * The executor service that schedules and calls the triggers of this task.
+	 */
 	private final ScheduledThreadPoolExecutor timerService;
 
 	private final AtomicInteger status;
+
+	private final TimeService timeService;
+	private final EpochProvider epochProvider;
+	private final RecordCountProvider recordCountProvider;
+	private final JobCausalLog causalLog;
+	private final RecoveryManager recoveryManager;
+
+	private final Map<ProcessingTimeCallbackID, PreregisteredTimer> preregisteredTimerTasks;
+
 
 	public SystemProcessingTimeService(AsyncExceptionHandler failureHandler, Object checkpointLock) {
 		this(failureHandler, checkpointLock, null);
 	}
 
-	public SystemProcessingTimeService(
-			AsyncExceptionHandler task,
-			Object checkpointLock,
-			ThreadFactory threadFactory) {
+	public <OUT> SystemProcessingTimeService(
+		AsyncExceptionHandler task,
+		Object checkpointLock,
+		ThreadFactory threadFactory) {
+		this(task, checkpointLock, threadFactory, null, null, null, null, null);
+	}
 
+	public <OUT> SystemProcessingTimeService(AsyncExceptionHandler task, Object checkpointLock, ThreadFactory threadFactory, TimeService timeService, EpochProvider epochProvider, RecordCountProvider recordCountProvider, JobCausalLog causalLog, RecoveryManager recoveryManager) {
 		this.task = checkNotNull(task);
 		this.checkpointLock = checkNotNull(checkpointLock);
+		this.timeService = timeService;
+
+		this.epochProvider = epochProvider;
+		this.recordCountProvider = recordCountProvider;
+		this.causalLog = causalLog;
+		this.recoveryManager = recoveryManager;
 
 		this.status = new AtomicInteger(STATUS_ALIVE);
 
@@ -91,11 +117,17 @@ public class SystemProcessingTimeService extends ProcessingTimeService {
 		// make sure shutdown removes all pending tasks
 		this.timerService.setContinueExistingPeriodicTasksAfterShutdownPolicy(false);
 		this.timerService.setExecuteExistingDelayedTasksAfterShutdownPolicy(false);
+		this.preregisteredTimerTasks = new HashMap<>();
 	}
 
 	@Override
 	public long getCurrentProcessingTime() {
 		return System.currentTimeMillis();
+	}
+
+	@Override
+	public long getCurrentProcessingTimeCausal() {
+		return timeService.currentTimeMillis();
 	}
 
 	/**
@@ -105,31 +137,46 @@ public class SystemProcessingTimeService extends ProcessingTimeService {
 	 * @param timestamp Time when the task is to be enabled (in processing time)
 	 * @param target    The task to be executed
 	 * @return The future that represents the scheduled task. This always returns some future,
-	 *         even if the timer was shut down
+	 * even if the timer was shut down
 	 */
 	@Override
 	public ScheduledFuture<?> registerTimer(long timestamp, ProcessingTimeCallback target) {
-
 		// delay the firing of the timer by 1 ms to align the semantics with watermark. A watermark
 		// T says we won't see elements in the future with a timestamp smaller or equal to T.
 		// With processing time, we therefore need to delay firing the timer by one ms.
 		long delay = Math.max(timestamp - getCurrentProcessingTime(), 0) + 1;
+		ScheduledFuture<?> future;
+		TriggerTask toRegister = new TriggerTask(status, task, checkpointLock, target, timestamp, causalLog, epochProvider, recordCountProvider);
+		if (recoveryManager.isRunning())
+			future = registerTimerRunning(toRegister, delay);
+		else
+			future = registerTimerRecovering(toRegister, delay);
 
+		return future;
+	}
+
+	private ScheduledFuture<?> registerTimerRecovering(TriggerTask toRegister, long delay) {
+		LOG.info("We are recovering, differing one-shot timer registration!");
+		long submissionTime = getCurrentProcessingTime();
+		ProcessingTimeCallbackID id = toRegister.getTarget().getID();
+		preregisteredTimerTasks.put(id, new PreregisteredTimer(toRegister, delay, submissionTime));
+		return new PreregisteredCompleteableFuture<>(id);
+	}
+
+	private ScheduledFuture<?> registerTimerRunning(TriggerTask toRegister, long delay) {
+		LOG.info("We are running, directly registering one-shot timer!");
 		// we directly try to register the timer and only react to the status on exception
 		// that way we save unnecessary volatile accesses for each timer
 		try {
 			return timerService.schedule(
-					new TriggerTask(status, task, checkpointLock, target, timestamp), delay, TimeUnit.MILLISECONDS);
-		}
-		catch (RejectedExecutionException e) {
+				toRegister, delay, TimeUnit.MILLISECONDS);
+		} catch (RejectedExecutionException e) {
 			final int status = this.status.get();
 			if (status == STATUS_QUIESCED) {
 				return new NeverCompleteFuture(delay);
-			}
-			else if (status == STATUS_SHUTDOWN) {
+			} else if (status == STATUS_SHUTDOWN) {
 				throw new IllegalStateException("Timer service is shut down");
-			}
-			else {
+			} else {
 				// something else happened, so propagate the exception
 				throw e;
 			}
@@ -140,11 +187,31 @@ public class SystemProcessingTimeService extends ProcessingTimeService {
 	public ScheduledFuture<?> scheduleAtFixedRate(ProcessingTimeCallback callback, long initialDelay, long period) {
 		long nextTimestamp = getCurrentProcessingTime() + initialDelay;
 
+		RepeatedTriggerTask toRegister = new RepeatedTriggerTask(status, task, checkpointLock, callback, nextTimestamp, period, causalLog, epochProvider, recordCountProvider);
+		ScheduledFuture<?> future;
+		if (recoveryManager.isRunning())
+			future = registerAtFixedRateRunning(initialDelay, period, toRegister);
+		else
+			future = registerAtFixedRateRecovering(initialDelay, period, toRegister);
+		return future;
+	}
+
+	private ScheduledFuture<?> registerAtFixedRateRecovering(long initialDelay, long period, RepeatedTriggerTask toRegister) {
+		LOG.info("We are recovering, differing fixed rate timer registration!");
+		long submissionTime = getCurrentProcessingTime();
+		ProcessingTimeCallbackID id = toRegister.getTarget().getID();
+		preregisteredTimerTasks.put(id, new PreregisteredTimer(toRegister, initialDelay, submissionTime));
+		return new PreregisteredCompleteableFuture<>(id);
+
+	}
+
+	private ScheduledFuture<?> registerAtFixedRateRunning(long initialDelay, long period, RepeatedTriggerTask toRegister) {
+		LOG.info("We are running, directly registering fixed rate timer!");
 		// we directly try to register the timer and only react to the status on exception
 		// that way we save unnecessary volatile accesses for each timer
 		try {
 			return timerService.scheduleAtFixedRate(
-				new RepeatedTriggerTask(status, task, checkpointLock, callback, nextTimestamp, period),
+				toRegister,
 				initialDelay,
 				period,
 				TimeUnit.MILLISECONDS);
@@ -152,11 +219,9 @@ public class SystemProcessingTimeService extends ProcessingTimeService {
 			final int status = this.status.get();
 			if (status == STATUS_QUIESCED) {
 				return new NeverCompleteFuture(initialDelay);
-			}
-			else if (status == STATUS_SHUTDOWN) {
+			} else if (status == STATUS_SHUTDOWN) {
 				throw new IllegalStateException("Timer service is shut down");
-			}
-			else {
+			} else {
 				// something else happened, so propagate the exception
 				throw e;
 			}
@@ -197,7 +262,7 @@ public class SystemProcessingTimeService extends ProcessingTimeService {
 	@Override
 	public void shutdownService() {
 		if (status.compareAndSet(STATUS_ALIVE, STATUS_SHUTDOWN) ||
-				status.compareAndSet(STATUS_QUIESCED, STATUS_SHUTDOWN)) {
+			status.compareAndSet(STATUS_QUIESCED, STATUS_SHUTDOWN)) {
 			timerService.shutdownNow();
 		}
 	}
@@ -250,6 +315,39 @@ public class SystemProcessingTimeService extends ProcessingTimeService {
 		}
 	}
 
+	@Override
+	public void forceExecution(ProcessingTimeCallbackID id, long timestamp) {
+		LOG.info("Forcing execution of task with callback id {} for timestamp {}", id, timestamp);
+		PreregisteredTimer timerTask = preregisteredTimerTasks.get(id);
+		if (timerTask == null)
+			throw new RuntimeException("Timer not found during recovery");
+		Runnable runnable = timerTask.getTask();
+
+		if (runnable instanceof TriggerTask) {
+			preregisteredTimerTasks.remove(id);
+			((TriggerTask) runnable).runTask(timestamp);
+		} else if (runnable instanceof RepeatedTriggerTask) {
+			((RepeatedTriggerTask) runnable).runTask(timestamp);
+		}else {
+			throw new RuntimeException("Unknown timer task type or null");
+		}
+
+
+	}
+
+	@Override
+	public void concludeReplay() {
+		LOG.info("Concluded replay, moving preregistered timers to main registry");
+		for (PreregisteredTimer preregisteredTimer : preregisteredTimerTasks.values()) {
+			LOG.info("Preregistered timer: {}", preregisteredTimer);
+			if (preregisteredTimer.task instanceof TriggerTask)
+				registerTimerRunning((TriggerTask) preregisteredTimer.task, preregisteredTimer.delay);
+			else if (preregisteredTimer.task instanceof RepeatedTriggerTask)//register using period as delay, since it has been executed a few times already
+				registerAtFixedRateRunning(((RepeatedTriggerTask) preregisteredTimer.task).period, ((RepeatedTriggerTask) preregisteredTimer.task).period, (RepeatedTriggerTask) preregisteredTimer.task);
+		}
+		preregisteredTimerTasks.clear();
+	}
+
 	// ------------------------------------------------------------------------
 
 	/**
@@ -263,25 +361,38 @@ public class SystemProcessingTimeService extends ProcessingTimeService {
 		private final long timestamp;
 		private final AsyncExceptionHandler exceptionHandler;
 
+		private final RecordCountProvider recordCountProvider;
+		private final EpochProvider epochProvider;
+		private final JobCausalLog causalLog;
+
 		private TriggerTask(
-				final AtomicInteger serviceStatus,
-				final AsyncExceptionHandler exceptionHandler,
-				final Object lock,
-				final ProcessingTimeCallback target,
-				final long timestamp) {
+			final AtomicInteger serviceStatus,
+			final AsyncExceptionHandler exceptionHandler,
+			final Object lock,
+			final ProcessingTimeCallback target,
+			final long timestamp, JobCausalLog causalLog, EpochProvider epochProvider, RecordCountProvider recordCountProvider) {
 
 			this.serviceStatus = Preconditions.checkNotNull(serviceStatus);
 			this.exceptionHandler = Preconditions.checkNotNull(exceptionHandler);
 			this.lock = Preconditions.checkNotNull(lock);
 			this.target = Preconditions.checkNotNull(target);
 			this.timestamp = timestamp;
+			this.causalLog = causalLog;
+			this.epochProvider = epochProvider;
+			this.recordCountProvider = recordCountProvider;
 		}
+
 
 		@Override
 		public void run() {
+			runTask(this.timestamp);
+		}
+
+		public void runTask(long timestamp) {
 			synchronized (lock) {
 				try {
 					if (serviceStatus.get() == STATUS_ALIVE) {
+						causalLog.appendDeterminant(new TimerTriggerDeterminant(target.getID(), recordCountProvider.getRecordCount(), timestamp), epochProvider.getCurrentEpochID());
 						target.onProcessingTime(timestamp);
 					}
 				} catch (Throwable t) {
@@ -289,6 +400,14 @@ public class SystemProcessingTimeService extends ProcessingTimeService {
 					exceptionHandler.handleAsyncException("Caught exception while processing timer.", asyncException);
 				}
 			}
+		}
+
+		public ProcessingTimeCallback getTarget() {
+			return target;
+		}
+
+		public long getTimestamp() {
+			return timestamp;
 		}
 	}
 
@@ -305,13 +424,17 @@ public class SystemProcessingTimeService extends ProcessingTimeService {
 
 		private long nextTimestamp;
 
+		private final RecordCountProvider recordCountProvider;
+		private final EpochProvider epochProvider;
+		private final JobCausalLog causalLog;
+
 		private RepeatedTriggerTask(
-				final AtomicInteger serviceStatus,
-				final AsyncExceptionHandler exceptionHandler,
-				final Object lock,
-				final ProcessingTimeCallback target,
-				final long nextTimestamp,
-				final long period) {
+			final AtomicInteger serviceStatus,
+			final AsyncExceptionHandler exceptionHandler,
+			final Object lock,
+			final ProcessingTimeCallback target,
+			final long nextTimestamp,
+			final long period, JobCausalLog causalLog, EpochProvider epochProvider, RecordCountProvider recordCountProvider) {
 
 			this.serviceStatus = Preconditions.checkNotNull(serviceStatus);
 			this.lock = Preconditions.checkNotNull(lock);
@@ -320,22 +443,42 @@ public class SystemProcessingTimeService extends ProcessingTimeService {
 			this.exceptionHandler = Preconditions.checkNotNull(exceptionHandler);
 
 			this.nextTimestamp = nextTimestamp;
+			this.causalLog = causalLog;
+			this.epochProvider = epochProvider;
+			this.recordCountProvider = recordCountProvider;
 		}
 
 		@Override
 		public void run() {
+			runTask(this.nextTimestamp);
+		}
+
+		private void runTask(long timestamp) {
 			synchronized (lock) {
 				try {
 					if (serviceStatus.get() == STATUS_ALIVE) {
+						causalLog.appendDeterminant(new TimerTriggerDeterminant(target.getID(), recordCountProvider.getRecordCount(), timestamp), epochProvider.getCurrentEpochID());
 						target.onProcessingTime(nextTimestamp);
 					}
 
-					nextTimestamp += period;
+					nextTimestamp = timestamp + period;
 				} catch (Throwable t) {
 					TimerException asyncException = new TimerException(t);
 					exceptionHandler.handleAsyncException("Caught exception while processing repeated timer task.", asyncException);
 				}
 			}
+		}
+
+		public ProcessingTimeCallback getTarget() {
+			return target;
+		}
+
+		public long getPeriod() {
+			return period;
+		}
+
+		public long getNextTimestamp() {
+			return nextTimestamp;
 		}
 	}
 
@@ -406,6 +549,75 @@ public class SystemProcessingTimeService extends ProcessingTimeService {
 					throw new TimeoutException();
 				}
 			}
+		}
+	}
+
+	private class PreregisteredCompleteableFuture<T> implements ScheduledFuture<T> {
+
+		private final ProcessingTimeCallbackID callbackID;
+
+		public PreregisteredCompleteableFuture(ProcessingTimeCallbackID id) {
+			this.callbackID = id;
+		}
+
+		@Override
+		public long getDelay(TimeUnit timeUnit) {
+			throw new UnsupportedOperationException("Not Implemented");
+		}
+
+		@Override
+		public int compareTo(Delayed delayed) {
+			throw new UnsupportedOperationException("Not Implemented");
+		}
+
+		@Override
+		public boolean cancel(boolean b) {
+			preregisteredTimerTasks.remove(callbackID);
+			return true;
+		}
+
+		@Override
+		public boolean isCancelled() {
+			return preregisteredTimerTasks.containsKey(this.callbackID);
+		}
+
+		@Override
+		public boolean isDone() {
+			throw new UnsupportedOperationException("Not Implemented");
+		}
+
+		@Override
+		public T get() throws InterruptedException, ExecutionException {
+			throw new UnsupportedOperationException("Not Implemented");
+		}
+
+		@Override
+		public T get(long l, TimeUnit timeUnit) throws InterruptedException, ExecutionException, TimeoutException {
+			throw new UnsupportedOperationException("Not Implemented");
+		}
+	}
+
+	private static class PreregisteredTimer {
+		Runnable task;
+		long delay;
+		long submissionTime;
+
+		public PreregisteredTimer(Runnable task, long delay, long submissionTime) {
+			this.task = task;
+			this.delay = delay;
+			this.submissionTime = submissionTime;
+		}
+
+		public Runnable getTask() {
+			return task;
+		}
+
+		public long getDelay() {
+			return delay;
+		}
+
+		public long getSubmissionTime() {
+			return submissionTime;
 		}
 	}
 }

@@ -20,6 +20,7 @@ package org.apache.flink.streaming.connectors.kafka.internal;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.metrics.MetricGroup;
+import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 import org.apache.flink.streaming.api.functions.AssignerWithPeriodicWatermarks;
 import org.apache.flink.streaming.api.functions.AssignerWithPunctuatedWatermarks;
 import org.apache.flink.streaming.api.functions.source.SourceFunction.SourceContext;
@@ -61,6 +62,25 @@ public class Kafka010Fetcher<T> extends Kafka09Fetcher<T> {
 			MetricGroup subtaskMetricGroup,
 			MetricGroup consumerMetricGroup,
 			boolean useMetrics) throws Exception {
+		this(sourceContext, assignedPartitionsWithInitialOffsets, watermarksPeriodic, watermarksPunctuated, processingTimeProvider,autoWatermarkInterval, userCodeClassLoader, taskNameWithSubtasks,deserializer, kafkaProperties, pollTimeout, subtaskMetricGroup, consumerMetricGroup, useMetrics, null);
+	}
+
+		public Kafka010Fetcher(
+			SourceContext<T> sourceContext,
+			Map<KafkaTopicPartition, Long> assignedPartitionsWithInitialOffsets,
+			SerializedValue<AssignerWithPeriodicWatermarks<T>> watermarksPeriodic,
+			SerializedValue<AssignerWithPunctuatedWatermarks<T>> watermarksPunctuated,
+			ProcessingTimeService processingTimeProvider,
+			long autoWatermarkInterval,
+			ClassLoader userCodeClassLoader,
+			String taskNameWithSubtasks,
+			KeyedDeserializationSchema<T> deserializer,
+			Properties kafkaProperties,
+			long pollTimeout,
+			MetricGroup subtaskMetricGroup,
+			MetricGroup consumerMetricGroup,
+			boolean useMetrics, IRecoveryManager recoveryManager) throws Exception {
+
 		super(
 				sourceContext,
 				assignedPartitionsWithInitialOffsets,
@@ -75,7 +95,7 @@ public class Kafka010Fetcher<T> extends Kafka09Fetcher<T> {
 				pollTimeout,
 				subtaskMetricGroup,
 				consumerMetricGroup,
-				useMetrics);
+				useMetrics, recoveryManager);
 	}
 
 	@Override

@@ -19,6 +19,7 @@
 package org.apache.flink.streaming.runtime.tasks;
 
 import org.apache.flink.core.testutils.OneShotLatch;
+import org.apache.flink.runtime.causal.determinant.ProcessingTimeCallbackID;
 import org.apache.flink.streaming.runtime.operators.TestProcessingTimeServiceTest.ReferenceSettingExceptionHandler;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.TestLogger;
@@ -63,6 +64,11 @@ public class SystemProcessingTimeServiceTest extends TestLogger {
 				public void onProcessingTime(long timestamp) {
 					assertTrue(Thread.holdsLock(lock));
 				}
+
+				@Override
+				public ProcessingTimeCallbackID getID() {
+					return null;
+				}
 			});
 
 			// wait until the execution is over
@@ -104,6 +110,11 @@ public class SystemProcessingTimeServiceTest extends TestLogger {
 						assertTrue(Thread.holdsLock(lock));
 
 						awaitCallback.trigger();
+					}
+
+					@Override
+					public ProcessingTimeCallbackID getID() {
+						return null;
 					}
 				},
 				0L,
@@ -147,6 +158,11 @@ public class SystemProcessingTimeServiceTest extends TestLogger {
 				public void onProcessingTime(long timestamp) throws Exception {
 					countDownLatch.countDown();
 				}
+
+				@Override
+				public ProcessingTimeCallbackID getID() {
+					return null;
+				}
 			}, 0L, period);
 
 			countDownLatch.await();
@@ -178,6 +194,11 @@ public class SystemProcessingTimeServiceTest extends TestLogger {
 				@Override
 				public void onProcessingTime(long timestamp) throws Exception {
 				}
+
+				@Override
+				public ProcessingTimeCallbackID getID() {
+					return null;
+				}
 			}, 0L, period);
 
 			assertFalse(scheduledFuture.isDone());
@@ -201,6 +222,11 @@ public class SystemProcessingTimeServiceTest extends TestLogger {
 				@Override
 				public void onProcessingTime(long timestamp) throws Exception {
 					throw new Exception("Test exception.");
+				}
+
+				@Override
+				public ProcessingTimeCallbackID getID() {
+					return null;
 				}
 			}, 0L, 100L);
 
@@ -238,6 +264,11 @@ public class SystemProcessingTimeServiceTest extends TestLogger {
 					latch.trigger();
 					Thread.sleep(100000000);
 				}
+
+				@Override
+				public ProcessingTimeCallbackID getID() {
+					return null;
+				}
 			});
 
 			latch.await();
@@ -253,6 +284,11 @@ public class SystemProcessingTimeServiceTest extends TestLogger {
 				timer.registerTimer(System.currentTimeMillis() + 1000, new ProcessingTimeCallback() {
 					@Override
 					public void onProcessingTime(long timestamp) {}
+
+					@Override
+					public ProcessingTimeCallbackID getID() {
+						return null;
+					}
 				});
 
 				fail("should result in an exception");
@@ -266,6 +302,11 @@ public class SystemProcessingTimeServiceTest extends TestLogger {
 					new ProcessingTimeCallback() {
 						@Override
 						public void onProcessingTime(long timestamp) {}
+
+						@Override
+						public ProcessingTimeCallbackID getID() {
+							return null;
+						}
 					},
 					0L,
 					100L);
@@ -313,6 +354,11 @@ public class SystemProcessingTimeServiceTest extends TestLogger {
 						scopeLock.unlock();
 					}
 				}
+
+				@Override
+				public ProcessingTimeCallbackID getID() {
+					return null;
+				}
 			});
 
 			// after the task triggered, shut the timer down cleanly, waiting for the task to finish
@@ -328,6 +374,11 @@ public class SystemProcessingTimeServiceTest extends TestLogger {
 				@Override
 				public void onProcessingTime(long timestamp) throws Exception {
 					throw new Exception("test");
+				}
+
+				@Override
+				public ProcessingTimeCallbackID getID() {
+					return null;
 				}
 			});
 			assertNotNull(future);
@@ -362,6 +413,11 @@ public class SystemProcessingTimeServiceTest extends TestLogger {
 			ScheduledFuture<?> future = timer.registerTimer(System.currentTimeMillis() + 100000000, new ProcessingTimeCallback() {
 				@Override
 				public void onProcessingTime(long timestamp) {}
+
+				@Override
+				public ProcessingTimeCallbackID getID() {
+					return null;
+				}
 			});
 			assertEquals(1, timer.getNumTasksScheduled());
 
@@ -373,6 +429,11 @@ public class SystemProcessingTimeServiceTest extends TestLogger {
 				new ProcessingTimeCallback() {
 					@Override
 					public void onProcessingTime(long timestamp) throws Exception {}
+
+					@Override
+					public ProcessingTimeCallbackID getID() {
+						return null;
+					}
 				}, 10000000000L, 50L);
 
 			assertEquals(1, timer.getNumTasksScheduled());
@@ -411,6 +472,11 @@ public class SystemProcessingTimeServiceTest extends TestLogger {
 			public void onProcessingTime(long timestamp) throws Exception {
 				throw new Exception("Exception in Timer");
 			}
+
+			@Override
+			public ProcessingTimeCallbackID getID() {
+				return null;
+			}
 		});
 
 		latch.await();
@@ -438,7 +504,12 @@ public class SystemProcessingTimeServiceTest extends TestLogger {
 			public void onProcessingTime(long timestamp) throws Exception {
 				throw new Exception("Exception in Timer");
 			}
-		},
+
+				@Override
+				public ProcessingTimeCallbackID getID() {
+					return null;
+				}
+			},
 			0L,
 			100L);
 
@@ -545,21 +616,29 @@ public class SystemProcessingTimeServiceTest extends TestLogger {
 			lock);
 
 		timeService.scheduleAtFixedRate(
-			timestamp -> {
+			new ProcessingTimeCallback() {
+				@Override
+				public void onProcessingTime(long timestamp) throws Exception {
 
-				waitUntilTimerStarted.trigger();
+					waitUntilTimerStarted.trigger();
 
-				boolean unblocked = false;
+					boolean unblocked = false;
 
-				while (!unblocked) {
-					try {
-						blockUntilTriggered.await();
-						unblocked = true;
-					} catch (InterruptedException ignore) {
+					while (!unblocked) {
+						try {
+							blockUntilTriggered.await();
+							unblocked = true;
+						} catch (InterruptedException ignore) {
+						}
 					}
+
+					check.set(true);
 				}
 
-				check.set(true);
+				@Override
+				public ProcessingTimeCallbackID getID() {
+					return null;
+				}
 			},
 			0L,
 			10L);

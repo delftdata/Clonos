@@ -23,11 +23,14 @@
  *
  */
 
-package org.apache.flink.runtime.causal.determinant;
+package org.apache.flink.runtime.causal;
 
-import org.apache.flink.runtime.causal.recovery.RecoveryManager;
+public interface RecordCountProvider {
 
-public abstract class NonMainThreadDeterminant extends Determinant {
+	int getRecordCount();
 
-	public abstract void process(RecoveryManager recoveryManager);
+	void incRecordCount();
+
+	void resetRecordCount();
+
 }

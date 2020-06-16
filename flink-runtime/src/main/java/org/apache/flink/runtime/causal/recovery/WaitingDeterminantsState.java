@@ -59,7 +59,7 @@ public class WaitingDeterminantsState extends AbstractState {
 		super(context);
 		this.numResponsesReceived = 0;
 		this.numResponsesExpected = context.vertexGraphInformation.getNumberOfDirectDownstreamNeighbours();
-		delta = new VertexCausalLogDelta();
+		delta = new VertexCausalLogDelta(context.vertexGraphInformation.getThisTasksVertexID());
 		try {
 			//Send all Determinant requests
 			if(context.vertexGraphInformation.hasDownstream()) {
@@ -102,7 +102,6 @@ public class WaitingDeterminantsState extends AbstractState {
 				numResponsesExpected = 1;
 			}
 		}
-
 
 	}
 

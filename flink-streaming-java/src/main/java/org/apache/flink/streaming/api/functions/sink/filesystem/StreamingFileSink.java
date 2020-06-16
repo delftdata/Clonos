@@ -30,6 +30,7 @@ import org.apache.flink.api.common.typeutils.base.array.BytePrimitiveArraySerial
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.fs.Path;
+import org.apache.flink.runtime.causal.determinant.ProcessingTimeCallbackID;
 import org.apache.flink.runtime.state.CheckpointListener;
 import org.apache.flink.runtime.state.FunctionInitializationContext;
 import org.apache.flink.runtime.state.FunctionSnapshotContext;
@@ -357,6 +358,11 @@ public class StreamingFileSink<IN>
 		final long currentTime = processingTimeService.getCurrentProcessingTime();
 		buckets.onProcessingTime(currentTime);
 		processingTimeService.registerTimer(currentTime + bucketCheckInterval, this);
+	}
+
+	@Override
+	public ProcessingTimeCallbackID getID() {
+		return null;
 	}
 
 	@Override

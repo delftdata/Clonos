@@ -21,6 +21,7 @@ package org.apache.flink.streaming.connectors.kafka.internals;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.functions.RuntimeContext;
 import org.apache.flink.metrics.MetricGroup;
+import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 import org.apache.flink.streaming.api.functions.AssignerWithPeriodicWatermarks;
 import org.apache.flink.streaming.api.functions.AssignerWithPunctuatedWatermarks;
 import org.apache.flink.streaming.api.functions.source.SourceFunction.SourceContext;
@@ -99,6 +100,20 @@ public class Kafka08Fetcher<T> extends AbstractFetcher<T, TopicAndPartition> {
 			long autoCommitInterval,
 			MetricGroup consumerMetricGroup,
 			boolean useMetrics) throws Exception {
+		this(sourceContext, seedPartitionsWithInitialOffsets, watermarksPeriodic, watermarksPunctuated, runtimeContext,
+			deserializer, kafkaProperties, autoCommitInterval, consumerMetricGroup, useMetrics, null );
+	}
+	public Kafka08Fetcher(
+		SourceContext<T> sourceContext,
+		Map<KafkaTopicPartition, Long> seedPartitionsWithInitialOffsets,
+		SerializedValue<AssignerWithPeriodicWatermarks<T>> watermarksPeriodic,
+		SerializedValue<AssignerWithPunctuatedWatermarks<T>> watermarksPunctuated,
+		StreamingRuntimeContext runtimeContext,
+		KeyedDeserializationSchema<T> deserializer,
+		Properties kafkaProperties,
+		long autoCommitInterval,
+		MetricGroup consumerMetricGroup,
+		boolean useMetrics, IRecoveryManager recoveryManager) throws Exception {
 		super(
 				sourceContext,
 				seedPartitionsWithInitialOffsets,
@@ -108,7 +123,7 @@ public class Kafka08Fetcher<T> extends AbstractFetcher<T, TopicAndPartition> {
 				runtimeContext.getExecutionConfig().getAutoWatermarkInterval(),
 				runtimeContext.getUserCodeClassLoader(),
 				consumerMetricGroup,
-				useMetrics);
+				useMetrics,  recoveryManager);
 
 		this.deserializer = checkNotNull(deserializer);
 		this.kafkaConfig = checkNotNull(kafkaProperties);

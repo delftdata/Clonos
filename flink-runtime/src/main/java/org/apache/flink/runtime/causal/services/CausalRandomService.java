@@ -42,9 +42,10 @@ public class CausalRandomService implements RandomService {
 	protected final Random rng = new XORShiftRandom();
 
 
-	public CausalRandomService(EpochProvider epochProvider,IJobCausalLog causalLoggingManager, IRecoveryManager recoveryManager) {
+	public CausalRandomService(EpochProvider epochProvider, IJobCausalLog causalLoggingManager, IRecoveryManager recoveryManager) {
 		this.causalLoggingManager = causalLoggingManager;
 		this.recoveryManager = recoveryManager;
+		this.epochProvider = epochProvider;
 	}
 
 	@Override

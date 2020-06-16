@@ -25,11 +25,8 @@
 
 package org.apache.flink.runtime.causal.recovery;
 
-import org.apache.flink.runtime.causal.EpochProvider;
+import org.apache.flink.runtime.causal.*;
 import org.apache.flink.runtime.causal.log.job.JobCausalLog;
-import org.apache.flink.runtime.causal.DeterminantResponseEvent;
-import org.apache.flink.runtime.causal.VertexGraphInformation;
-import org.apache.flink.runtime.causal.VertexID;
 import org.apache.flink.runtime.causal.log.vertex.VertexCausalLogDelta;
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
 import org.apache.flink.runtime.io.network.api.DeterminantRequestEvent;
@@ -69,14 +66,18 @@ public class RecoveryManager implements IRecoveryManager{
 
 	EpochProvider epochProvider;
 
+	RecordCountProvider recordCountProvider;
+
 	public static final SinkRecoveryStrategy sinkRecoveryStrategy = SinkRecoveryStrategy.TRANSACTIONAL;
+
+	public ProcessingTimeForceable processingTimeForceable;
 
 	public static enum SinkRecoveryStrategy{
 		TRANSACTIONAL,
 		KAFKA
 	}
 
-	public RecoveryManager(EpochProvider epochProvider, JobCausalLog jobCausalLog, CompletableFuture<Void> readyToReplayFuture, VertexGraphInformation vertexGraphInformation) {
+	public RecoveryManager(EpochProvider epochProvider, JobCausalLog jobCausalLog, CompletableFuture<Void> readyToReplayFuture, VertexGraphInformation vertexGraphInformation, RecordCountProvider recordCountProvider) {
 		this.jobCausalLog = jobCausalLog;
 		this.readyToReplayFuture = readyToReplayFuture;
 		this.vertexGraphInformation = vertexGraphInformation;
@@ -94,6 +95,7 @@ public class RecoveryManager implements IRecoveryManager{
 		this.intermediateResultPartitionIDRecordWriterMap = new HashMap<>();
 
 		this.epochProvider = epochProvider;
+		this.recordCountProvider = recordCountProvider;
 	}
 
 	public void setRecordWriters(List<RecordWriter> recordWriters) {
@@ -108,6 +110,11 @@ public class RecoveryManager implements IRecoveryManager{
 		}
 	}
 
+	@Override
+	public void setProcessingTimeService(ProcessingTimeForceable processingTimeForceable) {
+		this.processingTimeForceable = processingTimeForceable;
+	}
+
 	public void setInputGate(InputGate inputGate){
 		this.inputGate = inputGate;
 	}
@@ -118,6 +125,7 @@ public class RecoveryManager implements IRecoveryManager{
 	public synchronized void notifyStartRecovery(){
 		this.currentState.notifyStartRecovery();
 	}
+
 
 	@Override
 	public synchronized void notifyDeterminantResponseEvent(DeterminantResponseEvent e) {
@@ -153,6 +161,11 @@ public class RecoveryManager implements IRecoveryManager{
 	@Override
 	public synchronized void notifyInFlightLogRequestEvent(InFlightLogRequestEvent e) {
 		this.currentState.notifyInFlightLogRequestEvent(e);
+	}
+
+	@Override
+	public void checkAsyncEvent() {
+		this.currentState.checkAsyncEvent();
 	}
 
 

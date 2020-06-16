@@ -45,6 +45,7 @@ public abstract class ProcessingTimeService {
 	 */
 	public abstract long getCurrentProcessingTime();
 
+	public abstract long getCurrentProcessingTimeCausal();
 	/**
 	 * Registers a task to be executed when (processing) time is {@code timestamp}.
 	 *
@@ -116,4 +117,5 @@ public abstract class ProcessingTimeService {
 	 *         {@code false} if the timeout elapsed before this happened.
 	 */
 	public abstract boolean shutdownAndAwaitPending(long time, TimeUnit timeUnit) throws InterruptedException;
+
 }

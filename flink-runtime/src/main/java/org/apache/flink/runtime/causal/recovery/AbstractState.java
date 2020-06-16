@@ -144,6 +144,11 @@ public abstract class AbstractState implements State {
 		LOG.info("Unexpected notification StartRecovery in state " + this.getClass());
 	}
 
+	@Override
+	public void checkAsyncEvent(){
+		throw new RuntimeException("Unexpected check for Async event in state" + this.getClass());
+	}
+
 	//==============================================================
 
 	@Override

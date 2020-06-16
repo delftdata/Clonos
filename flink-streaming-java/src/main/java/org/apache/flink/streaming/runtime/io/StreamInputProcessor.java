@@ -23,7 +23,10 @@ import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.SimpleCounter;
+import org.apache.flink.runtime.causal.RecordCountProvider;
 import org.apache.flink.runtime.causal.log.job.IJobCausalLog;
+import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
+import org.apache.flink.runtime.causal.recovery.RecoveryManager;
 import org.apache.flink.runtime.event.AbstractEvent;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
@@ -88,10 +91,14 @@ public class StreamInputProcessor<IN> {
 
 	// ---------------- Status and Watermark Valve ------------------
 
-	/** Valve that controls how watermarks and stream statuses are forwarded. */
+	/**
+	 * Valve that controls how watermarks and stream statuses are forwarded.
+	 */
 	private StatusWatermarkValve statusWatermarkValve;
 
-	/** Number of input channels the valve needs to handle. */
+	/**
+	 * Number of input channels the valve needs to handle.
+	 */
 	private final int numInputChannels;
 
 	/**
@@ -111,6 +118,8 @@ public class StreamInputProcessor<IN> {
 
 	private boolean isFinished;
 
+	private final IRecoveryManager recoveryManager;
+	private final RecordCountProvider recordCountProvider;
 
 	@SuppressWarnings("unchecked")
 	public StreamInputProcessor(
@@ -126,7 +135,8 @@ public class StreamInputProcessor<IN> {
 		TaskIOMetricGroup metrics,
 		WatermarkGauge watermarkGauge) throws IOException {
 
-
+		this.recoveryManager = checkpointedTask.getRecoveryManager();
+		this.recordCountProvider = checkpointedTask.getRecordCountProvider();
 		InputGate inputGate = InputGateUtil.createInputGate(inputGates);
 		checkpointedTask.getRecoveryManager().setInputGate(inputGate);
 
@@ -153,7 +163,7 @@ public class StreamInputProcessor<IN> {
 
 		this.statusWatermarkValve = new StatusWatermarkValve(
 			numInputChannels,
-			new ForwardingValveOutputHandler(streamOperator, lock));
+			new ForwardingValveOutputHandler(streamOperator, lock, recordCountProvider));
 
 		this.watermarkGauge = watermarkGauge;
 		metrics.gauge("checkpointAlignmentTime", barrierHandler::getAlignmentDurationNanos);
@@ -184,6 +194,9 @@ public class StreamInputProcessor<IN> {
 				if (result.isFullRecord()) {
 					StreamElement recordOrMark = deserializationDelegate.getInstance();
 
+					if(recoveryManager.isReplaying())
+						recoveryManager.checkAsyncEvent();
+
 					if (recordOrMark.isWatermark()) {
 						// handle watermark
 						statusWatermarkValve.inputWatermark(recordOrMark.asWatermark(), currentChannel);
@@ -194,15 +207,14 @@ public class StreamInputProcessor<IN> {
 						continue;
 					} else if (recordOrMark.isLatencyMarker()) {
 						// handle latency marker
-						synchronized (lock) {
-							streamOperator.processLatencyMarker(recordOrMark.asLatencyMarker());
-						}
+						streamOperator.processLatencyMarker(recordOrMark.asLatencyMarker());
 						continue;
 					} else {
 						// now we can do the actual processing
 						StreamRecord<IN> record = recordOrMark.asRecord();
 						LOG.info("Record contents: {}", record);
 						synchronized (lock) {
+							recordCountProvider.incRecordCount();
 							numRecordsIn.inc();
 							streamOperator.setKeyContextElement1(record);
 							streamOperator.processElement(record);
@@ -212,8 +224,12 @@ public class StreamInputProcessor<IN> {
 				}
 			}
 
+			if(recoveryManager.isReplaying())
+				recoveryManager.checkAsyncEvent();
+
 			LOG.info("Getting next BufferOrEvent");
-			final BufferOrEvent	bufferOrEvent = barrierHandler.getNextNonBlocked();
+			final BufferOrEvent bufferOrEvent;
+			bufferOrEvent = barrierHandler.getNextNonBlocked();
 			if (bufferOrEvent != null) {
 				if (bufferOrEvent.isBuffer()) {
 					currentChannel = bufferOrEvent.getChannelIndex();
@@ -253,16 +269,19 @@ public class StreamInputProcessor<IN> {
 	private class ForwardingValveOutputHandler implements StatusWatermarkValve.ValveOutputHandler {
 		private final OneInputStreamOperator<IN, ?> operator;
 		private final Object lock;
+		private final RecordCountProvider recordCountProvider;
 
-		private ForwardingValveOutputHandler(final OneInputStreamOperator<IN, ?> operator, final Object lock) {
+		private ForwardingValveOutputHandler(final OneInputStreamOperator<IN, ?> operator, final Object lock, RecordCountProvider recordCountProvider) {
 			this.operator = checkNotNull(operator);
 			this.lock = checkNotNull(lock);
+			this.recordCountProvider = checkNotNull(recordCountProvider);
 		}
 
 		@Override
 		public void handleWatermark(Watermark watermark) {
 			try {
 				synchronized (lock) {
+					recordCountProvider.incRecordCount();
 					watermarkGauge.setCurrentWatermark(watermark.getTimestamp());
 					operator.processWatermark(watermark);
 				}
