@@ -189,7 +189,7 @@ public abstract class AbstractStreamOperator<OUT>
 			this.latencyStats = new LatencyStats(UnregisteredMetricGroups.createUnregisteredTaskManagerJobMetricGroup().addGroup("latency"), 1, 0, new OperatorID());
 		}
 
-		this.runtimeContext = new StreamingRuntimeContext(this, environment, container.getAccumulatorMap());
+		this.runtimeContext = new StreamingRuntimeContext(this, environment, container.getAccumulatorMap(), containingTask.getTimeService(), containingTask.getRandomService());
 
 		stateKeySelector1 = config.getStatePartitioner(0, getUserCodeClassloader());
 		stateKeySelector2 = config.getStatePartitioner(1, getUserCodeClassloader());

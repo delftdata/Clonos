@@ -18,7 +18,7 @@
 
 package org.apache.flink.runtime.io.network.netty;
 
-import org.apache.flink.runtime.causal.log.tm.TMCausalLog;
+import org.apache.flink.runtime.causal.log.tm.CausalLogManager;
 import org.apache.flink.runtime.io.network.NetworkClientHandler;
 import org.apache.flink.runtime.io.network.TaskEventDispatcher;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionProvider;
@@ -37,16 +37,16 @@ public class NettyProtocol {
 	private final TaskEventDispatcher taskEventDispatcher;
 
 	private final boolean creditBasedEnabled;
-	private final TMCausalLog tmCausalLog;
+	private final CausalLogManager causalLogManager;
 
 	NettyProtocol(ResultPartitionProvider partitionProvider, TaskEventDispatcher taskEventDispatcher, boolean creditBasedEnabled) {
 		this(partitionProvider, taskEventDispatcher, creditBasedEnabled, null);
 	}
-	NettyProtocol(ResultPartitionProvider partitionProvider, TaskEventDispatcher taskEventDispatcher, boolean creditBasedEnabled, TMCausalLog tmCausalLog) {
+	NettyProtocol(ResultPartitionProvider partitionProvider, TaskEventDispatcher taskEventDispatcher, boolean creditBasedEnabled, CausalLogManager causalLogManager) {
 		this.partitionProvider = partitionProvider;
 		this.taskEventDispatcher = taskEventDispatcher;
 		this.creditBasedEnabled = creditBasedEnabled;
-		this.tmCausalLog = tmCausalLog;
+		this.causalLogManager = causalLogManager;
 	}
 
 	/**
@@ -83,7 +83,7 @@ public class NettyProtocol {
 	 * @return channel handlers
 	 */
 	public ChannelHandler[] getServerChannelHandlers() {
-		PartitionRequestQueue queueOfPartitionQueues = new PartitionRequestQueue(tmCausalLog);
+		PartitionRequestQueue queueOfPartitionQueues = new PartitionRequestQueue(causalLogManager);
 		PartitionRequestServerHandler serverHandler = new PartitionRequestServerHandler(
 			partitionProvider, taskEventDispatcher, queueOfPartitionQueues, creditBasedEnabled);
 
@@ -129,7 +129,7 @@ public class NettyProtocol {
 	 */
 	public ChannelHandler[] getClientChannelHandlers() {
 		NetworkClientHandler networkClientHandler =
-			creditBasedEnabled ? new CreditBasedPartitionRequestClientHandler(tmCausalLog) :
+			creditBasedEnabled ? new CreditBasedPartitionRequestClientHandler(causalLogManager) :
 				new PartitionRequestClientHandler();
 		return new ChannelHandler[] {
 			messageEncoder,

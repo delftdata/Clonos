@@ -33,8 +33,6 @@ import org.apache.flink.runtime.accumulators.AccumulatorRegistry;
 import org.apache.flink.runtime.blob.BlobCacheService;
 import org.apache.flink.runtime.blob.PermanentBlobKey;
 import org.apache.flink.runtime.broadcast.BroadcastVariableManager;
-import org.apache.flink.runtime.causal.*;
-import org.apache.flink.runtime.causal.determinant.SimpleDeterminantEncodingStrategy;
 import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore;
@@ -42,7 +40,6 @@ import org.apache.flink.runtime.checkpoint.decline.CheckpointDeclineTaskNotReady
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.deployment.InputGateDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.ResultPartitionDeploymentDescriptor;
-import org.apache.flink.runtime.event.*;
 import org.apache.flink.runtime.execution.CancelTaskException;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.execution.ExecutionState;
@@ -61,7 +58,6 @@ import org.apache.flink.runtime.io.network.partition.ResultPartitionMetrics;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGateMetrics;
 import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
-import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
@@ -827,7 +823,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 				producedPartitions,
 				inputGates,
 				network.getTaskEventDispatcher(),
-				network.getTmCausalLog().getCausalLoggingManagerOfJob(jobId),
+				network.getCausalLogManager(),
 				checkpointResponder,
 				taskManagerConfig,
 				metrics,

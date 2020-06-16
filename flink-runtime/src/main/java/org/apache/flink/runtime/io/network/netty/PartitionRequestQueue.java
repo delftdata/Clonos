@@ -20,7 +20,7 @@ package org.apache.flink.runtime.io.network.netty;
 
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.runtime.causal.log.job.CausalLogDelta;
-import org.apache.flink.runtime.causal.log.tm.TMCausalLog;
+import org.apache.flink.runtime.causal.log.tm.CausalLogManager;
 import org.apache.flink.runtime.io.network.NetworkSequenceViewReader;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
@@ -71,7 +71,7 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 
 	private final Set<InputChannelID> released = Sets.newHashSet();
 
-	private final TMCausalLog tmCausalLog;
+	private final CausalLogManager causalLogManager;
 
 	private boolean fatalError;
 
@@ -81,8 +81,8 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 		this(null);
 	}
 
-	public PartitionRequestQueue(TMCausalLog tmCausalLog){
-		this.tmCausalLog = tmCausalLog;
+	public PartitionRequestQueue(CausalLogManager causalLogManager){
+		this.causalLogManager = causalLogManager;
 	}
 
 	@Override
@@ -151,8 +151,8 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 	}
 	public void notifyReaderCreated(final NetworkSequenceViewReader reader, ResultPartitionID partitionId, int queueIndex) {
 		allReaders.put(reader.getReceiverId(), reader);
-		if(tmCausalLog != null)
-			tmCausalLog.registerNewDownstreamConsumer(reader.getJobID(), reader.getReceiverId(), partitionId.getPartitionId(), queueIndex);
+		if(causalLogManager != null)
+			causalLogManager.registerNewDownstreamConsumer(reader.getJobID(), reader.getReceiverId(), partitionId.getPartitionId(), queueIndex);
 	}
 
 	public void cancel(InputChannelID receiverId) {
@@ -215,7 +215,7 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 			}
 
 			allReaders.remove(toCancel);
-			tmCausalLog.unregisterDownstreamConsumer(toCancel);
+			causalLogManager.unregisterDownstreamConsumer(toCancel);
 		} else {
 			ctx.fireUserEventTriggered(msg);
 		}
@@ -271,7 +271,7 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 						registerAvailableReader(reader);
 					}
 
-					delta = tmCausalLog.getNextDeterminantsForDownstream(reader.getReceiverId(), next.getEpochID());
+					delta = causalLogManager.getNextDeterminantsForDownstream(reader.getReceiverId(), next.getEpochID());
 
 					BufferResponse msg = new BufferResponse(
 						next.buffer(),

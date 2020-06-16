@@ -32,38 +32,46 @@ import org.apache.flink.runtime.causal.log.job.CausalLogDelta;
 import org.apache.flink.runtime.causal.log.job.IJobCausalLog;
 import org.apache.flink.runtime.causal.log.job.JobCausalLog;
 import org.apache.flink.runtime.causal.log.vertex.VertexCausalLogDelta;
+import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 import org.apache.flink.runtime.io.network.buffer.BufferPool;
+import org.apache.flink.runtime.io.network.buffer.NetworkBufferPool;
 import org.apache.flink.runtime.io.network.partition.ResultPartition;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
-import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.List;
+import java.io.IOException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
-public class TMCausalLog {
+public class CausalLogManager {
 
-	private static final Logger LOG = LoggerFactory.getLogger(TMCausalLog.class);
+	private static final Logger LOG = LoggerFactory.getLogger(CausalLogManager.class);
 
 	private ConcurrentMap<JobID, JobCausalLog> jobIDToManagerMap;
 	private ConcurrentMap<InputChannelID, JobCausalLog> inputChannelIDToManagerMap;
+	private NetworkBufferPool determinantBufferPool;
+	private int numDeterminantBuffersPerTask;
 
-	public TMCausalLog() {
+	public CausalLogManager(NetworkBufferPool determinantBufferPool, int numDeterminantBuffersPerTask) {
+		this.determinantBufferPool = determinantBufferPool;
+		this.numDeterminantBuffersPerTask = numDeterminantBuffersPerTask;
 		this.jobIDToManagerMap = new ConcurrentHashMap<>();
 		this.inputChannelIDToManagerMap = new ConcurrentHashMap<>();
 	}
 
-	public void registerNewJob(JobID jobID, VertexGraphInformation vertexGraphInformation, ResultPartition[] resultPartitionsOfLocalVertex, BufferPool bufferPool) {
+	public JobCausalLog registerNewJob(JobID jobID, VertexGraphInformation vertexGraphInformation, ResultPartitionWriter[] resultPartitionsOfLocalVertex, Object lock) {
 		LOG.info("Registering a new Job {}.", jobID);
-		JobCausalLog newManager = new JobCausalLog(vertexGraphInformation, resultPartitionsOfLocalVertex, bufferPool);
-		jobIDToManagerMap.put(jobID, newManager);
-	}
-
-	public JobCausalLog getCausalLoggingManagerOfJob(JobID jobID) {
-		return jobIDToManagerMap.get(jobID);
+		BufferPool taskDeterminantBufferPool = null;
+		try {
+			taskDeterminantBufferPool = determinantBufferPool.createBufferPool(numDeterminantBuffersPerTask, numDeterminantBuffersPerTask);
+		} catch (IOException e) {
+			throw new RuntimeException("Could not register determinant buffer pool!");
+		}
+		JobCausalLog jobCausalLog = new JobCausalLog(vertexGraphInformation, resultPartitionsOfLocalVertex, taskDeterminantBufferPool, lock);
+		jobIDToManagerMap.put(jobID, jobCausalLog);
+		return jobCausalLog;
 	}
 
 	public void registerNewDownstreamConsumer(JobID jobID, InputChannelID inputChannelID, IntermediateResultPartitionID intermediateResultPartitionID, int consumedSubpartition) {

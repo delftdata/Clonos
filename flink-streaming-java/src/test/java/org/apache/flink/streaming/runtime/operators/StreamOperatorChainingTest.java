@@ -269,7 +269,7 @@ public class StreamOperatorChainingTest {
 			StreamConfig streamConfig,
 			Environment environment,
 			StreamTask<IN, OT> task) {
-		return new OperatorChain<>(task, StreamTask.createStreamRecordWriters(streamConfig, environment, null,null, null));
+		return new OperatorChain<>(task, StreamTask.createStreamRecordWriters(streamConfig, environment, null));
 	}
 
 	private <IN, OT extends StreamOperator<IN>> StreamTask<IN, OT> createMockTask(

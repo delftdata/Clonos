@@ -36,6 +36,8 @@ import org.apache.flink.api.common.state.ReducingStateDescriptor;
 import org.apache.flink.api.common.state.StateDescriptor;
 import org.apache.flink.api.common.state.ValueState;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
+import org.apache.flink.runtime.causal.services.RandomService;
+import org.apache.flink.runtime.causal.services.TimeService;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.jobgraph.tasks.InputSplitProvider;
 import org.apache.flink.streaming.api.CheckpointingMode;
@@ -63,8 +65,16 @@ public class StreamingRuntimeContext extends AbstractRuntimeUDFContext {
 
 	private final String operatorUniqueID;
 
+	private final RandomService randomService;
+	private final TimeService timeService;
+
 	public StreamingRuntimeContext(AbstractStreamOperator<?> operator,
-									Environment env, Map<String, Accumulator<?, ?>> accumulators) {
+								   Environment env, Map<String, Accumulator<?, ?>> accumulators){
+		this(operator, env, accumulators, null, null);
+	}
+
+	public StreamingRuntimeContext(AbstractStreamOperator<?> operator,
+								   Environment env, Map<String, Accumulator<?, ?>> accumulators, TimeService timeService, RandomService randomService) {
 		super(env.getTaskInfo(),
 				env.getUserClassLoader(),
 				operator.getExecutionConfig(),
@@ -76,6 +86,8 @@ public class StreamingRuntimeContext extends AbstractRuntimeUDFContext {
 		this.taskEnvironment = env;
 		this.streamConfig = new StreamConfig(env.getTaskConfiguration());
 		this.operatorUniqueID = operator.getOperatorID().toString();
+		this.timeService = timeService;
+		this.randomService = randomService;
 	}
 
 	// ------------------------------------------------------------------------
@@ -103,6 +115,14 @@ public class StreamingRuntimeContext extends AbstractRuntimeUDFContext {
 	 */
 	public String getOperatorUniqueID() {
 		return operatorUniqueID;
+	}
+
+	public TimeService getTimeService(){
+		return timeService;
+	}
+
+	public RandomService getRandomService(){
+		return randomService;
 	}
 
 	// ------------------------------------------------------------------------

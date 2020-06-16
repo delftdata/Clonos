@@ -30,6 +30,7 @@ import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.runtime.causal.VertexGraphInformation;
 import org.apache.flink.runtime.causal.VertexID;
 import org.apache.flink.runtime.causal.log.thread.*;
+import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 import org.apache.flink.runtime.io.network.buffer.BufferPool;
 import org.apache.flink.runtime.io.network.partition.ResultPartition;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
@@ -59,14 +60,14 @@ public class BasicLocalVertexCausalLog implements LocalVertexCausalLog {
 
 	Map<InputChannelID, Tuple2<IntermediateResultPartitionID, Integer>> consumerPartitions;
 
-	public BasicLocalVertexCausalLog(VertexGraphInformation vertexGraphInformation, ResultPartition[] resultPartitionsOfLocalVertex, BufferPool bufferPool) {
+	public BasicLocalVertexCausalLog(VertexGraphInformation vertexGraphInformation, ResultPartitionWriter[] resultPartitionsOfLocalVertex, BufferPool bufferPool) {
 		totalSubpartitions = vertexGraphInformation.getJobVertex().getProducedDataSets().stream().map(IntermediateDataSet::getConsumers).mapToInt(List::size).sum();
 		subpartitionLogs = new ConcurrentHashMap<>(totalSubpartitions);
 
 		this.vertexId = vertexGraphInformation.getThisTasksVertexID();
 		this.mainThreadLog = new NetworkBufferBasedContiguousLocalThreadCausalLog(bufferPool);
 
-		for (ResultPartition resultPartition : resultPartitionsOfLocalVertex) {
+		for (ResultPartitionWriter resultPartition : resultPartitionsOfLocalVertex) {
 			LocalThreadCausalLog[] threadCausalLogs = new LocalThreadCausalLog[resultPartition.getNumberOfSubpartitions()];
 			for (int i = 0; i < resultPartition.getNumberOfSubpartitions(); i++) {
 				threadCausalLogs[i] = new NetworkBufferBasedContiguousLocalThreadCausalLog(bufferPool);

@@ -28,6 +28,7 @@ import org.apache.flink.runtime.causal.VertexGraphInformation;
 import org.apache.flink.runtime.causal.VertexID;
 import org.apache.flink.runtime.causal.determinant.*;
 import org.apache.flink.runtime.causal.log.vertex.*;
+import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferPool;
 import org.apache.flink.runtime.io.network.partition.ResultPartition;
@@ -62,7 +63,7 @@ public class JobCausalLog implements IJobCausalLog {
 
 	Object lock;
 
-	public JobCausalLog(VertexGraphInformation vertexGraphInformation, ResultPartition[] resultPartitionsOfLocalVertex, BufferPool bufferPool) {
+	public JobCausalLog(VertexGraphInformation vertexGraphInformation, ResultPartitionWriter[] resultPartitionsOfLocalVertex, BufferPool bufferPool, Object lock) {
 		this.myVertexID = vertexGraphInformation.getThisTasksVertexID();
 		this.bufferPool = bufferPool;
 
@@ -75,12 +76,10 @@ public class JobCausalLog implements IJobCausalLog {
 		this.upstreamDeterminantLogs = new ConcurrentHashMap<>();
 		this.registeredConsumers = new ConcurrentSet<>();
 
-	}
-
-	@Override
-	public void setCheckpointLock(Object lock){
 		this.lock = lock;
 	}
+
+
 
 	@Override
 	public void registerDownstreamConsumer(InputChannelID inputChannelID, IntermediateResultPartitionID consumedResultPartitionID, int consumedSubpartition) {

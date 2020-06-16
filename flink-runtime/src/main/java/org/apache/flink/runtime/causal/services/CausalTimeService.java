@@ -22,45 +22,54 @@
  *
  *
  */
+
 package org.apache.flink.runtime.causal.services;
 
 import org.apache.flink.runtime.causal.EpochProvider;
 import org.apache.flink.runtime.causal.log.job.IJobCausalLog;
-import org.apache.flink.runtime.causal.determinant.RNGDeterminant;
+import org.apache.flink.runtime.causal.determinant.TimestampDeterminant;
 import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
-import org.apache.flink.util.XORShiftRandom;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import java.util.Random;
+public class CausalTimeService implements TimeService {
 
-public class CausalRandomService implements RandomService {
-
+	private final EpochProvider epochProvider;
 	private IJobCausalLog causalLoggingManager;
 	private IRecoveryManager recoveryManager;
-	private EpochProvider epochProvider;
 
-	//Not thread safe
-	protected final Random rng = new XORShiftRandom();
+	private static final Logger LOG = LoggerFactory.getLogger(CausalTimeService.class);
 
-
-	public CausalRandomService(IJobCausalLog causalLoggingManager, IRecoveryManager recoveryManager, EpochProvider epochProvider) {
+	public CausalTimeService(IJobCausalLog causalLoggingManager, IRecoveryManager recoveryManager, EpochProvider epochProvider){
 		this.causalLoggingManager = causalLoggingManager;
 		this.recoveryManager = recoveryManager;
 		this.epochProvider = epochProvider;
 	}
 
 	@Override
-	public int nextInt() {
-		return this.nextInt(Integer.MAX_VALUE);
+	public long currentTimeMillis(){
+		return checkState(System.currentTimeMillis());
 	}
+
 
 	@Override
-	public int nextInt(int maxExclusive) {
-		if(recoveryManager.isReplaying())
-			 return  recoveryManager.replayRandomInt();
-
-		int generatedNumber = rng.nextInt(maxExclusive);
-		causalLoggingManager.appendDeterminant(new RNGDeterminant(generatedNumber),epochProvider.getCurrentEpochID());
-		return generatedNumber;
+	public long nanoTime() {
+		return checkState(System.nanoTime());
 	}
 
+	private long checkState(long timestamp) {
+		long toReturn = timestamp;
+		while (!(recoveryManager.isRunning() || recoveryManager.isReplaying()))
+			LOG.info("Requested timestamp but neither running nor replaying");
+
+
+		if(recoveryManager.isReplaying()) {
+			LOG.info("We are replaying, returning the next timestamp from recovery manager");
+			toReturn = recoveryManager.replayNextTimestamp();
+		}
+
+		LOG.info("We are running, returning a fresh timestamp and recording it.");
+		causalLoggingManager.appendDeterminant(new TimestampDeterminant(toReturn), epochProvider.getCurrentEpochID());
+		return toReturn;
+	}
 }

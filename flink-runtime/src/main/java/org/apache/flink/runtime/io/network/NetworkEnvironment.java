@@ -20,7 +20,7 @@ package org.apache.flink.runtime.io.network;
 
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.JobID;
-import org.apache.flink.runtime.causal.log.tm.TMCausalLog;
+import org.apache.flink.runtime.causal.log.tm.CausalLogManager;
 import org.apache.flink.runtime.causal.VertexGraphInformation;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
@@ -104,10 +104,9 @@ public class NetworkEnvironment {
 	private final boolean enableCreditBased;
 
 
-	private final TMCausalLog tmCausalLog;
+	private final CausalLogManager causalLogManager;
 
 	private boolean isShutdown;
-
 
 
 	public NetworkEnvironment(
@@ -149,12 +148,12 @@ public class NetworkEnvironment {
 		this.numDeterminantBuffersPerTask = numDeterminantBuffersPerTask;
 
 
-			this.tmCausalLog = new TMCausalLog();
+		this.causalLogManager = new CausalLogManager(determinantBufferPool, numDeterminantBuffersPerTask);
 
 	}
 
 	public NetworkEnvironment(NetworkBufferPool bufferPool, NettyConnectionManager nettyConnectionManager, ResultPartitionManager resultPartitionManager, TaskEventDispatcher taskEventDispatcher, KvStateRegistry kvStateRegistry, KvStateServer o, KvStateClientProxy o1, IOMode sync, Integer defaultValue, Integer defaultValue1, Integer defaultValue2, Integer defaultValue3, boolean b) {
-		this(bufferPool,null,nettyConnectionManager,resultPartitionManager,taskEventDispatcher,kvStateRegistry,o,o1,sync,defaultValue, defaultValue1, defaultValue2, defaultValue3, b, 0);
+		this(bufferPool, null, nettyConnectionManager, resultPartitionManager, taskEventDispatcher, kvStateRegistry, o, o1, sync, defaultValue, defaultValue1, defaultValue2, defaultValue3, b, 0);
 	}
 
 	// --------------------------------------------------------------------------------------------
@@ -193,8 +192,8 @@ public class NetworkEnvironment {
 		return enableCreditBased;
 	}
 
-	public TMCausalLog getTmCausalLog(){
-		return tmCausalLog;
+	public CausalLogManager getCausalLogManager() {
+		return causalLogManager;
 	}
 
 	public KvStateRegistry getKvStateRegistry() {
@@ -226,9 +225,6 @@ public class NetworkEnvironment {
 				throw new IllegalStateException("NetworkEnvironment is shut down");
 			}
 
-			VertexGraphInformation graphInformation = new VertexGraphInformation(task.getTopologicallySortedJobVertexes(), task.getJobVertexId(), task.getSubtaskIndex());
-			BufferPool taskDeterminantBufferPool = determinantBufferPool.createBufferPool(numDeterminantBuffersPerTask, numDeterminantBuffersPerTask);
-			tmCausalLog.registerNewJob(task.getJobID(), graphInformation, producedPartitions, taskDeterminantBufferPool);
 
 			for (final ResultPartition partition : producedPartitions) {
 				setupPartition(partition);
@@ -345,7 +341,7 @@ public class NetworkEnvironment {
 
 			try {
 				LOG.debug("Starting network connection manager");
-				connectionManager.start(resultPartitionManager, taskEventDispatcher, tmCausalLog);
+				connectionManager.start(resultPartitionManager, taskEventDispatcher, causalLogManager);
 
 			} catch (IOException t) {
 				throw new IOException("Failed to instantiate network connection manager.", t);

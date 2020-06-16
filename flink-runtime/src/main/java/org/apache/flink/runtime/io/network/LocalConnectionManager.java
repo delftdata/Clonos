@@ -18,7 +18,7 @@
 
 package org.apache.flink.runtime.io.network;
 
-import org.apache.flink.runtime.causal.log.tm.TMCausalLog;
+import org.apache.flink.runtime.causal.log.tm.CausalLogManager;
 import org.apache.flink.runtime.io.network.netty.PartitionRequestClient;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionProvider;
 
@@ -35,7 +35,7 @@ public class LocalConnectionManager implements ConnectionManager {
 	}
 
 	@Override
-	public void start(ResultPartitionProvider partitionProvider, TaskEventDispatcher taskEventDispatcher, TMCausalLog tmCausalLog) throws IOException {
+	public void start(ResultPartitionProvider partitionProvider, TaskEventDispatcher taskEventDispatcher, CausalLogManager causalLogManager) throws IOException {
 
 	}
 

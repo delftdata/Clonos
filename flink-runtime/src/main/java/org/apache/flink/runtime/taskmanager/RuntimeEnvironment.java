@@ -26,6 +26,7 @@ import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.accumulators.AccumulatorRegistry;
 import org.apache.flink.runtime.broadcast.BroadcastVariableManager;
 import org.apache.flink.runtime.causal.log.job.JobCausalLog;
+import org.apache.flink.runtime.causal.log.tm.CausalLogManager;
 import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
 import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
 import org.apache.flink.runtime.execution.Environment;
@@ -91,7 +92,7 @@ public class RuntimeEnvironment implements Environment {
 
 	private final List<JobVertex> topologicallySortedJobVertexes;
 
-	private final JobCausalLog jobCausalLog;
+	private final CausalLogManager causalLogManager;
 
 	// ------------------------------------------------------------------------
 
@@ -116,7 +117,7 @@ public class RuntimeEnvironment implements Environment {
 		ResultPartitionWriter[] writers,
 		SingleInputGate[] inputGates,
 		TaskEventDispatcher taskEventDispatcher,
-		JobCausalLog jobCausalLog,
+		CausalLogManager causalLogManager,
 		CheckpointResponder checkpointResponder,
 		TaskManagerRuntimeInfo taskManagerInfo,
 		TaskMetricGroup metrics,
@@ -141,7 +142,7 @@ public class RuntimeEnvironment implements Environment {
 		this.writers = checkNotNull(writers);
 		this.inputGates = checkNotNull(inputGates);
 		this.taskEventDispatcher = checkNotNull(taskEventDispatcher);
-		this.jobCausalLog = checkNotNull(jobCausalLog);
+		this.causalLogManager = checkNotNull(causalLogManager);
 		this.checkpointResponder = checkNotNull(checkpointResponder);
 		this.taskManagerInfo = checkNotNull(taskManagerInfo);
 		this.containingTask = containingTask;
@@ -267,8 +268,8 @@ public class RuntimeEnvironment implements Environment {
 	}
 
 	@Override
-	public JobCausalLog getJobCausalLog(){
-		return jobCausalLog;
+	public CausalLogManager getCausalLogManager(){
+		return causalLogManager;
 	}
 
 	public List<JobVertex> getTopologicallySortedJobVertexes() {
