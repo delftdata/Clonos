@@ -66,52 +66,58 @@ public class CausalBufferHandler implements CheckpointBarrierHandler {
 		LOG.info("Call to getNextNonBlocked");
 		BufferOrEvent toReturn = null;
 		if (recoveryManager.isReplaying()) {
-			while(toReturn == null) {
-				LOG.info("We are replaying! Fetching a determinant from the CausalLogManager");
-				byte nextChannel = recoveryManager.replayNextChannel();
-				LOG.info("Determinant says next channel is {}!", nextChannel);
-				if (bufferedBuffersPerChannel[nextChannel].isEmpty())
-					toReturn = processUntilFindBufferForChannel(nextChannel);
-				else {
+			LOG.info("We are replaying! Fetching a determinant from the CausalLogManager");
+			byte nextChannel = recoveryManager.replayNextChannel();
+			LOG.info("Determinant says next channel is {}!", nextChannel);
+			while (true) {
+				if (!bufferedBuffersPerChannel[nextChannel].isEmpty()) {
 					toReturn = bufferedBuffersPerChannel[nextChannel].poll();
 					numUnprocessedBuffers--;
+				} else {
+					toReturn = processUntilFindBufferForChannel(nextChannel);
 				}
-			if(toReturn.isEvent() && toReturn.getEvent().getClass() == DeterminantRequestEvent.class)
-				toReturn = null; //skip, as it has already been processed.
 
+				if (toReturn.isEvent() && toReturn.getEvent().getClass() == DeterminantRequestEvent.class) {
+					LOG.info("Buffer is DeterminantRequest, sending notification");
+					recoveryManager.notifyDeterminantRequestEvent((DeterminantRequestEvent) toReturn.getEvent(), toReturn.getChannelIndex());
+					continue;
+				}
+				LOG.info("Buffer is valid, forwarding");
+				break;
 			}
 		} else {
 			LOG.info("We are not recovering!");
-			if (numUnprocessedBuffers != 0) {
-				LOG.info("Getting an unprocessed buffer from recovery! Unprocessed buffers: {}, bufferedBuffers: {}", numUnprocessedBuffers,
-					"{" + Arrays.asList(bufferedBuffersPerChannel).stream().map(d -> "[" + d.size() + "]").collect(Collectors.joining(", ")) + "}");
-				toReturn = pickUnprocessedBuffer();
-			}else {
-				LOG.info("Getting a buffer from CheckpointBarrierHandler!");
-				while(true) {
+			while (true) {
+				if (numUnprocessedBuffers != 0) {
+					LOG.info("Getting an unprocessed buffer from recovery! Unprocessed buffers: {}, bufferedBuffers: {}", numUnprocessedBuffers,
+						"{" + Arrays.asList(bufferedBuffersPerChannel).stream().map(d -> "[" + d.size() + "]").collect(Collectors.joining(", ")) + "}");
+					toReturn = pickUnprocessedBuffer();
+				} else {
+					LOG.info("Getting a buffer from CheckpointBarrierHandler!");
 					toReturn = wrapped.getNextNonBlocked();
-					if (toReturn.isEvent()) {
-						AbstractEvent event = toReturn.getEvent();
-						if (event.getClass() == DeterminantRequestEvent.class) {
-							recoveryManager.notifyDeterminantRequestEvent((DeterminantRequestEvent) event, toReturn.getChannelIndex());
-						}else
-							break;
-					}else
-						break;
 				}
+
+				if (toReturn.isEvent() && toReturn.getEvent().getClass() == DeterminantRequestEvent.class) {
+					LOG.info("Buffer is DeterminantRequest, sending notification");
+					recoveryManager.notifyDeterminantRequestEvent((DeterminantRequestEvent) toReturn.getEvent(), toReturn.getChannelIndex());
+					continue;
+				}
+				LOG.info("Buffer is valid, forwarding");
+				break;
 			}
 		}
 		LOG.info("Returning buffer from channel {} : {}", toReturn.getChannelIndex(), toReturn);
 		synchronized (lock) {
 			causalLoggingManager.appendDeterminant(new OrderDeterminant((byte) toReturn.getChannelIndex()), epochProvider.getCurrentEpochID());
 		}
+
 		return toReturn;
 	}
 
 	private BufferOrEvent pickUnprocessedBuffer() {
 		//todo improve runtime complexity
-		for(Queue<BufferOrEvent> queue : bufferedBuffersPerChannel) {
-			if(!queue.isEmpty()) {
+		for (Queue<BufferOrEvent> queue : bufferedBuffersPerChannel) {
+			if (!queue.isEmpty()) {
 				numUnprocessedBuffers--;
 				return queue.poll();
 			}
@@ -121,11 +127,11 @@ public class CausalBufferHandler implements CheckpointBarrierHandler {
 
 	private BufferOrEvent processUntilFindBufferForChannel(byte channel) throws Exception {
 		LOG.info("Found no buffered buffers for channel {}. Processing buffers until I find one", channel);
-		while(true){
+		while (true) {
 			BufferOrEvent newBufferOrEvent = wrapped.getNextNonBlocked();
 			LOG.info("Got a new buffer from channel {}", newBufferOrEvent.getChannelIndex());
 			//If this was a BoE for the channel we were looking for, return with it
-			if(newBufferOrEvent.getChannelIndex() == channel) {
+			if (newBufferOrEvent.getChannelIndex() == channel) {
 				LOG.info("It is from the expected channel, returning");
 				return newBufferOrEvent;
 			}
@@ -149,8 +155,8 @@ public class CausalBufferHandler implements CheckpointBarrierHandler {
 
 	@Override
 	public boolean isEmpty() {
-		for (Queue qeque : bufferedBuffersPerChannel)
-			if (!qeque.isEmpty())
+		for (Queue queue : bufferedBuffersPerChannel)
+			if (!queue.isEmpty())
 				return false;
 
 		return wrapped.isEmpty();

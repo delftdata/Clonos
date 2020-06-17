@@ -747,7 +747,7 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 					LOG.info("There is still data to be processed, waiting.");
 			}
 			try {
-				Thread.sleep(5l);
+				Thread.sleep(1l);
 			} catch (InterruptedException e) {
 				e.printStackTrace();
 			}

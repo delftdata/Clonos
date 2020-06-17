@@ -62,7 +62,7 @@ public class CausalLogManager {
 	}
 
 	public JobCausalLog registerNewJob(JobID jobID, VertexGraphInformation vertexGraphInformation, ResultPartitionWriter[] resultPartitionsOfLocalVertex, Object lock) {
-		LOG.info("Registering a new Job {}.", jobID);
+		LOG.debug("Registering a new Job {}.", jobID);
 		BufferPool taskDeterminantBufferPool = null;
 		try {
 			taskDeterminantBufferPool = determinantBufferPool.createBufferPool(numDeterminantBuffersPerTask, numDeterminantBuffersPerTask);
@@ -75,7 +75,7 @@ public class CausalLogManager {
 	}
 
 	public void registerNewDownstreamConsumer(JobID jobID, InputChannelID inputChannelID, IntermediateResultPartitionID intermediateResultPartitionID, int consumedSubpartition) {
-		LOG.info("Registering a new downstream consumer channel {} for job {}.", inputChannelID, jobID);
+		LOG.debug("Registering a new downstream consumer channel {} for job {}.", inputChannelID, jobID);
 		JobCausalLog c = jobIDToManagerMap.get(jobID);
 		if (c != null)
 			c.registerDownstreamConsumer(inputChannelID, intermediateResultPartitionID, consumedSubpartition);

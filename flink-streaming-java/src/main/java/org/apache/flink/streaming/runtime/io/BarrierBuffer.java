@@ -211,7 +211,6 @@ public class BarrierBuffer implements CheckpointBarrierHandler {
 			Optional<BufferOrEvent> maybeBufferOrEventToForward = processBufferOrEvent(bufferOrEvent);
 
 			if (maybeBufferOrEventToForward.isPresent()) {
-				LOG.info("Returning {}", maybeBufferOrEventToForward);
 				return maybeBufferOrEventToForward.get();
 			}
 		}

@@ -38,7 +38,7 @@ public final class NetworkBufferBasedContiguousUpstreamThreadCausalLog extends N
 	@Override
 	public void processUpstreamVertexCausalLogDelta(ThreadLogDelta causalLogDelta, long epochID) {
 
-		int determinantSize = causalLogDelta.getBufferSize();
+		int determinantSize = causalLogDelta.getDeltaSize();
 		if (determinantSize > 0) {
 			int offsetFromEpoch = causalLogDelta.getOffsetFromEpoch();
 

@@ -158,7 +158,7 @@ public class NetworkBufferBasedContiguousThreadCausalLog implements ThreadCausal
 
 	@Override
 	public void notifyCheckpointComplete(long checkpointId) throws Exception {
-		LOG.info("Notify checkpoint complete for id {}", checkpointId);
+		LOG.debug("Notify checkpoint complete for id {}", checkpointId);
 		writeLock.lock();
 		try {
 			EpochStartOffset followingEpoch = epochStartOffsets.computeIfAbsent(checkpointId, k -> new EpochStartOffset(k, writerIndex.get()));
@@ -173,7 +173,7 @@ public class NetworkBufferBasedContiguousThreadCausalLog implements ThreadCausal
 
 			for (EpochStartOffset epochStartOffset : epochStartOffsets.values())
 				epochStartOffset.setOffset(epochStartOffset.getOffset() - move);
-			LOG.info("Offsets moved by {} bytes", move);
+			LOG.debug("Offsets moved by {} bytes", move);
 			writerIndex.set(writerIndex.get() - move);
 			earliestEpoch = checkpointId;
 		} finally {

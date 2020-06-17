@@ -103,7 +103,7 @@ public class RecoveryManager implements IRecoveryManager{
 		unansweredInFlighLogRequests = new ConcurrentHashMap<>(recordWriters.size());
 		for(RecordWriter recordWriter : recordWriters){
 			IntermediateResultPartitionID intermediateResultPartitionID = recordWriter.getResultPartition().getPartitionId().getPartitionId();
-			LOG.info("Registering a record writer with intermediateResultPartition {}", intermediateResultPartitionID);
+			LOG.debug("Registering a record writer with intermediateResultPartition {}", intermediateResultPartitionID);
 			this.intermediateResultPartitionIDRecordWriterMap.put(intermediateResultPartitionID, recordWriter);
 
 			unansweredInFlighLogRequests.put(intermediateResultPartitionID, new ConcurrentHashMap<>(recordWriter.getResultPartition().getNumberOfSubpartitions()));
@@ -149,7 +149,7 @@ public class RecoveryManager implements IRecoveryManager{
 
 
 	@Override
-	public synchronized void notifyNewChannel(RemoteInputChannel inputChannel, int consumedSupartitionIndex, int numberBuffersRemoved) {
+	public synchronized void notifyNewInputChannel(RemoteInputChannel inputChannel, int consumedSupartitionIndex, int numberBuffersRemoved) {
 		this.currentState.notifyNewInputChannel(inputChannel, consumedSupartitionIndex, numberBuffersRemoved);
 	}
 
@@ -164,13 +164,13 @@ public class RecoveryManager implements IRecoveryManager{
 	}
 
 	@Override
-	public void checkAsyncEvent() {
+	public synchronized void checkAsyncEvent() {
 		this.currentState.checkAsyncEvent();
 	}
 
 
 	@Override
-	public void setState(State state) {
+	public synchronized void setState(State state) {
 		this.currentState = state;
 	}
 
@@ -229,7 +229,7 @@ public class RecoveryManager implements IRecoveryManager{
 		public UnansweredDeterminantRequest(VertexID vertexId, int requestingChannel){
 			this.numResponsesReceived = 0;
 			this.requestingChannel = requestingChannel;
-			this.vertexCausalLogDelta = new VertexCausalLogDelta();
+			this.vertexCausalLogDelta = new VertexCausalLogDelta(vertexId);
 		}
 
 		public int getNumResponsesReceived() {

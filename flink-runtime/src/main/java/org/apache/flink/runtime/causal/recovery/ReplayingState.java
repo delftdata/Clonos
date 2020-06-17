@@ -136,9 +136,9 @@ public class ReplayingState extends AbstractState {
 	}
 
 	@Override
-	public void checkAsyncEvent(){
-		LOG.info("Checking if an async event fired at this point");
-		if(nextDeterminant instanceof TimerTriggerDeterminant) {
+	public void checkAsyncEvent() {
+		LOG.debug("Checking if an async event fired at this point");
+		if (nextDeterminant instanceof TimerTriggerDeterminant) {
 			LOG.info("Next determinant is of type timerTrigger : {}", nextDeterminant);
 			if (context.recordCountProvider.getRecordCount() == ((TimerTriggerDeterminant) nextDeterminant).getRecordCount()) {
 				LOG.info("We are at the same point in the stream, with record count: {}", ((TimerTriggerDeterminant) nextDeterminant).getRecordCount());
@@ -189,7 +189,7 @@ public class ReplayingState extends AbstractState {
 		@Override
 		public void run() {
 			//1. Netty has been told that there is no data.
-			pipelinedSubpartition.setIsRecovering(true);
+			pipelinedSubpartition.setIsRecoveringSubpartitionInFlightState(true);
 			//2. Rebuild in-fligh log and subpartition state
 			while (recoveryBuffer.isReadable()) {
 
@@ -205,11 +205,11 @@ public class ReplayingState extends AbstractState {
 			}
 			// If there is a replay request, we have to prepare it, before setting isRecovering to true
 			InFlightLogRequestEvent unansweredRequest = context.unansweredInFlighLogRequests.get(partitionID).remove(index);
-			if(unansweredRequest != null)
+			if (unansweredRequest != null)
 				pipelinedSubpartition.requestReplay(unansweredRequest.getCheckpointId(), unansweredRequest.getNumberOfBuffersToSkip());
 
 			//3. Tell netty to restart requesting buffers.
-			pipelinedSubpartition.setIsRecovering(false);
+			pipelinedSubpartition.setIsRecoveringSubpartitionInFlightState(false);
 			pipelinedSubpartition.notifyDataAvailable();
 			recoveryBuffer.release();
 			LOG.info("Done recovering pipelined subpartition");

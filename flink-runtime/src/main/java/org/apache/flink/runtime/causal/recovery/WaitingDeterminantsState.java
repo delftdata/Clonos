@@ -29,7 +29,9 @@ import org.apache.flink.runtime.causal.DeterminantResponseEvent;
 import org.apache.flink.runtime.causal.log.vertex.VertexCausalLogDelta;
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
 import org.apache.flink.runtime.io.network.api.DeterminantRequestEvent;
+import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
 import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
+import org.apache.flink.runtime.io.network.buffer.BufferConsumer;
 import org.apache.flink.runtime.io.network.partition.PipelinedSubpartition;
 import org.apache.flink.runtime.io.network.partition.ResultSubpartition;
 import org.apache.flink.runtime.io.network.partition.consumer.RemoteInputChannel;
@@ -62,19 +64,14 @@ public class WaitingDeterminantsState extends AbstractState {
 		delta = new VertexCausalLogDelta(context.vertexGraphInformation.getThisTasksVertexID());
 		try {
 			//Send all Determinant requests
-			if(context.vertexGraphInformation.hasDownstream()) {
+			if (context.vertexGraphInformation.hasDownstream()) {
+				LOG.info("Sending determinant requests");
 				DeterminantRequestEvent determinantRequestEvent = new DeterminantRequestEvent(context.vertexGraphInformation.getThisTasksVertexID());
-				for (RecordWriter recordWriter : context.recordWriters) {
-					LOG.info("Sending determinant request to RecordWriter {}", recordWriter);
-					recordWriter.broadcastEvent(determinantRequestEvent);
-					for (ResultSubpartition rs : recordWriter.getResultPartition().getResultSubpartitions()) {
-						((PipelinedSubpartition) rs).forceFlushOfDeterminantRequest();
-					}
-				}
+				broadcastDeterminantRequest(determinantRequestEvent);
 			}
 
 			//Send all Replay requests
-			if(context.vertexGraphInformation.hasUpstream()) {
+			if (context.vertexGraphInformation.hasUpstream()) {
 				for (SingleInputGate singleInputGate : context.inputGate.getInputGates()) {
 					int consumedIndex = singleInputGate.getConsumedSubpartitionIndex();
 					for (int i = 0; i < singleInputGate.getNumberOfInputChannels(); i++) {
@@ -156,10 +153,10 @@ public class WaitingDeterminantsState extends AbstractState {
 	public void notifyNewOutputChannel(IntermediateResultPartitionID intermediateResultPartitionID, int index) {
 		try {
 			RecordWriter recordWriter = context.getRecordWriterByIntermediateResultPartitionID(intermediateResultPartitionID);
-			recordWriter.emitEvent(new DeterminantRequestEvent(context.vertexGraphInformation.getThisTasksVertexID()), index);
 			PipelinedSubpartition subpartition = (PipelinedSubpartition) recordWriter.getResultPartition().getResultSubpartitions()[index];
-			subpartition.forceFlushOfDeterminantRequest();
-		} catch (IOException | InterruptedException e) {
+			DeterminantRequestEvent event = new DeterminantRequestEvent(context.vertexGraphInformation.getThisTasksVertexID());
+			subpartition.bypassDeterminantRequest(EventSerializer.toBufferConsumer(event));
+		} catch (IOException e) {
 			e.printStackTrace();
 		}
 	}

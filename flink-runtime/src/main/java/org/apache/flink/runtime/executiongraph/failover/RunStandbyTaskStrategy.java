@@ -53,7 +53,6 @@ public class RunStandbyTaskStrategy extends FailoverStrategy {
 	 */
 	private final Executor callbackExecutor;
 
-	private final Object recoveryLock = new Object();
 
 	/**
 	 * Creates a new failover strategy that recovers from failures by restarting all tasks
@@ -81,12 +80,7 @@ public class RunStandbyTaskStrategy extends FailoverStrategy {
 			LOG.info(getStrategyName() + "failover strategy is triggered for the recovery of task " +
 				vertexToRecover.getTaskNameWithSubtaskIndex() +
 				". Activating standby task for this task.");
-			//We need to synchronize recoveries as they reconfigure connections.
-			// A race may cause two adjacent failures to have standbys connect to the previous task instead of
-			// the new standby that is adjacent.
-			synchronized (recoveryLock) {
-				vertexToRecover.runStandbyExecution();
-			}
+			vertexToRecover.runStandbyExecution();
 		} catch (IllegalStateException e) {
 			executionGraph.failGlobal(
 				new Exception("Error during standby task recovery: no standby execution to run -- triggering full recovery", e));

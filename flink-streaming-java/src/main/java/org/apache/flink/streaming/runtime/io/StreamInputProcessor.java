@@ -219,7 +219,6 @@ public class StreamInputProcessor<IN> {
 					} else {
 						// now we can do the actual processing
 						StreamRecord<IN> record = recordOrMark.asRecord();
-						LOG.info("Record contents: {}", record);
 						synchronized (lock) {
 							recordCountProvider.incRecordCount();
 							numRecordsIn.inc();
@@ -235,7 +234,6 @@ public class StreamInputProcessor<IN> {
 			if(isRecovering && (isRecovering = recoveryManager.isReplaying()))
 				recoveryManager.checkAsyncEvent();
 
-			LOG.info("Getting next BufferOrEvent");
 			final BufferOrEvent bufferOrEvent;
 			bufferOrEvent = barrierHandler.getNextNonBlocked();
 			if (bufferOrEvent != null) {

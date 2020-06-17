@@ -29,7 +29,9 @@ import org.apache.flink.runtime.causal.DeterminantResponseEvent;
 import org.apache.flink.runtime.causal.log.vertex.VertexCausalLogDelta;
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
 import org.apache.flink.runtime.io.network.api.DeterminantRequestEvent;
+import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
 import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
+import org.apache.flink.runtime.io.network.buffer.BufferConsumer;
 import org.apache.flink.runtime.io.network.partition.PipelinedSubpartition;
 import org.apache.flink.runtime.io.network.partition.ResultSubpartition;
 import org.apache.flink.runtime.io.network.partition.consumer.RemoteInputChannel;
@@ -98,15 +100,17 @@ public abstract class AbstractState implements State {
 		LOG.info("Received a DeterminantResponseEvent, but am not recovering: {}", e);
 		RecoveryManager.UnansweredDeterminantRequest udr = context.unansweredDeterminantRequests.get(e.getVertexCausalLogDelta().getVertexId());
 		if(udr != null) {
-			udr.incResponsesReceived();
-			udr.getVertexCausalLogDelta().merge(e.getVertexCausalLogDelta());
-			if (udr.getNumResponsesReceived() == context.vertexGraphInformation.getNumberOfDirectDownstreamNeighbours()) {
-				VertexCausalLogDelta fulfilledRequest = context.unansweredDeterminantRequests.remove(e.getVertexCausalLogDelta().getVertexId()).getVertexCausalLogDelta();
-				try {
-					context.inputGate.getInputChannel(udr.getRequestingChannel()).sendTaskEvent(new DeterminantResponseEvent(fulfilledRequest));
-					fulfilledRequest.release();
-				} catch (IOException | InterruptedException ex) {
-					ex.printStackTrace();
+			synchronized (udr) {
+				udr.incResponsesReceived();
+				udr.getVertexCausalLogDelta().merge(e.getVertexCausalLogDelta());
+				if (udr.getNumResponsesReceived() == context.vertexGraphInformation.getNumberOfDirectDownstreamNeighbours()) {
+					context.unansweredDeterminantRequests.remove(e.getVertexCausalLogDelta().getVertexId());
+					try {
+						context.inputGate.getInputChannel(udr.getRequestingChannel()).sendTaskEvent(new DeterminantResponseEvent(udr.vertexCausalLogDelta));
+						//TODO udr.getVertexCausalLogDelta().release();
+					} catch (IOException | InterruptedException ex) {
+						ex.printStackTrace();
+					}
 				}
 			}
 		} else
@@ -119,25 +123,30 @@ public abstract class AbstractState implements State {
 		LOG.info("Received determinant request!");
 		if(!context.vertexGraphInformation.hasDownstream() && RecoveryManager.sinkRecoveryStrategy == RecoveryManager.SinkRecoveryStrategy.TRANSACTIONAL) {
 			try {
-				context.inputGate.getInputChannel(channelRequestArrivedFrom).sendTaskEvent(new DeterminantResponseEvent(new VertexCausalLogDelta()));
-			} catch (IOException ex) {
-				ex.printStackTrace();
-			} catch (InterruptedException ex) {
+				context.inputGate.getInputChannel(channelRequestArrivedFrom).sendTaskEvent(new DeterminantResponseEvent(new VertexCausalLogDelta(e.getFailedVertex())));
+			} catch (IOException | InterruptedException ex) {
 				ex.printStackTrace();
 			}
 			return;
 		}
 
 		context.unansweredDeterminantRequests.put(e.getFailedVertex(), new RecoveryManager.UnansweredDeterminantRequest(e.getFailedVertex(), channelRequestArrivedFrom));
-		for (RecordWriter recordWriter : context.recordWriters) {
-			LOG.info("Recurring determinant request to RecordWriter {}", recordWriter);
-			try {
-				recordWriter.broadcastEvent(e);
-			} catch (IOException | InterruptedException ex) {
-				ex.printStackTrace();
+		LOG.info("Recurring determinant request");
+		broadcastDeterminantRequest(e);
+	}
+
+	protected void broadcastDeterminantRequest(DeterminantRequestEvent e) {
+		try (BufferConsumer event = EventSerializer.toBufferConsumer(e)) {
+			for (RecordWriter recordWriter : context.recordWriters) {
+				for (ResultSubpartition rs : recordWriter.getResultPartition().getResultSubpartitions()) {
+					((PipelinedSubpartition) rs).bypassDeterminantRequest(event.copy());
+				}
 			}
+		} catch (IOException ex) {
+			ex.printStackTrace();
 		}
 	}
+
 
 	@Override
 	public void notifyStartRecovery() {

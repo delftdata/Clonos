@@ -67,7 +67,7 @@ public class JobCausalLog implements IJobCausalLog {
 		this.myVertexID = vertexGraphInformation.getThisTasksVertexID();
 		this.bufferPool = bufferPool;
 
-		LOG.info("Creating new CausalLoggingManager for id {}, with upstreams {} ", myVertexID, String.join(", ", vertexGraphInformation.getUpstreamVertexes().stream().map(Object::toString).collect(Collectors.toList())));
+		LOG.debug("Creating new CausalLoggingManager for id {}, with upstreams {} ", myVertexID, String.join(", ", vertexGraphInformation.getUpstreamVertexes().stream().map(Object::toString).collect(Collectors.toList())));
 		this.determinantEncodingStrategy = new SimpleDeterminantEncodingStrategy();
 
 		localCausalLog = new BasicLocalVertexCausalLog(vertexGraphInformation,resultPartitionsOfLocalVertex, bufferPool);
@@ -83,7 +83,7 @@ public class JobCausalLog implements IJobCausalLog {
 
 	@Override
 	public void registerDownstreamConsumer(InputChannelID inputChannelID, IntermediateResultPartitionID consumedResultPartitionID, int consumedSubpartition) {
-		LOG.info("Registering new input channel at Job level");
+		LOG.debug("Registering new input channel at Job level");
 		for(VertexCausalLog causalLog : upstreamDeterminantLogs.values())
 			causalLog.registerDownstreamConsumer(inputChannelID,consumedResultPartitionID , consumedSubpartition);
 		localCausalLog.registerDownstreamConsumer(inputChannelID, consumedResultPartitionID , consumedSubpartition);
@@ -93,7 +93,7 @@ public class JobCausalLog implements IJobCausalLog {
 	@Override
 	public void appendDeterminant(Determinant determinant, long checkpointID) {
 		assert (Thread.holdsLock(lock));
-		LOG.info("Appending determinant {}", determinant);
+		LOG.debug("Appending determinant {}", determinant);
 		localCausalLog.appendDeterminants(
 			this.determinantEncodingStrategy.encode(determinant),
 			checkpointID
@@ -102,7 +102,7 @@ public class JobCausalLog implements IJobCausalLog {
 
 	@Override
 	public void appendSubpartitionDeterminants(Determinant determinant, long epochID, IntermediateResultPartitionID intermediateResultPartitionID, int subpartitionIndex) {
-		LOG.info("Appending determinant {} for epochID {} to intermediateDataSetID {} subpartition {}", determinant, epochID, intermediateResultPartitionID, subpartitionIndex);
+		LOG.debug("Appending determinant {} for epochID {} to intermediateDataSetID {} subpartition {}", determinant, epochID, intermediateResultPartitionID, subpartitionIndex);
 		localCausalLog.appendSubpartitionDeterminants(
 			this.determinantEncodingStrategy.encode(determinant),
 			epochID,
@@ -139,25 +139,25 @@ public class JobCausalLog implements IJobCausalLog {
 
 	@Override
 	public VertexCausalLogDelta getDeterminantsOfVertex(VertexID vertexId) {
-		LOG.info("Got request for determinants of vertexID {}", vertexId);
+		LOG.debug("Got request for determinants of vertexID {}", vertexId);
 		return upstreamDeterminantLogs.computeIfAbsent(vertexId, k -> new BasicUpstreamVertexCausalLog(vertexId, bufferPool)).getDeterminants();
 	}
 
 	@Override
 	public List<VertexCausalLogDelta> getNextDeterminantsForDownstream(InputChannelID inputChannelID, long epochID){
-		LOG.info("Getting deltas to send to downstream channel {} for epochID {}", inputChannelID, epochID);
+		LOG.debug("Getting deltas to send to downstream channel {} for epochID {}", inputChannelID, epochID);
 		List<VertexCausalLogDelta> results = new LinkedList<>();
 		for (VertexID key : this.upstreamDeterminantLogs.keySet()) {
 			UpstreamVertexCausalLog upstreamVertexCausalLog = upstreamDeterminantLogs.get(key);
-			LOG.info("Upstream log pre processing: {}", upstreamVertexCausalLog);
+			LOG.debug("Upstream log pre processing: {}", upstreamVertexCausalLog);
 			VertexCausalLogDelta causalLogDelta = upstreamVertexCausalLog.getNextDeterminantsForDownstream(inputChannelID, epochID);
 			if (causalLogDelta.hasUpdates())
 				results.add(causalLogDelta);
-			LOG.info("Upstream log post processing: {}", upstreamDeterminantLogs.get(key));
+			LOG.debug("Upstream log post processing: {}", upstreamDeterminantLogs.get(key));
 		}
-		LOG.info("Local log pre processing: {}", localCausalLog);
+		LOG.debug("Local log pre processing: {}", localCausalLog);
 		VertexCausalLogDelta vertexCausalLogDelta = localCausalLog.getNextDeterminantsForDownstream(inputChannelID, epochID);
-		LOG.info("Local log post processing: {}", localCausalLog);
+		LOG.debug("Local log post processing: {}", localCausalLog);
 		if(vertexCausalLogDelta.hasUpdates())
 			results.add(vertexCausalLogDelta);
 		return results;
@@ -165,11 +165,11 @@ public class JobCausalLog implements IJobCausalLog {
 
 	@Override
 	public synchronized void notifyCheckpointComplete(long checkpointId) throws Exception {
-		LOG.info("Processing checkpoint complete notification for id {}", checkpointId);
+		LOG.debug("Processing checkpoint complete notification for id {}", checkpointId);
 		for (UpstreamVertexCausalLog log : upstreamDeterminantLogs.values()) {
-			LOG.info("Determinant log pre processing: {}", log);
+			LOG.debug("Determinant log pre processing: {}", log);
 			log.notifyCheckpointComplete(checkpointId);
-			LOG.info("Determinant log post processing: {}", log);
+			LOG.debug("Determinant log post processing: {}", log);
 		}
 		localCausalLog.notifyCheckpointComplete(checkpointId);
 	}

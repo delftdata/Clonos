@@ -60,15 +60,15 @@ public class CausalTimeService implements TimeService {
 	private long checkState(long timestamp) {
 		long toReturn = timestamp;
 		while (!(recoveryManager.isRunning() || recoveryManager.isReplaying()))
-			LOG.info("Requested timestamp but neither running nor replaying");
+			LOG.debug("Requested timestamp but neither running nor replaying");
 
 
 		if(recoveryManager.isReplaying()) {
-			LOG.info("We are replaying, returning the next timestamp from recovery manager");
+			LOG.debug("We are replaying, returning the next timestamp from recovery manager");
 			toReturn = recoveryManager.replayNextTimestamp();
 		}
 
-		LOG.info("We are running, returning a fresh timestamp and recording it.");
+		LOG.debug("We are running, returning a fresh timestamp and recording it.");
 		causalLoggingManager.appendDeterminant(new TimestampDeterminant(toReturn), epochProvider.getCurrentEpochID());
 		return toReturn;
 	}

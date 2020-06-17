@@ -32,7 +32,6 @@ import org.apache.flink.runtime.causal.VertexID;
 import org.apache.flink.runtime.causal.log.thread.*;
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 import org.apache.flink.runtime.io.network.buffer.BufferPool;
-import org.apache.flink.runtime.io.network.partition.ResultPartition;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSet;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
@@ -80,20 +79,20 @@ public class BasicLocalVertexCausalLog implements LocalVertexCausalLog {
 
 	@Override
 	public void appendDeterminants(byte[] determinants, long epochID) {
-		LOG.info("Appending determinants to main thread, epochID {}.", epochID);
+		LOG.debug("Appending determinants to main thread, epochID {}.", epochID);
 		mainThreadLog.appendDeterminants(determinants, epochID);
 	}
 
 	@Override
 	public void appendSubpartitionDeterminants(byte[] determinants, long epochID, IntermediateResultPartitionID intermediateResultPartitionID, int subpartitionIndex) {
-		LOG.info("Appending determinant for epochID {} to intermediateResultPartitionID {} subpartition {}", epochID, intermediateResultPartitionID, subpartitionIndex);
-		LOG.info("PartitionMap {}", Arrays.toString(subpartitionLogs.get(intermediateResultPartitionID)));
+		LOG.debug("Appending determinant for epochID {} to intermediateResultPartitionID {} subpartition {}", epochID, intermediateResultPartitionID, subpartitionIndex);
+		LOG.debug("PartitionMap {}", Arrays.toString(subpartitionLogs.get(intermediateResultPartitionID)));
 		subpartitionLogs.get(intermediateResultPartitionID)[subpartitionIndex].appendDeterminants(determinants, epochID);
 	}
 
 	@Override
 	public void registerDownstreamConsumer(InputChannelID inputChannelID, IntermediateResultPartitionID intermediateResultPartitionID, int consumedSubpartition) {
-		LOG.info("Registering downstream consumer at local vertex level");
+		LOG.debug("Registering downstream consumer at local vertex level");
 		//mainThreadLog.registerDownstreamConsumer(inputChannelID);
 
 		consumerPartitions.put(inputChannelID, new Tuple2<>(intermediateResultPartitionID, consumedSubpartition));
@@ -131,7 +130,7 @@ public class BasicLocalVertexCausalLog implements LocalVertexCausalLog {
 
 	@Override
 	public VertexCausalLogDelta getNextDeterminantsForDownstream(InputChannelID consumer, long checkpointID) {
-		LOG.info("Getting next determinants for downstream.");
+		LOG.debug("Getting next determinants for downstream.");
 		ThreadLogDelta mainThreadLogDelta = mainThreadLog.getNextDeterminantsForDownstream(consumer, checkpointID);
 
 		//Only grab partition updates which causally affect this consumer
@@ -139,8 +138,8 @@ public class BasicLocalVertexCausalLog implements LocalVertexCausalLog {
 		ThreadLogDelta sLogDelta = subpartitionLogs.get(consumerPartition.f0)[consumerPartition.f1].getNextDeterminantsForDownstream(consumer, checkpointID);
 		SubpartitionThreadLogDelta subpartitionLogDelta = new SubpartitionThreadLogDelta(sLogDelta, consumerPartition.f1);
 		return new VertexCausalLogDelta(this.vertexId,
-			(mainThreadLogDelta.getBufferSize() > 0 ? mainThreadLogDelta : null),
-			(subpartitionLogDelta.getBufferSize() > 0 ? ImmutableMap.of(consumerPartition.f0, ImmutableMap.of(consumerPartition.f1, subpartitionLogDelta)) : Collections.emptyMap()));
+			(mainThreadLogDelta.getDeltaSize() > 0 ? mainThreadLogDelta : null),
+			(subpartitionLogDelta.getDeltaSize() > 0 ? ImmutableMap.of(consumerPartition.f0, ImmutableMap.of(consumerPartition.f1, subpartitionLogDelta)) : Collections.emptyMap()));
 
 	}
 

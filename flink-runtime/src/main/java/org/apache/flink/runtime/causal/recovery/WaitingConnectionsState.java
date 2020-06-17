@@ -41,8 +41,8 @@ import java.util.stream.Stream;
 public class WaitingConnectionsState extends AbstractState{
 
 	private static final Logger LOG = LoggerFactory.getLogger(WaitingConnectionsState.class);
-	Boolean[] inputChannelsReestablishmentStatus;
 
+	Boolean[] inputChannelsReestablishmentStatus;
 	Map<IntermediateResultPartitionID, Boolean[]> outputChannelsReestablishmentStatus;
 
 
@@ -91,6 +91,7 @@ public class WaitingConnectionsState extends AbstractState{
 		for(Boolean[] booleans : outputChannelsReestablishmentStatus.values())
 			channelStatus = Stream.concat(channelStatus, Arrays.stream(booleans));
 		if(channelStatus.allMatch(x -> x)){
+			LOG.info("Got all connections set-up. Switching to WaitingDeterminantsState.");
 			State newState = new WaitingDeterminantsState(context);
 			context.setState(newState);
 		}

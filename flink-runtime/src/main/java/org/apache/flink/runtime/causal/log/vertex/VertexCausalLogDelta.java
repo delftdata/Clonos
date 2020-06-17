@@ -54,15 +54,15 @@ public class VertexCausalLogDelta implements NettyMessageWritable, IOReadableWri
 
 	SortedMap<IntermediateResultPartitionID, SortedMap<Integer, SubpartitionThreadLogDelta>> partitionDeltas;
 
-	 Logger LOG = LoggerFactory.getLogger(VertexCausalLogDelta.class);
+	Logger LOG = LoggerFactory.getLogger(VertexCausalLogDelta.class);
 
 	public VertexCausalLogDelta() {
 		this(null);
 	}
 
 	public VertexCausalLogDelta(VertexID vertexID) {
-		partitionDeltas = new TreeMap<>();
 		this.vertexID = vertexID;
+		partitionDeltas = new TreeMap<>();
 	}
 
 	/**
@@ -110,9 +110,9 @@ public class VertexCausalLogDelta implements NettyMessageWritable, IOReadableWri
 
 	@Override
 	public int getBodySize() {
-		return (mainThreadDelta != null ? mainThreadDelta.getBufferSize() : 0) +
+		return (mainThreadDelta != null ? mainThreadDelta.getDeltaSize() : 0) +
 			partitionDeltas.values().stream().flatMap(x -> x.values().stream())
-				.mapToInt(SubpartitionThreadLogDelta::getBufferSize).sum();
+				.mapToInt(SubpartitionThreadLogDelta::getDeltaSize).sum();
 	}
 
 	@Override
@@ -183,11 +183,11 @@ public class VertexCausalLogDelta implements NettyMessageWritable, IOReadableWri
 
 	@Override
 	public void readBodyFrom(ByteBuf byteBuf) {
-		if(mainThreadDelta != null)
-			mainThreadDelta.setRawDeterminants(byteBuf.readRetainedSlice(mainThreadDelta.getBufferSize()));
+		if (mainThreadDelta != null)
+			mainThreadDelta.setRawDeterminants(byteBuf.readRetainedSlice(mainThreadDelta.getDeltaSize()));
 		for (Map.Entry<IntermediateResultPartitionID, SortedMap<Integer, SubpartitionThreadLogDelta>> pe : partitionDeltas.entrySet()) {
 			for (Map.Entry<Integer, SubpartitionThreadLogDelta> se : pe.getValue().entrySet()) {
-				se.getValue().setRawDeterminants(byteBuf.readRetainedSlice(se.getValue().getBufferSize()));
+				se.getValue().setRawDeterminants(byteBuf.readRetainedSlice(se.getValue().getDeltaSize()));
 			}
 		}
 	}
@@ -214,15 +214,15 @@ public class VertexCausalLogDelta implements NettyMessageWritable, IOReadableWri
 			}
 		}
 
-		if(mainThreadDelta != null){
-			byte[] copy = new byte[mainThreadDelta.getBufferSize()];
+		if (mainThreadDelta != null) {
+			byte[] copy = new byte[mainThreadDelta.getDeltaSize()];
 			mainThreadDelta.getRawDeterminants().readBytes(copy);
 			out.write(copy); //todo if possible we should avoid this data copy, however it isnt critical path
 		}
 
 		for (Map.Entry<IntermediateResultPartitionID, SortedMap<Integer, SubpartitionThreadLogDelta>> entry : partitionDeltas.entrySet()) {
 			for (SubpartitionThreadLogDelta subpartitionLogDelta : entry.getValue().values()) {
-				byte[] copy = new byte[subpartitionLogDelta.getBufferSize()];
+				byte[] copy = new byte[subpartitionLogDelta.getDeltaSize()];
 				subpartitionLogDelta.getRawDeterminants().readBytes(copy);
 				out.write(copy); //todo if possible we should avoid this data copy, however it isnt critical path
 			}
@@ -264,14 +264,14 @@ public class VertexCausalLogDelta implements NettyMessageWritable, IOReadableWri
 
 		//read header
 
-		if(mainThreadDelta != null) {
-			byte[] toWrap = new byte[mainThreadDelta.getBufferSize()];
+		if (mainThreadDelta != null) {
+			byte[] toWrap = new byte[mainThreadDelta.getDeltaSize()];
 			in.read(toWrap);
 			mainThreadDelta.setRawDeterminants(Unpooled.wrappedBuffer(toWrap));
 		}
 		for (Map.Entry<IntermediateResultPartitionID, SortedMap<Integer, SubpartitionThreadLogDelta>> pe : partitionDeltas.entrySet()) {
 			for (Map.Entry<Integer, SubpartitionThreadLogDelta> se : pe.getValue().entrySet()) {
-				byte[] toWrap = new byte[se.getValue().getBufferSize()];
+				byte[] toWrap = new byte[se.getValue().getDeltaSize()];
 				in.read(toWrap);
 				se.getValue().setRawDeterminants(Unpooled.wrappedBuffer(toWrap));
 			}
@@ -286,12 +286,11 @@ public class VertexCausalLogDelta implements NettyMessageWritable, IOReadableWri
 	private void mergeMains(VertexCausalLogDelta that) {
 		if (this.mainThreadDelta == null && that.mainThreadDelta != null)
 			this.mainThreadDelta = that.mainThreadDelta;
-		else if (this.mainThreadDelta != null && that.mainThreadDelta != null && this.mainThreadDelta.getBufferSize() < that.mainThreadDelta.getBufferSize()) {
+		else if (this.mainThreadDelta != null && that.mainThreadDelta != null && this.mainThreadDelta.getDeltaSize() < that.mainThreadDelta.getDeltaSize()) {
 			this.mainThreadDelta.getRawDeterminants().release();
 			this.mainThreadDelta = that.mainThreadDelta;
-		} else if(that.mainThreadDelta != null){
+		} else if (that.mainThreadDelta != null)
 			that.getMainThreadDelta().getRawDeterminants().release();
-		}
 	}
 
 	private void mergePartitions(VertexCausalLogDelta that) {
@@ -301,23 +300,26 @@ public class VertexCausalLogDelta implements NettyMessageWritable, IOReadableWri
 		} else {
 			//If we both have partition deltas, merge them partition by partition
 			//i.e. if we dont have a partition, but they do, take it, otherwise merge it subpartition per subpartition.
-			for (Map.Entry<IntermediateResultPartitionID, SortedMap<Integer, SubpartitionThreadLogDelta>> partitionEntry : that.partitionDeltas.entrySet()) {
-				if (!this.partitionDeltas.containsKey(partitionEntry.getKey())) {
-					this.partitionDeltas.put(partitionEntry.getKey(), partitionEntry.getValue());
+			for (Map.Entry<IntermediateResultPartitionID, SortedMap<Integer, SubpartitionThreadLogDelta>> thatPartitionEntry : that.partitionDeltas.entrySet()) {
+				if (!this.partitionDeltas.containsKey(thatPartitionEntry.getKey())) {
+					this.partitionDeltas.put(thatPartitionEntry.getKey(), thatPartitionEntry.getValue());
 				} else {
-					Map<Integer, SubpartitionThreadLogDelta> ourPartitionDelta = this.partitionDeltas.get(partitionEntry.getKey());
-					for (Map.Entry<Integer, SubpartitionThreadLogDelta> subpartitionEntry : partitionEntry.getValue().entrySet()) {
-						if (!ourPartitionDelta.containsKey(subpartitionEntry.getKey()))
-							ourPartitionDelta.put(subpartitionEntry.getKey(), subpartitionEntry.getValue());
+					Map<Integer, SubpartitionThreadLogDelta> ourPartitionEntry = this.partitionDeltas.get(thatPartitionEntry.getKey());
+					for (Map.Entry<Integer, SubpartitionThreadLogDelta> thatSubpartitionEntry : thatPartitionEntry.getValue().entrySet()) {
+
+						if (!ourPartitionEntry.containsKey(thatSubpartitionEntry.getKey()))
+							ourPartitionEntry.put(thatSubpartitionEntry.getKey(), thatSubpartitionEntry.getValue());
 						else {
-							SubpartitionThreadLogDelta ourDelta = ourPartitionDelta.get(subpartitionEntry.getKey());
-							if (subpartitionEntry.getValue().getBufferSize() > ourDelta.getBufferSize()) {
-								ourPartitionDelta.put(subpartitionEntry.getKey(), subpartitionEntry.getValue());
-								ourDelta.getRawDeterminants().release();
+							SubpartitionThreadLogDelta ourDelta = ourPartitionEntry.get(thatSubpartitionEntry.getKey());
+							SubpartitionThreadLogDelta theirDelta = thatSubpartitionEntry.getValue();
+							if (ourDelta.getDeltaSize() > theirDelta.getDeltaSize()) {
+								theirDelta.getRawDeterminants().release();
 							} else {
-								subpartitionEntry.getValue().getRawDeterminants().release();
+								ourDelta.getRawDeterminants().release();
+								ourDelta.setRawDeterminants(theirDelta.getRawDeterminants());
 							}
 						}
+
 					}
 				}
 			}
@@ -335,10 +337,10 @@ public class VertexCausalLogDelta implements NettyMessageWritable, IOReadableWri
 
 	public void release() {
 		boolean mainDestroyed = true;
-		if(mainThreadDelta != null)
+		if (mainThreadDelta != null)
 			mainDestroyed = mainThreadDelta.getRawDeterminants().release();
 		List<Boolean> destroyed = partitionDeltas.values().stream().flatMap(m -> m.values().stream()).map(s -> s.getRawDeterminants().release()).collect(Collectors.toList());
 
-		LOG.info("Call to release. Main destroyed: {}, Subpart destroyed: {}", mainDestroyed, "["+destroyed.stream().map(Object::toString).collect(Collectors.joining(", ")) + "]");
+		LOG.debug("Call to release. Main destroyed: {}, Subpart destroyed: {}", mainDestroyed, "[" + destroyed.stream().map(Object::toString).collect(Collectors.joining(", ")) + "]");
 	}
 }

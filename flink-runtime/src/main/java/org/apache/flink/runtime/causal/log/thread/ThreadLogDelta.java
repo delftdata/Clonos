@@ -59,14 +59,20 @@ public class ThreadLogDelta {
 
 	public void setRawDeterminants(ByteBuf rawDeterminants){
 		this.rawDeterminants = rawDeterminants;
+		this.bufferSize = rawDeterminants.readableBytes();
 	}
 
 	public int getOffsetFromEpoch() {
 		return offsetFromEpoch;
 	}
 
-	public int getBufferSize() {
+	public int getDeltaSize() {
 		return bufferSize;
+	}
+
+	public void merge(ThreadLogDelta delta) {
+
+
 	}
 
 	@Override
