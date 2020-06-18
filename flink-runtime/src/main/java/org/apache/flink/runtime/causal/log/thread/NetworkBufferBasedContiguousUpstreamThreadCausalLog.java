@@ -48,18 +48,21 @@ public final class NetworkBufferBasedContiguousUpstreamThreadCausalLog extends N
 					int writeIndex = writerIndex.get();
 					EpochStartOffset epochStartOffset = epochStartOffsets.computeIfAbsent(epochID, k -> new EpochStartOffset(k, writeIndex));
 
-					int currentOffsetFromEpoch = writeIndex - epochStartOffset.getOffset();
+					int currentLogicalOffsetFromEpoch = writeIndex - epochStartOffset.getOffset();
 
-					int numNewDeterminants = (offsetFromEpoch + determinantSize) - currentOffsetFromEpoch;
+					int numNewDeterminants = (offsetFromEpoch + determinantSize) - currentLogicalOffsetFromEpoch;
 
-					while (notEnoughSpaceFor(numNewDeterminants))
-						addComponent();
+					if(numNewDeterminants > 0) {
 
-					ByteBuf deltaBuf = causalLogDelta.getRawDeterminants();
-					deltaBuf.readerIndex(determinantSize - numNewDeterminants);
-					//add the new determinants
-					buf.writeBytes(deltaBuf, numNewDeterminants);
-					writerIndex.addAndGet(numNewDeterminants);
+						while (notEnoughSpaceFor(numNewDeterminants))
+							addComponent();
+
+						ByteBuf deltaBuf = causalLogDelta.getRawDeterminants();
+						deltaBuf.readerIndex(determinantSize - numNewDeterminants);
+						//add the new determinants
+						buf.writeBytes(deltaBuf, numNewDeterminants);
+						writerIndex.addAndGet(numNewDeterminants);
+					}
 				}
 
 			} finally {

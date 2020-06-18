@@ -67,7 +67,7 @@ public class JobCausalLog implements IJobCausalLog {
 		this.myVertexID = vertexGraphInformation.getThisTasksVertexID();
 		this.bufferPool = bufferPool;
 
-		LOG.debug("Creating new CausalLoggingManager for id {}, with upstreams {} ", myVertexID, String.join(", ", vertexGraphInformation.getUpstreamVertexes().stream().map(Object::toString).collect(Collectors.toList())));
+		LOG.info("Creating new CausalLoggingManager for id {}, with upstreams {} ", myVertexID, String.join(", ", vertexGraphInformation.getUpstreamVertexes().stream().map(Object::toString).collect(Collectors.toList())));
 		this.determinantEncodingStrategy = new SimpleDeterminantEncodingStrategy();
 
 		localCausalLog = new BasicLocalVertexCausalLog(vertexGraphInformation,resultPartitionsOfLocalVertex, bufferPool);
