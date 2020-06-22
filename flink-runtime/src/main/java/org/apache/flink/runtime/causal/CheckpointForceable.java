@@ -23,21 +23,16 @@
  *
  */
 
-package org.apache.flink.runtime.causal.determinant;
+package org.apache.flink.runtime.causal;
 
-import org.apache.flink.runtime.causal.recovery.RecoveryManager;
+import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
+import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
+import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 
-public abstract class NonMainThreadDeterminant extends Determinant {
-	protected int recordCount;
+public interface CheckpointForceable {
 
-	public NonMainThreadDeterminant(int recordCount){
-		this.recordCount = recordCount;
-	}
-
-	public abstract void process(RecoveryManager recoveryManager);
-
-	public int getRecordCount(){
-		return recordCount;
-	}
-
+	boolean performCheckpoint(
+		CheckpointMetaData checkpointMetaData,
+		CheckpointOptions checkpointOptions,
+		CheckpointMetrics checkpointMetrics) throws Exception;
 }

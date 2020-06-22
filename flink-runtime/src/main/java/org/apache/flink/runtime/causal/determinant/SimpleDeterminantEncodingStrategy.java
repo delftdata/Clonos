@@ -21,6 +21,7 @@ package org.apache.flink.runtime.causal.determinant;
 import org.apache.flink.core.memory.DataInputDeserializer;
 import org.apache.flink.core.memory.DataOutputSerializer;
 import org.apache.flink.core.memory.DataOutputView;
+import org.apache.flink.runtime.checkpoint.CheckpointType;
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 
 import java.io.IOException;
@@ -42,6 +43,8 @@ public class SimpleDeterminantEncodingStrategy implements DeterminantEncodingStr
 			return encodeBufferBuiltDeterminant(determinant.asBufferBuiltDeterminant());
 		if (determinant.isTimerTriggerDeterminant())
 			return encodeTimerTriggerDeterminant(determinant.asTimerTriggerDeterminant());
+		if (determinant.isSourceCheckpointDeterminant())
+			return encodeSourceCheckpointDeterminant(determinant.asSourceCheckpointDeterminant());
 		throw new UnknownDeterminantTypeException();
 	}
 
@@ -70,8 +73,10 @@ public class SimpleDeterminantEncodingStrategy implements DeterminantEncodingStr
 		if (tag == Determinant.RNG_DETERMINANT_TAG) return decodeRNGDeterminant(b);
 		if (tag == Determinant.BUFFER_BUILT_TAG) return decodeBufferBuiltDeterminant(b);
 		if (tag == Determinant.TIMER_TRIGGER_DETERMINANT) return decodeTimerTriggerDeterminant(b);
+		if (tag == Determinant.SOURCE_CHECKPOINT_DETERMINANT) return decodeSourceCheckpointDeterminant(b);
 		throw new CorruptDeterminantArrayException();
 	}
+
 
 	private Determinant decodeOrderDeterminant(ByteBuf b) {
 		return new OrderDeterminant(b.readByte());
@@ -166,5 +171,39 @@ public class SimpleDeterminantEncodingStrategy implements DeterminantEncodingStr
 		}
 
 		return new TimerTriggerDeterminant(id, recordCount, timestamp);
+	}
+
+	private byte[] encodeSourceCheckpointDeterminant(SourceCheckpointDeterminant det) {
+		byte[] ref = det.getStorageReference();
+		// tag (1), rec count (4), checkpoint (8), ts (8), type ordinal (1), has ref? (1), ref length (4), ref (X)
+		byte[] bytes = new byte[1 + 4 + 8 + 8 + 1 + 1 + (ref != null ? 4 + ref.length : 0)];
+		ByteBuffer b = ByteBuffer.wrap(bytes);
+		b.put(Determinant.SOURCE_CHECKPOINT_DETERMINANT);
+		b.putInt(det.getRecordCount());
+		b.putLong(det.getCheckpointID());
+		b.putLong(det.getCheckpointTimestamp());
+		b.put((byte) det.getType().ordinal());
+		b.put((byte) (ref == null ? 0 : 1));
+		if(ref != null){
+			b.putInt(ref.length);
+			b.put(ref);
+		}
+		return b.array();
+	}
+
+	private Determinant decodeSourceCheckpointDeterminant(ByteBuf b) {
+		int recCount = b.readInt();
+		long checkpoint = b.readLong();
+		long ts = b.readLong();
+		byte typeOrd = b.readByte();
+		boolean hasRef = b.readBoolean();
+		byte[] ref = null;
+		if(hasRef){
+			int length = b.readInt();
+			ref = new byte[length];
+			b.readBytes(ref);
+		}
+		return new SourceCheckpointDeterminant(recCount, checkpoint, ts, CheckpointType.values()[typeOrd], ref);
+
 	}
 }

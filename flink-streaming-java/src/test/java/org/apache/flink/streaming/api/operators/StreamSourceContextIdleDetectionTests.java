@@ -18,6 +18,7 @@
 
 package org.apache.flink.streaming.api.operators;
 
+import org.apache.flink.runtime.causal.RecordCountProviderImpl;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
 import org.apache.flink.streaming.api.watermark.Watermark;
@@ -98,7 +99,7 @@ public class StreamSourceContextIdleDetectionTests {
 			mockStreamStatusMaintainer,
 			new CollectorOutput<String>(output),
 			0,
-			idleTimeout);
+			idleTimeout, new RecordCountProviderImpl());
 
 		// -------------------------- begin test scenario --------------------------
 
@@ -186,7 +187,7 @@ public class StreamSourceContextIdleDetectionTests {
 			mockStreamStatusMaintainer,
 			new CollectorOutput<String>(output),
 			watermarkInterval,
-			idleTimeout);
+			idleTimeout, new RecordCountProviderImpl());
 
 		// -------------------------- begin test scenario --------------------------
 

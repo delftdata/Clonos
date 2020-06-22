@@ -36,6 +36,8 @@ import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 
 public interface State {
 
+	void executeEnter();
+
 	void notifyDeterminantResponseEvent(DeterminantResponseEvent e);
 
 	void notifyDeterminantRequestEvent(DeterminantRequestEvent e,int channelRequestArrivedFrom);

@@ -25,6 +25,7 @@ public abstract class Determinant {
 	public static final byte RNG_DETERMINANT_TAG = 3;
 	public static final byte BUFFER_BUILT_TAG = 4;
 	public static final byte TIMER_TRIGGER_DETERMINANT = 5;
+	public static final byte SOURCE_CHECKPOINT_DETERMINANT = 6;
 
 
 	public boolean isOrderDeterminant() {
@@ -68,11 +69,20 @@ public abstract class Determinant {
 	}
 
 
-	public boolean isTimerTriggerDeterminant(){
+	public boolean isTimerTriggerDeterminant() {
 		return getClass() == TimerTriggerDeterminant.class;
 	}
 
-	public TimerTriggerDeterminant asTimerTriggerDeterminant(){
+	public TimerTriggerDeterminant asTimerTriggerDeterminant() {
 		return (TimerTriggerDeterminant) this;
 	}
+
+	public boolean isSourceCheckpointDeterminant() {
+		return getClass() == SourceCheckpointDeterminant.class;
+	}
+
+	public SourceCheckpointDeterminant asSourceCheckpointDeterminant() {
+		return (SourceCheckpointDeterminant) this;
+	}
+
 }

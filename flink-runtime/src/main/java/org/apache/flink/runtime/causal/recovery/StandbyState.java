@@ -43,6 +43,11 @@ public class StandbyState extends AbstractState {
 	}
 
 	@Override
+	public void executeEnter() {
+
+	}
+
+	@Override
 	public void notifyStartRecovery() {
 		LOG.info("Received start recovery notification!");
 

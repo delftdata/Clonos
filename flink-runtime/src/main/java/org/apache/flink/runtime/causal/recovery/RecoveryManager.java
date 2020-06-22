@@ -26,6 +26,7 @@
 package org.apache.flink.runtime.causal.recovery;
 
 import org.apache.flink.runtime.causal.*;
+import org.apache.flink.runtime.causal.determinant.Determinant;
 import org.apache.flink.runtime.causal.log.job.JobCausalLog;
 import org.apache.flink.runtime.causal.log.vertex.VertexCausalLogDelta;
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
@@ -41,43 +42,52 @@ import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
-public class RecoveryManager implements IRecoveryManager{
+public class RecoveryManager implements IRecoveryManager {
 
 	private static final Logger LOG = LoggerFactory.getLogger(RecoveryManager.class);
 
-	final VertexGraphInformation vertexGraphInformation;
+	public final VertexGraphInformation vertexGraphInformation;
 	final CompletableFuture<Void> readyToReplayFuture;
 	final JobCausalLog jobCausalLog;
 
 	final ConcurrentMap<VertexID, UnansweredDeterminantRequest> unansweredDeterminantRequests;
 
-	ConcurrentMap<IntermediateResultPartitionID,ConcurrentMap<Integer,InFlightLogRequestEvent>> unansweredInFlighLogRequests;
+	ConcurrentMap<IntermediateResultPartitionID, ConcurrentMap<Integer, InFlightLogRequestEvent>> unansweredInFlighLogRequests;
 
 	final ConcurrentMap<Long, Boolean> incompleteStateRestorations;
 
 	State currentState;
+
 	InputGate inputGate;
+
+	//TODO check iff needed, or instead can just keep the pipelined subpartitions
 	List<RecordWriter> recordWriters;
 
 	long finalRestoredCheckpointId;
 
+	//TODO check iff needed, or instead can just keep the pipelined subpartitions
 	Map<IntermediateResultPartitionID, RecordWriter> intermediateResultPartitionIDRecordWriterMap;
 
 	EpochProvider epochProvider;
 
 	RecordCountProvider recordCountProvider;
 
-	public static final SinkRecoveryStrategy sinkRecoveryStrategy = SinkRecoveryStrategy.TRANSACTIONAL;
+	static final SinkRecoveryStrategy sinkRecoveryStrategy = SinkRecoveryStrategy.TRANSACTIONAL;
 
-	public ProcessingTimeForceable processingTimeForceable;
+	ProcessingTimeForceable processingTimeForceable;
+	CheckpointForceable checkpointForceable;
 
-	public static enum SinkRecoveryStrategy{
+	//TODO move to separate and compute from sink jobvertex
+	public static enum SinkRecoveryStrategy {
 		TRANSACTIONAL,
 		KAFKA
 	}
 
-	public RecoveryManager(EpochProvider epochProvider, JobCausalLog jobCausalLog, CompletableFuture<Void> readyToReplayFuture, VertexGraphInformation vertexGraphInformation, RecordCountProvider recordCountProvider) {
+	public AtomicInteger numberOfRecoveringSubpartitions;
+
+	public RecoveryManager(EpochProvider epochProvider, JobCausalLog jobCausalLog, CompletableFuture<Void> readyToReplayFuture, VertexGraphInformation vertexGraphInformation, RecordCountProvider recordCountProvider, CheckpointForceable checkpointForceable) {
 		this.jobCausalLog = jobCausalLog;
 		this.readyToReplayFuture = readyToReplayFuture;
 		this.vertexGraphInformation = vertexGraphInformation;
@@ -96,14 +106,15 @@ public class RecoveryManager implements IRecoveryManager{
 
 		this.epochProvider = epochProvider;
 		this.recordCountProvider = recordCountProvider;
+		numberOfRecoveringSubpartitions = new AtomicInteger(0);
+		this.checkpointForceable = checkpointForceable;
 	}
 
 	public void setRecordWriters(List<RecordWriter> recordWriters) {
 		this.recordWriters = recordWriters;
 		unansweredInFlighLogRequests = new ConcurrentHashMap<>(recordWriters.size());
-		for(RecordWriter recordWriter : recordWriters){
+		for (RecordWriter recordWriter : recordWriters) {
 			IntermediateResultPartitionID intermediateResultPartitionID = recordWriter.getResultPartition().getPartitionId().getPartitionId();
-			LOG.debug("Registering a record writer with intermediateResultPartition {}", intermediateResultPartitionID);
 			this.intermediateResultPartitionIDRecordWriterMap.put(intermediateResultPartitionID, recordWriter);
 
 			unansweredInFlighLogRequests.put(intermediateResultPartitionID, new ConcurrentHashMap<>(recordWriter.getResultPartition().getNumberOfSubpartitions()));
@@ -115,14 +126,24 @@ public class RecoveryManager implements IRecoveryManager{
 		this.processingTimeForceable = processingTimeForceable;
 	}
 
-	public void setInputGate(InputGate inputGate){
+	@Override
+	public ProcessingTimeForceable getProcessingTimeForceable() {
+		return processingTimeForceable;
+	}
+
+	@Override
+	public CheckpointForceable getCheckpointForceable() {
+		return checkpointForceable;
+	}
+
+	public void setInputGate(InputGate inputGate) {
 		this.inputGate = inputGate;
 	}
 
 //====================== State Machine Messages ========================================
 
 	@Override
-	public synchronized void notifyStartRecovery(){
+	public synchronized void notifyStartRecovery() {
 		this.currentState.notifyStartRecovery();
 	}
 
@@ -133,7 +154,7 @@ public class RecoveryManager implements IRecoveryManager{
 	}
 
 	@Override
-	public synchronized void notifyDeterminantRequestEvent(DeterminantRequestEvent e,int channelRequestArrivedFrom) {
+	public synchronized void notifyDeterminantRequestEvent(DeterminantRequestEvent e, int channelRequestArrivedFrom) {
 		this.currentState.notifyDeterminantRequestEvent(e, channelRequestArrivedFrom);
 	}
 
@@ -172,33 +193,43 @@ public class RecoveryManager implements IRecoveryManager{
 	@Override
 	public synchronized void setState(State state) {
 		this.currentState = state;
+		this.currentState.executeEnter();
 	}
 
 	//============== Check state ==========================
 	@Override
-	public boolean isRunning() {
+	public synchronized boolean isRunning() {
 		return currentState instanceof RunningState;
 	}
 
 	@Override
-	public boolean isReplaying() {
+	public synchronized boolean isReplaying() {
 		return currentState instanceof ReplayingState;
 	}
 
 	@Override
-	public boolean isRestoringState() {
+	public synchronized boolean isRestoringState() {
 		return !incompleteStateRestorations.isEmpty();
 	}
 
 	@Override
-	public boolean isWaitingConnections() {
+	public synchronized boolean isWaitingConnections() {
 		return currentState instanceof WaitingConnectionsState;
 	}
 
 	@Override
-	public long getFinalRestoreStateCheckpointId() {
+	public synchronized boolean isRecovering() {
+		if (!isRunning())
+			return true;
+
+		return numberOfRecoveringSubpartitions.get() != 0;
+	}
+
+	@Override
+	public synchronized long getFinalRestoreStateCheckpointId() {
 		return finalRestoredCheckpointId;
 	}
+
 
 	//=============== Consult determinants ==============================
 	@Override
@@ -214,11 +245,6 @@ public class RecoveryManager implements IRecoveryManager{
 	@Override
 	public long replayNextTimestamp() {
 		return currentState.replayNextTimestamp();
-	}
-
-	@Override
-	public RecordWriter getRecordWriterByIntermediateResultPartitionID(IntermediateResultPartitionID intermediateResultPartitionID) {
-		return intermediateResultPartitionIDRecordWriterMap.get(intermediateResultPartitionID);
 	}
 
 	public static class UnansweredDeterminantRequest {

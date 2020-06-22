@@ -25,6 +25,7 @@
 
 package org.apache.flink.runtime.causal.recovery;
 
+import org.apache.flink.runtime.causal.CheckpointForceable;
 import org.apache.flink.runtime.causal.DeterminantResponseEvent;
 import org.apache.flink.runtime.causal.ProcessingTimeForceable;
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
@@ -68,6 +69,8 @@ public interface IRecoveryManager {
 	void setRecordWriters(List<RecordWriter> recordWriters);
 
 	void setProcessingTimeService(ProcessingTimeForceable processingTimeForceable);
+	ProcessingTimeForceable getProcessingTimeForceable();
+	CheckpointForceable getCheckpointForceable();
 
 	boolean isRunning();
 
@@ -77,7 +80,9 @@ public interface IRecoveryManager {
 
 	boolean isWaitingConnections();
 
-	long getFinalRestoreStateCheckpointId();
+    boolean isRecovering();
+
+    long getFinalRestoreStateCheckpointId();
 
 	//====================================================
 	/*
@@ -90,7 +95,5 @@ public interface IRecoveryManager {
 	byte replayNextChannel();
 
 	long replayNextTimestamp();
-
-    RecordWriter getRecordWriterByIntermediateResultPartitionID(IntermediateResultPartitionID intermediateResultPartitionID);
 
 }

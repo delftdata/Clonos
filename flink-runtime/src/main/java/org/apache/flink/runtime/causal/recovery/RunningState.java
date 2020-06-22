@@ -47,7 +47,11 @@ public class RunningState extends AbstractState {
 
 	public RunningState(RecoveryManager context) {
 		super(context);
-		LOG.info("Entered running state. Checking if there are unanswered in flight log requests.");
+	}
+
+	@Override
+	public void executeEnter() {
+		context.processingTimeForceable.concludeReplay();
 	}
 
 	@Override
@@ -58,6 +62,8 @@ public class RunningState extends AbstractState {
 		LOG.info("intermediateResultPartition to request replay from: {}", e.getIntermediateResultPartitionID());
 		subpartitionRequested.requestReplay(e.getCheckpointId(), e.getNumberOfBuffersToSkip());
 	}
+
+
 
 	@Override
 	public void notifyDeterminantRequestEvent(DeterminantRequestEvent e, int channelRequestArrivedFrom) {

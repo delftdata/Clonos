@@ -21,12 +21,11 @@ import org.apache.flink.runtime.causal.recovery.RecoveryManager;
 public class TimerTriggerDeterminant extends NonMainThreadDeterminant {
 
 	ProcessingTimeCallbackID processingTimeCallbackID;
-	private int recordCount;
 	private long timestamp;
 
 	public TimerTriggerDeterminant(ProcessingTimeCallbackID processingTimeCallbackID, int recordCount, long timestamp){
+		super(recordCount);
 		this.processingTimeCallbackID = processingTimeCallbackID;
-		this.recordCount = recordCount;
 		this.timestamp = timestamp;
 	}
 
@@ -44,7 +43,7 @@ public class TimerTriggerDeterminant extends NonMainThreadDeterminant {
 
 	@Override
 	public void process(RecoveryManager recoveryManager) {
-		recoveryManager.processingTimeForceable.forceExecution(processingTimeCallbackID, timestamp);
+		recoveryManager.getProcessingTimeForceable().forceExecution(processingTimeCallbackID, timestamp);
 	}
 
 	@Override

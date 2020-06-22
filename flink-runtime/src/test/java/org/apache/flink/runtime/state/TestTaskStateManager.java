@@ -174,6 +174,11 @@ public class TestTaskStateManager implements TaskStateManager {
 
 	}
 
+	@Override
+	public long getCurrentCheckpointRestoreID() {
+		return reportedCheckpointId;
+	}
+
 	public JobID getJobId() {
 		return jobId;
 	}

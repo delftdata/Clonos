@@ -59,14 +59,30 @@ public class WaitingDeterminantsState extends AbstractState {
 
 	public WaitingDeterminantsState(RecoveryManager context) {
 		super(context);
-		this.numResponsesReceived = 0;
 		this.numResponsesExpected = context.vertexGraphInformation.getNumberOfDirectDownstreamNeighbours();
 		delta = new VertexCausalLogDelta(context.vertexGraphInformation.getThisTasksVertexID());
+	}
+
+	@Override
+	public void executeEnter() {
+
+		//If we are a sink
+		if (!context.vertexGraphInformation.hasDownstream()) {
+			/**
+			 * With the transactional strategy, all determinants are dropped and we immediately switch to replaying
+			 */
+			if (RecoveryManager.sinkRecoveryStrategy == RecoveryManager.SinkRecoveryStrategy.TRANSACTIONAL) {
+				gotToReplayingState();
+			} else if (RecoveryManager.sinkRecoveryStrategy == RecoveryManager.SinkRecoveryStrategy.KAFKA) {
+				numResponsesExpected = 1;
+			}
+		}
+
 		try {
 			//Send all Determinant requests
 			if (context.vertexGraphInformation.hasDownstream()) {
 				LOG.info("Sending determinant requests");
-				DeterminantRequestEvent determinantRequestEvent = new DeterminantRequestEvent(context.vertexGraphInformation.getThisTasksVertexID());
+				DeterminantRequestEvent determinantRequestEvent = new DeterminantRequestEvent(context.vertexGraphInformation.getThisTasksVertexID(), context.finalRestoredCheckpointId);
 				broadcastDeterminantRequest(determinantRequestEvent);
 			}
 
@@ -83,21 +99,8 @@ public class WaitingDeterminantsState extends AbstractState {
 				}
 			}
 
-
 		} catch (IOException | InterruptedException e) {
 			e.printStackTrace();
-		}
-
-		//If we are a sink
-		if (!context.vertexGraphInformation.hasDownstream()) {
-			/**
-			 * With the transactional strategy, all determinants are dropped and we immediately switch to replaying
-			 */
-			if (RecoveryManager.sinkRecoveryStrategy == RecoveryManager.SinkRecoveryStrategy.TRANSACTIONAL) {
-				goToRunningState();
-			} else if (RecoveryManager.sinkRecoveryStrategy == RecoveryManager.SinkRecoveryStrategy.KAFKA) {
-				numResponsesExpected = 1;
-			}
 		}
 
 	}
@@ -111,6 +114,7 @@ public class WaitingDeterminantsState extends AbstractState {
 			synchronized (delta) {
 				delta.merge(e.getVertexCausalLogDelta());
 			}
+
 			if (numResponsesReceived == numResponsesExpected) {
 				gotToReplayingState();
 			}
@@ -124,18 +128,9 @@ public class WaitingDeterminantsState extends AbstractState {
 			LOG.info("Ready to replay, but waiting for restore state to finish"); //spin waiting
 		LOG.info("Received all determinants, transitioning to Replaying state!");
 
-
 		context.setState(new ReplayingState(context, delta));
-		context.readyToReplayFuture.complete(null);//allow task to start running
 	}
 
-	public void goToRunningState() {
-		while (context.isRestoringState())
-			LOG.info("Ready to go to RunningState, but waiting for restore state to finish"); //spin waiting
-		LOG.info("Received all determinants, transitioning directly to Running state!");
-		context.setState(new RunningState(context));
-		context.readyToReplayFuture.complete(null);//allow task to start running
-	}
 
 	@Override
 	public void notifyNewInputChannel(RemoteInputChannel inputChannel, int channelIndex, int numBuffersRemoved) {
@@ -152,7 +147,7 @@ public class WaitingDeterminantsState extends AbstractState {
 	@Override
 	public void notifyNewOutputChannel(IntermediateResultPartitionID intermediateResultPartitionID, int index) {
 		try {
-			RecordWriter recordWriter = context.getRecordWriterByIntermediateResultPartitionID(intermediateResultPartitionID);
+			RecordWriter recordWriter = context.intermediateResultPartitionIDRecordWriterMap.get(intermediateResultPartitionID);
 			PipelinedSubpartition subpartition = (PipelinedSubpartition) recordWriter.getResultPartition().getResultSubpartitions()[index];
 			DeterminantRequestEvent event = new DeterminantRequestEvent(context.vertexGraphInformation.getThisTasksVertexID());
 			subpartition.bypassDeterminantRequest(EventSerializer.toBufferConsumer(event));

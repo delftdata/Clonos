@@ -178,7 +178,7 @@ public abstract class AbstractFetcher<T, KPH> {
 		this.recoveryManager = recoveryManager;
 		isRecovering = false;
 		if(recoveryManager != null)
-			isRecovering = !recoveryManager.isRunning();
+			isRecovering = recoveryManager.isRecovering();
 
 		// figure out what we watermark mode we will be using
 		this.watermarksPeriodic = watermarksPeriodic;

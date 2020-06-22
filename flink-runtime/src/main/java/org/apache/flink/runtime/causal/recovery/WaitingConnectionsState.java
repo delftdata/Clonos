@@ -70,6 +70,11 @@ public class WaitingConnectionsState extends AbstractState{
 
 
 	@Override
+	public void executeEnter() {
+
+	}
+
+	@Override
 	public void notifyNewInputChannel(RemoteInputChannel inputChannel, int consumedSubpartitionIndex, int numberOfBuffersRemoved) {
 		LOG.info("Got Notified of new input channel {}, consuming index {} and having to skip {} buffers.", inputChannel, consumedSubpartitionIndex, numberOfBuffersRemoved);
 		SingleInputGate singleInputGate = inputChannel.getInputGate();

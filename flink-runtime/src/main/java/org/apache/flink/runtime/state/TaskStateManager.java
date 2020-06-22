@@ -76,4 +76,9 @@ public interface TaskStateManager extends CheckpointListener {
 	 * Only applies to a standby task in STANDBY state.
 	 */
 	void setTaskRestore(JobManagerTaskRestore taskRestore);
+
+	/**
+	 * Retrieve the checkpointID of the latest restored checkpoint
+	 */
+	long getCurrentCheckpointRestoreID();
 }

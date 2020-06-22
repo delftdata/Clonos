@@ -24,6 +24,7 @@ import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.core.fs.CloseableRegistry;
 import org.apache.flink.core.fs.FileSystemSafetyNet;
 import org.apache.flink.runtime.causal.*;
+import org.apache.flink.runtime.causal.determinant.SourceCheckpointDeterminant;
 import org.apache.flink.runtime.causal.log.job.IJobCausalLog;
 import org.apache.flink.runtime.causal.log.job.JobCausalLog;
 import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
@@ -123,7 +124,7 @@ import java.util.stream.Collectors;
 @Internal
 public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		extends AbstractInvokable
-		implements AsyncExceptionHandler, EpochProvider {
+		implements AsyncExceptionHandler, EpochProvider, CheckpointForceable {
 
 	/** The thread group that holds all trigger timer threads. */
 	public static final ThreadGroup TRIGGER_THREAD_GROUP = new ThreadGroup("Triggers");
@@ -296,7 +297,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			LOG.info("Set InFlightLogRequestEventListener {} for resultPartition {}.", iflrel, partition);
 		}
 
-		currentEpochID = 0l;
+		currentEpochID = environment.getTaskStateManager().getCurrentCheckpointRestoreID();
 	}
 
 	// ------------------------------------------------------------------------
@@ -674,6 +675,12 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 	@Override
 	public boolean triggerCheckpoint(CheckpointMetaData checkpointMetaData, CheckpointOptions checkpointOptions) throws Exception {
+
+		if(this.recoveryManager.isRecovering() && !this.recoveryManager.vertexGraphInformation.hasUpstream()) {
+			LOG.info("Eagerly reject checkpoint because recovering!");
+			return false;
+		}
+
 		try {
 			// No alignment if we inject a checkpoint
 			CheckpointMetrics checkpointMetrics = new CheckpointMetrics()
@@ -748,7 +755,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		return this;
 	}
 
-	private boolean performCheckpoint(
+	@Override
+	public boolean performCheckpoint(
 		CheckpointMetaData checkpointMetaData,
 		CheckpointOptions checkpointOptions,
 		CheckpointMetrics checkpointMetrics) throws Exception {
@@ -765,6 +773,16 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 				// records/watermarks/timers/callbacks.
 				// We generally try to emit the checkpoint barrier as soon as possible to not affect downstream
 				// checkpoint alignments
+
+				if(!this.recoveryManager.vertexGraphInformation.hasUpstream()) {
+					this.jobCausalLog.appendDeterminant(new SourceCheckpointDeterminant(
+						recordCountProvider.getRecordCount(),
+						checkpointMetaData.getCheckpointId(),
+						checkpointMetaData.getTimestamp(),
+						checkpointOptions.getCheckpointType(),
+						checkpointOptions.getTargetLocation().getReferenceBytes()
+						), currentEpochID);
+				}
 
 				// Step (1): Prepare the checkpoint, allow operators to do some pre-barrier work.
 				//           The pre-barrier work should be nothing or minimal in the common case.

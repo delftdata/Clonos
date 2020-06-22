@@ -49,6 +49,8 @@ import java.util.*;
  */
 public class ReplayingState extends AbstractState {
 
+	private static final Logger LOG = LoggerFactory.getLogger(ReplayingState.class);
+
 	DeterminantEncodingStrategy determinantEncodingStrategy;
 
 	ByteBuf mainThreadRecoveryBuffer;
@@ -56,6 +58,7 @@ public class ReplayingState extends AbstractState {
 	List<Thread> recoveryThreads;
 
 	Determinant nextDeterminant;
+
 
 	public ReplayingState(RecoveryManager context, VertexCausalLogDelta recoveryDeterminants) {
 		super(context);
@@ -65,15 +68,21 @@ public class ReplayingState extends AbstractState {
 
 		recoveryThreads = new LinkedList<>();
 		createSubpartitionRecoveryThreads(recoveryDeterminants);
+		for (Thread t : recoveryThreads)
+			t.start();
 
 		if (recoveryDeterminants.getMainThreadDelta() != null)
 			this.mainThreadRecoveryBuffer = recoveryDeterminants.getMainThreadDelta().getRawDeterminants();
+	}
 
+	public void executeEnter() {
 		prepareNext();
+		context.readyToReplayFuture.complete(null);//allow task to start running
 	}
 
 	private void createSubpartitionRecoveryThreads(VertexCausalLogDelta recoveryDeterminants) {
 
+		recoveryThreads = new LinkedList<>();
 		for (Map.Entry<IntermediateResultPartitionID, SortedMap<Integer, SubpartitionThreadLogDelta>> partitionEntry : recoveryDeterminants.getPartitionDeltas().entrySet()) {
 			ResultSubpartition[] subpartitions = context.intermediateResultPartitionIDRecordWriterMap.get(partitionEntry.getKey()).getResultPartition().getResultSubpartitions();
 
@@ -82,7 +91,6 @@ public class ReplayingState extends AbstractState {
 				PipelinedSubpartition pipelinedSubpartition = (PipelinedSubpartition) subpartitions[subpartitionEntry.getKey()];
 				Thread t = new SubpartitionRecoveryThread(subpartitionEntry.getValue().getRawDeterminants(), pipelinedSubpartition, context, partitionEntry.getKey(), subpartitionEntry.getKey());
 				recoveryThreads.add(t);
-				t.start();
 			}
 		}
 
@@ -138,18 +146,21 @@ public class ReplayingState extends AbstractState {
 	@Override
 	public void checkAsyncEvent() {
 		LOG.debug("Checking if an async event fired at this point");
-		if (nextDeterminant instanceof TimerTriggerDeterminant) {
-			LOG.info("Next determinant is of type timerTrigger : {}", nextDeterminant);
-			if (context.recordCountProvider.getRecordCount() == ((TimerTriggerDeterminant) nextDeterminant).getRecordCount()) {
-				LOG.info("We are at the same point in the stream, with record count: {}", ((TimerTriggerDeterminant) nextDeterminant).getRecordCount());
-				((TimerTriggerDeterminant) nextDeterminant).process(context);
+		while (nextDeterminant instanceof NonMainThreadDeterminant) {
+			NonMainThreadDeterminant nonMainThreadDeterminant = (NonMainThreadDeterminant) nextDeterminant;
+			LOG.info("Next determinant is NonMainThread : {}", nonMainThreadDeterminant);
+			if (context.recordCountProvider.getRecordCount() == nonMainThreadDeterminant.getRecordCount()) {
+				LOG.info("We are at the same point in the stream, with record count: {}", nonMainThreadDeterminant.getRecordCount());
+				nonMainThreadDeterminant.process(context);
 				prepareNext();
-			}
+			}else
+				break;
 		}
 
 	}
 
 	private void prepareNext() {
+		nextDeterminant = null;
 		if (mainThreadRecoveryBuffer == null || !mainThreadRecoveryBuffer.isReadable())
 			finishReplaying();
 		else
@@ -159,6 +170,7 @@ public class ReplayingState extends AbstractState {
 	private void finishReplaying() {
 		if (mainThreadRecoveryBuffer != null)
 			mainThreadRecoveryBuffer.release();
+
 		LOG.info("Finished recovering main thread! Transitioning to RunningState!");
 		context.setState(new RunningState(context));
 		context.processingTimeForceable.concludeReplay();
@@ -184,10 +196,12 @@ public class ReplayingState extends AbstractState {
 			this.context = context;
 			this.partitionID = partitionID;
 			this.index = index;
+
 		}
 
 		@Override
 		public void run() {
+			context.numberOfRecoveringSubpartitions.incrementAndGet();
 			//1. Netty has been told that there is no data.
 			pipelinedSubpartition.setIsRecoveringSubpartitionInFlightState(true);
 			//2. Rebuild in-fligh log and subpartition state
@@ -205,13 +219,20 @@ public class ReplayingState extends AbstractState {
 			}
 			// If there is a replay request, we have to prepare it, before setting isRecovering to true
 			InFlightLogRequestEvent unansweredRequest = context.unansweredInFlighLogRequests.get(partitionID).remove(index);
-			if (unansweredRequest != null)
+			LOG.info("Checking for unanswered inflight request for this subpartition.");
+			if (unansweredRequest != null) {
+				LOG.info("There is an unanswered replay request for this subpartition.");
 				pipelinedSubpartition.requestReplay(unansweredRequest.getCheckpointId(), unansweredRequest.getNumberOfBuffersToSkip());
+			}
+
+			//Safety check that recovery brought us to the exact same state as pre-failure
+			assert recoveryBuffer.capacity() == context.jobCausalLog.subpartitionLogLength(partitionID, index);
 
 			//3. Tell netty to restart requesting buffers.
 			pipelinedSubpartition.setIsRecoveringSubpartitionInFlightState(false);
 			pipelinedSubpartition.notifyDataAvailable();
 			recoveryBuffer.release();
+			context.numberOfRecoveringSubpartitions.decrementAndGet();
 			LOG.info("Done recovering pipelined subpartition");
 		}
 	}
