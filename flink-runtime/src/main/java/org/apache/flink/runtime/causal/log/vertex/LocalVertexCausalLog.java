@@ -39,6 +39,4 @@ public interface LocalVertexCausalLog extends VertexCausalLog {
 
 	void appendSubpartitionDeterminants(byte[] determinants, long checkpointID, IntermediateResultPartitionID intermediateResultPartitionID, int subpartitionIndex);
 
-	VertexCausalLogDelta getDeterminants(InputChannelID inputChannelID);
-
 }

@@ -83,7 +83,7 @@ public class CircularLocalThreadLogThread implements LocalThreadCausalLog {
 
 
 	@Override
-	public synchronized ByteBuf getDeterminants() {
+	public synchronized ByteBuf getDeterminants(long startEpochID) {
 		byte[] copy = new byte[size];
 		circularArrayCopyOutOfLog(array, start, end - start, copy);
 		return Unpooled.wrappedBuffer(copy);
@@ -147,6 +147,11 @@ public class CircularLocalThreadLogThread implements LocalThreadCausalLog {
 		}
 
 		return new ThreadLogDelta(Unpooled.wrappedBuffer(toReturn), logicalStartOffset);
+	}
+
+	@Override
+	public int logLength() {
+		throw new RuntimeException("Not implemented");
 	}
 
 	@Override

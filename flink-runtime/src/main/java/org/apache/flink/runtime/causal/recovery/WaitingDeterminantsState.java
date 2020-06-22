@@ -149,7 +149,7 @@ public class WaitingDeterminantsState extends AbstractState {
 		try {
 			RecordWriter recordWriter = context.intermediateResultPartitionIDRecordWriterMap.get(intermediateResultPartitionID);
 			PipelinedSubpartition subpartition = (PipelinedSubpartition) recordWriter.getResultPartition().getResultSubpartitions()[index];
-			DeterminantRequestEvent event = new DeterminantRequestEvent(context.vertexGraphInformation.getThisTasksVertexID());
+			DeterminantRequestEvent event = new DeterminantRequestEvent(context.vertexGraphInformation.getThisTasksVertexID(), context.finalRestoredCheckpointId);
 			subpartition.bypassDeterminantRequest(EventSerializer.toBufferConsumer(event));
 		} catch (IOException e) {
 			e.printStackTrace();

@@ -26,7 +26,6 @@
 package org.apache.flink.runtime.causal.log.vertex;
 
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
-import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 
 public interface VertexCausalLog {
@@ -43,15 +42,20 @@ public interface VertexCausalLog {
 	/**
 	 * Get all determinants in this log from start to end. Does not advance any internal offsets.
 	 * @return a byte[] containing all determinants in sequence
+	 * @param startEpochID
 	 */
-	VertexCausalLogDelta getDeterminants();
+	VertexCausalLogDelta getDeterminants(long startEpochID);
 
 	/**
 	 * Calculates the next update to send downstream. Advances internal counters as well.
 	 * @param consumer the channel to get the next update for.
-	 * @return a {@link CausalLogThreadDelta} containing the update to send downstream
+	 * @return a delta containing the update to send downstream
 	 */
 	VertexCausalLogDelta getNextDeterminantsForDownstream(InputChannelID consumer, long checkpointID);
 
 	void notifyCheckpointComplete(long checkpointID);
+
+    int mainThreadLogLength();
+
+	int subpartitionLogLength(IntermediateResultPartitionID intermediateResultPartitionID, int subpartitionIndex);
 }

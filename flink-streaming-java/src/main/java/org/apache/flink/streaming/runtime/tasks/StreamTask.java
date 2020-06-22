@@ -269,7 +269,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 		this.jobCausalLog = environment.getCausalLogManager().registerNewJob(this.getEnvironment().getJobID(), vertexGraphInformation, getEnvironment().getAllWriters(),getCheckpointLock());
 
-		this.recoveryManager = new RecoveryManager(this, jobCausalLog, readyToReplayFuture, vertexGraphInformation, recordCountProvider);
+		this.recoveryManager = new RecoveryManager(this, jobCausalLog, readyToReplayFuture, vertexGraphInformation, recordCountProvider,this);
 
 		this.timeService = new CausalTimeService(jobCausalLog, recoveryManager, this);
 		this.randomService = new CausalRandomService(jobCausalLog, recoveryManager, this);

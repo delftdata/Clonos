@@ -250,12 +250,17 @@ public class RecoveryManager implements IRecoveryManager {
 	public static class UnansweredDeterminantRequest {
 		private int numResponsesReceived;
 		int requestingChannel;
+		DeterminantRequestEvent event;
+
+		/**
+		 * The delta we are going to return. Starts empty, but is progressively merged with downstream deltas.
+		 */
 		VertexCausalLogDelta vertexCausalLogDelta;
 
-		public UnansweredDeterminantRequest(VertexID vertexId, int requestingChannel){
+		public UnansweredDeterminantRequest(DeterminantRequestEvent event, int requestingChannel) {
 			this.numResponsesReceived = 0;
 			this.requestingChannel = requestingChannel;
-			this.vertexCausalLogDelta = new VertexCausalLogDelta(vertexId);
+			this.event = event;
 		}
 
 		public int getNumResponsesReceived() {
@@ -273,6 +278,10 @@ public class RecoveryManager implements IRecoveryManager {
 
 		public VertexCausalLogDelta getVertexCausalLogDelta() {
 			return vertexCausalLogDelta;
+		}
+
+		public DeterminantRequestEvent getEvent() {
+			return event;
 		}
 	}
 

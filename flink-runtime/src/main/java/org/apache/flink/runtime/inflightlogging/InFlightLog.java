@@ -21,17 +21,27 @@ import org.apache.flink.runtime.io.network.buffer.Buffer;
 
 /**
  * An InFlightLog records {@link Buffer} instances which have been sent to other tasks.
- * It records where in the logs checkpoints happen, starting a new epoch.
- * The processing of a checkpoint barrier n starts an epoch n, however the barrier itself belongs in epoch n.
+ * The processing of a checkpoint barrier n starts an epoch n, however the barrier itself belongs in epoch n-1.
+ * Is also in charge of managing reference counts of buffers, as they are released in the network stack.
  */
 public interface InFlightLog {
 
-	public void log(Buffer buffer);
+	/**
+	 * Appends the provided buffer to the log slice of the provided epochID
+	 */
+	public void log(Buffer buffer, long epochID);
 
-	public void logCheckpointBarrier(Buffer buffer, long checkpointId);
-
+	/**
+	 * Truncates the log by deleting all epochs with an ID < checkpointID.
+	 * Epoch with ID checkpointID is saved as it starts after this checkpoint.
+	 * Decreases reference counts of stored buffers.
+	 */
 	public void notifyCheckpointComplete(long checkpointId);
 
-	public InFlightLogIterator<Buffer> getInFlightIterator();
+	/**
+	 * Creates an Iterator starting at the provided epoch.
+	 * Also increases the reference counts of stored buffers, as they are freed downstream in the network stack.
+	 */
+	public InFlightLogIterator<Buffer> getInFlightIterator(long epochID);
 
 }

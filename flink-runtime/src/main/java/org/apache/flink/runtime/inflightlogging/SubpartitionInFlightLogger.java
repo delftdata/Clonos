@@ -31,75 +31,48 @@ public class SubpartitionInFlightLogger implements InFlightLog {
 	private final SortedMap<Long, List<Buffer>> slicedLog;
 
 	public SubpartitionInFlightLogger() {
-		this(0l);
-	}
-	public SubpartitionInFlightLogger(long startingEpoch) {
 		slicedLog = new TreeMap<>();
-		//Perhaps we should use array lists, initialized to the size of the previous epoch.
-		slicedLog.put(startingEpoch, new LinkedList<>());
 	}
 
-
-	public void log(Buffer buffer) {
-		LOG.debug("Logged a new buffer for epoch {}", slicedLog.lastKey());
-		getCurrentSlice().add(buffer.retainBuffer());
-	}
-
-	@Override
-	public void logCheckpointBarrier(Buffer buffer, long checkpointId) {
-		LOG.debug("Logging a checkpoint barrier buffer with id {}", checkpointId);
-		synchronized (slicedLog) {
-			getCurrentSlice().add(buffer.retainBuffer());
-			slicedLog.put(checkpointId, new LinkedList<>());
-		}
-	}
-
-	private List<Buffer> getCurrentSlice() {
-		synchronized (slicedLog) {
-			return slicedLog.get(slicedLog.lastKey());
-		}
+	public synchronized void log(Buffer buffer, long epoch) {
+		List<Buffer> epochLog = slicedLog.computeIfAbsent(epoch, k -> new LinkedList<>());
+		epochLog.add(buffer.retainBuffer());
+		LOG.debug("Logged a new buffer for epoch {}", epoch);
 	}
 
 	@Override
-	public void notifyCheckpointComplete(long completedCheckpointId) {
+	public synchronized void notifyCheckpointComplete(long completedCheckpointId) {
 
-		synchronized (slicedLog) {
-			LOG.debug("Got notified of checkpoint {} completion\nCurrent log: {}", completedCheckpointId, representLogAsString(this.slicedLog));
-			List<Long> toRemove = new LinkedList<>();
+		LOG.debug("Got notified of checkpoint {} completion\nCurrent log: {}", completedCheckpointId, representLogAsString(this.slicedLog));
+		List<Long> toRemove = new LinkedList<>();
 
-			//keys are in ascending order
-			for (long epochId : slicedLog.keySet()) {
-				if (epochId < completedCheckpointId) {
-					toRemove.add(epochId);
-					LOG.debug("Removing epoch {}", epochId);
-				}
+		//keys are in ascending order
+		for (long epochId : slicedLog.keySet()) {
+			if (epochId < completedCheckpointId) {
+				toRemove.add(epochId);
+				LOG.debug("Removing epoch {}", epochId);
 			}
+		}
 
-			for (long checkpointBarrierId : toRemove) {
-				List<Buffer> slice = slicedLog.remove(checkpointBarrierId);
-				for (Buffer b : slice) {
-					b.recycleBuffer();
-				}
+		for (long checkpointBarrierId : toRemove) {
+			List<Buffer> slice = slicedLog.remove(checkpointBarrierId);
+			for (Buffer b : slice) {
+				b.recycleBuffer();
 			}
 		}
 	}
 
 	@Override
-	public InFlightLogIterator<Buffer> getInFlightIterator() {
+	public synchronized InFlightLogIterator<Buffer> getInFlightIterator(long startEpochID) {
 		//The lower network stack recycles buffers, so for each replay, we must increase reference counts
-		synchronized (slicedLog) {
-			increaseReferenceCounts(slicedLog.firstKey());
-			return new ReplayIterator(slicedLog.firstKey(), slicedLog);
-		}
+		increaseReferenceCountsUnsafe(startEpochID);
+		return new ReplayIterator(startEpochID, slicedLog);
 	}
 
-	private void increaseReferenceCounts(Long checkpointId) {
-		synchronized (slicedLog) {
-			for (List<Buffer> list : slicedLog.tailMap(checkpointId).values())
-				for (Buffer buffer : list)
-					buffer.retainBuffer();
-		}
-
+	private void increaseReferenceCountsUnsafe(Long epochID) {
+		for (List<Buffer> list : slicedLog.tailMap(epochID).values())
+			for (Buffer buffer : list)
+				buffer.retainBuffer();
 	}
 
 	public static class ReplayIterator implements InFlightLogIterator<Buffer> {
@@ -109,27 +82,32 @@ public class SubpartitionInFlightLogger implements InFlightLog {
 		private SortedMap<Long, List<Buffer>> logToReplay;
 		private int numberOfBuffersLeft;
 
-		public ReplayIterator(long lastCompletedCheckpointOfFailed, SortedMap<Long, List<Buffer>> logToReplay) {
+		public ReplayIterator(long epochToStartFrom, SortedMap<Long, List<Buffer>> fullLog) {
 
-				//Failed at checkpoint x, so we replay starting at epoch x
-				this.startKey = lastCompletedCheckpointOfFailed;
-				this.currentKey = lastCompletedCheckpointOfFailed;
-				this.logToReplay = logToReplay.tailMap(lastCompletedCheckpointOfFailed);
-				LOG.info(" Getting iterator for checkpoint id {} with log state {} and sublog state {}", currentKey, representLogAsString(logToReplay), representLogAsString(this.logToReplay));
+			//Failed at checkpoint x, so we replay starting at epoch x
+			this.startKey = epochToStartFrom;
+			this.currentKey = epochToStartFrom;
+			this.logToReplay = fullLog.tailMap(epochToStartFrom);
+			LOG.info(" Getting iterator starting  from epochID {} with log state {} and sublog state {}", currentKey, representLogAsString(fullLog), representLogAsString(this.logToReplay));
+			if (this.logToReplay.get(currentKey) != null) {
 				this.currentIterator = this.logToReplay.get(currentKey).listIterator();
-				numberOfBuffersLeft = this.logToReplay.values().stream().mapToInt(List::size).sum(); //add up the sizes
-				LOG.info("State of log: {}\nlog tailmap {}\nIterator creation {}: ", representLogAsString(logToReplay), representLogAsString(this.logToReplay), this.toString());
+				this.numberOfBuffersLeft = this.logToReplay.values().stream().mapToInt(List::size).sum(); //add up the sizes
+			} else {
+				this.currentIterator = null;
+				this.numberOfBuffersLeft = 0;
+			}
+			LOG.info("State of log: {}\nlog tailmap {}\nIterator creation {}: ", representLogAsString(fullLog), representLogAsString(this.logToReplay), this.toString());
 		}
 
 		private void advanceToNextNonEmptyIteratorIfNeeded() {
-			while (!currentIterator.hasNext() && currentKey < logToReplay.lastKey()) {
+			while (currentIterator != null &&!currentIterator.hasNext() && currentKey < logToReplay.lastKey()) {
 				this.currentIterator = logToReplay.get(++currentKey).listIterator();
 				while (currentIterator.hasPrevious()) currentIterator.previous();
 			}
 		}
 
 		private void advanceToPreviousNonEmptyIteratorIfNeeded() {
-			while (!currentIterator.hasPrevious() && currentKey > logToReplay.firstKey()) {
+			while (currentIterator != null && !currentIterator.hasPrevious() && currentKey > logToReplay.firstKey()) {
 				this.currentIterator = logToReplay.get(--currentKey).listIterator();
 				while (currentIterator.hasNext()) currentIterator.next(); //fast forward the iterator
 			}
@@ -138,13 +116,13 @@ public class SubpartitionInFlightLogger implements InFlightLog {
 		@Override
 		public boolean hasNext() {
 			advanceToNextNonEmptyIteratorIfNeeded();
-			return currentIterator.hasNext();
+			return currentIterator != null && currentIterator.hasNext();
 		}
 
 		@Override
 		public boolean hasPrevious() {
 			advanceToPreviousNonEmptyIteratorIfNeeded();
-			return currentIterator.hasPrevious();
+			return currentIterator != null && currentIterator.hasPrevious();
 		}
 
 		@Override
@@ -195,7 +173,7 @@ public class SubpartitionInFlightLogger implements InFlightLog {
 
 		@Override
 		public long getEpoch() {
-			return 	currentKey;
+			return currentKey;
 		}
 
 		@Override

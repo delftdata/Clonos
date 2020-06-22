@@ -130,7 +130,7 @@ public abstract class AbstractState implements State {
 			return;
 		}
 
-		context.unansweredDeterminantRequests.put(e.getFailedVertex(), new RecoveryManager.UnansweredDeterminantRequest(e.getFailedVertex(), channelRequestArrivedFrom));
+		context.unansweredDeterminantRequests.put(e.getFailedVertex(), new RecoveryManager.UnansweredDeterminantRequest(e, channelRequestArrivedFrom));
 		LOG.info("Recurring determinant request");
 		broadcastDeterminantRequest(e);
 	}

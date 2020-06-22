@@ -91,13 +91,13 @@ public class NetworkBufferBasedContiguousThreadCausalLog implements ThreadCausal
 	}
 
 	@Override
-	public ByteBuf getDeterminants() {
+	public ByteBuf getDeterminants(long epoch) {
 		ByteBuf result;
 		int startIndex = 0;
 
 		readLock.lock();
 		try {
-			EpochStartOffset offset = epochStartOffsets.get(earliestEpoch);
+			EpochStartOffset offset = epochStartOffsets.get(epoch);
 			if (offset != null)
 				startIndex = offset.getOffset();
 
@@ -142,6 +142,23 @@ public class NetworkBufferBasedContiguousThreadCausalLog implements ThreadCausal
 		} finally {
 			readLock.unlock();
 		}
+	}
+
+	@Override
+	public int logLength() {
+		int result;
+		readLock.lock();
+		try {
+			EpochStartOffset offset = epochStartOffsets.get(earliestEpoch);
+			if (offset != null)
+				result = writerIndex.get() - offset.getOffset();
+			else
+				result = writerIndex.get();
+
+		} finally {
+			readLock.unlock();
+		}
+		return result;
 	}
 
 	private int computeNumberOfBytesToSend(long epochID, int physicalConsumerOffset) {

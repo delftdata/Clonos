@@ -27,9 +27,11 @@ import java.io.IOException;
 public class DeterminantRequestEvent extends AbstractEvent {
 
 	private VertexID failedVertex;
+	private long startEpochID;
 
-	public DeterminantRequestEvent(VertexID failedVertex) {
+	public DeterminantRequestEvent(VertexID failedVertex, long startEpochID) {
 		this.failedVertex = failedVertex;
+		this.startEpochID = startEpochID;
 	}
 
 	public DeterminantRequestEvent() {
@@ -43,20 +45,31 @@ public class DeterminantRequestEvent extends AbstractEvent {
 		this.failedVertex = failedVertex;
 	}
 
+	public long getStartEpochID() {
+		return startEpochID;
+	}
+
+	public void setStartEpochID(long startEpochID) {
+		this.startEpochID = startEpochID;
+	}
+
 	@Override
 	public void write(DataOutputView out) throws IOException {
 		out.writeShort(this.failedVertex.getVertexId());
+		out.writeLong(startEpochID);
 	}
 
 	@Override
 	public void read(DataInputView in) throws IOException {
 		this.setFailedVertex(new VertexID(in.readShort()));
+		this.setStartEpochID(in.readLong());
 	}
 
 	@Override
 	public String toString() {
 		return "DeterminantRequestEvent{" +
 			"failedVertex=" + failedVertex +
+			", startEpochID= " + startEpochID +
 			'}';
 	}
 }

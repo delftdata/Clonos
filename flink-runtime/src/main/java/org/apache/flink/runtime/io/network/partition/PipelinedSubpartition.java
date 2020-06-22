@@ -115,7 +115,6 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 	public void setStartingEpoch(long currentEpochID) {
 		this.currentEpochID = currentEpochID;
-		this.inFlightLog = new SubpartitionInFlightLogger(currentEpochID);
 	}
 
 	public void setRecoveryManager(IRecoveryManager recoveryManager) {
@@ -240,17 +239,19 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 	@Nullable
 	BufferAndBacklog pollBuffer() {
-		LOG.info("Call to pollBuffer");
+
+		LOG.debug("Call to pollBuffer");
+
 		if (downstreamFailed.get()) {
 			LOG.info("Polling for next buffer, but downstream is still failed.");
 			return null;
 		}
 
-		LOG.info("Attempt to obtain buffers lock to check for determinant requests");
+		LOG.debug("Attempt to obtain buffers lock to check for determinant requests");
 		synchronized (buffers) {
-			LOG.info("Obtained buffers lock to check for determinant requests");
+			LOG.debug("Obtained buffers lock to check for determinant requests");
 			if (!determinantRequests.isEmpty()) {
-				LOG.info("We have a determiannt request to send");
+				LOG.info("We have a determinant request to send");
 				BufferConsumer consumer = determinantRequests.poll();
 				Buffer buffer = consumer.build();
 				consumer.close();
@@ -354,16 +355,13 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 			causalLoggingManager.appendSubpartitionDeterminants(new BufferBuiltDeterminant(buffer.readableBytes()), currentEpochID, this.parent.getPartitionId().getPartitionId(), this.index);
 
-			LOG.info("Done getting buffer from queue\n\tbuffers: {}\n\tcheckpo: {}", "[" + buffers.stream().map(x -> "*").collect(Collectors.joining(", ")) + "]", "[" + checkpointIds.stream().map(x -> x + "").collect(Collectors.joining(", ")) + "]");
 			updateStatistics(buffer);
-			BufferAndBacklog result;
-			LOG.info("Creating BufferAndBacklog with epochID {}", currentEpochID);
-			logBuffer(buffer, checkpointId);
-			result = new BufferAndBacklog(buffer, isAvailableUnsafe(), getBuffersInBacklog(), _nextBufferIsEvent(), currentEpochID);
+			inFlightLog.log(buffer, currentEpochID);
+			LOG.debug("Creating BufferAndBacklog with epochID {}", currentEpochID);
+			BufferAndBacklog result = new BufferAndBacklog(buffer, isAvailableUnsafe(), getBuffersInBacklog(), _nextBufferIsEvent(), currentEpochID);
 			//We do this after the determinant and sending the BufferAndBacklog because a checkpoint x belongs to epoch x-1
 			if (checkpointId != -1L)
 				currentEpochID = checkpointId;
-			LOG.info("POST LOG\n\tbuffers: {}\n\tcheckpo: {}", "[" + buffers.stream().map(x -> "*").collect(Collectors.joining(", ")) + "]", "[" + checkpointIds.stream().map(x -> x + "").collect(Collectors.joining(", ")) + "]");
 			// Do not report last remaining buffer on buffers as available to read (assuming it's unfinished).
 			// It will be reported for reading either on flush or when the number of buffers in the queue
 			// will be 2 or more.
@@ -372,13 +370,6 @@ public class PipelinedSubpartition extends ResultSubpartition {
 		}
 	}
 
-	private void logBuffer(Buffer buffer, long checkpointId) {
-		boolean isCheckpoint = checkpointId != -1L;
-		if (isCheckpoint)
-			inFlightLog.logCheckpointBarrier(buffer, checkpointId);
-		else
-			inFlightLog.log(buffer);
-	}
 
 	boolean nextBufferIsEvent() {
 		synchronized (buffers) {
@@ -475,7 +466,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 	}
 
 	public void requestReplay(long checkpointId, int ignoreMessages) {
-		inflightReplayIterator = inFlightLog.getInFlightIterator();
+		inflightReplayIterator = inFlightLog.getInFlightIterator(checkpointId);
 		LOG.info("Replay has been requested for pipelined subpartition {}, skipping {} buffers, buffers to replay {}. Setting downstreamFailed to false", this, ignoreMessages, inflightReplayIterator.numberRemaining());
 		if (inflightReplayIterator.numberRemaining() < ignoreMessages)
 			throw new RuntimeException("Invalid state: pipelined subpartition can replay " + inflightReplayIterator.numberRemaining() + " messages, but a replay skipping " + ignoreMessages + " was requested.");
@@ -522,14 +513,10 @@ public class PipelinedSubpartition extends ResultSubpartition {
 					BufferConsumer bufferConsumer = buffers.peek();
 					long checkpointId = checkpointIds.peek();
 
-
 					//This assumes that the input buffers which are before this close in the determinant log have been
 					// fully processed, thus the bufferconsumer will have this amount of data.
 					causalLoggingManager.appendSubpartitionDeterminants(new BufferBuiltDeterminant(bufferSize), currentEpochID, this.parent.getPartitionId().getPartitionId(), this.index);
 					Buffer buffer = bufferConsumer.build(bufferSize);
-					//We do this after the determinant because a checkpoint x belongs to epoch x-1
-					if (checkpointId != -1)
-						currentEpochID = checkpointId;
 
 
 					checkState(bufferConsumer.isFinished() || buffers.size() == 1,
@@ -549,7 +536,10 @@ public class PipelinedSubpartition extends ResultSubpartition {
 						throw new RuntimeException("Requested to rebuild buffer with 0 bytes.");
 
 					updateStatistics(buffer);
-					logBuffer(buffer, checkpointId);
+					inFlightLog.log(buffer, currentEpochID);
+					//We do this after the determinant because a checkpoint x belongs to epoch x-1
+					if (checkpointId != -1)
+						currentEpochID = checkpointId;
 					break;
 				}
 			}

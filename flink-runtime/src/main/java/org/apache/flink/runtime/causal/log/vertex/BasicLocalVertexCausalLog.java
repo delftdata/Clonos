@@ -110,23 +110,10 @@ public class BasicLocalVertexCausalLog implements LocalVertexCausalLog {
 	}
 
 	@Override
-	public VertexCausalLogDelta getDeterminants() {
+	public VertexCausalLogDelta getDeterminants(long startEpochID) {
 		throw new UnsupportedOperationException("For a local log, you should request determinants providing a consumer id");
 	}
 
-	//TODO Remove
-	@Override
-	public VertexCausalLogDelta getDeterminants(InputChannelID consumer) {
-		ThreadLogDelta mLogDelta = new ThreadLogDelta(mainThreadLog.getDeterminants(), 0);
-
-		Tuple2<IntermediateResultPartitionID, Integer> consumerPartition = consumerPartitions.get(consumer);
-		ByteBuf byteBuf = subpartitionLogs.get(consumerPartition.f0)[consumerPartition.f1].getDeterminants();
-
-
-		SubpartitionThreadLogDelta subpartitionLogDelta = new SubpartitionThreadLogDelta(byteBuf, 0, consumerPartition.f1);
-
-		return new VertexCausalLogDelta(this.vertexId, mLogDelta, ImmutableMap.of(consumerPartition.f0, ImmutableMap.of(consumerPartition.f1, subpartitionLogDelta)));
-	}
 
 	@Override
 	public VertexCausalLogDelta getNextDeterminantsForDownstream(InputChannelID consumer, long checkpointID) {
@@ -153,6 +140,16 @@ public class BasicLocalVertexCausalLog implements LocalVertexCausalLog {
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
+	}
+
+	@Override
+	public int mainThreadLogLength() {
+		return mainThreadLog.logLength();
+	}
+
+	@Override
+	public int subpartitionLogLength(IntermediateResultPartitionID intermediateResultPartitionID, int subpartitionIndex) {
+		return this.subpartitionLogs.get(intermediateResultPartitionID)[subpartitionIndex].logLength();
 	}
 
 	@Override

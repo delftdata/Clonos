@@ -34,6 +34,8 @@ import org.apache.flink.runtime.io.network.partition.ResultSubpartition;
 import org.apache.flink.runtime.io.network.partition.consumer.RemoteInputChannel;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.*;
@@ -66,7 +68,6 @@ public class ReplayingState extends AbstractState {
 		LOG.info("Entered replaying state with delta: {}", recoveryDeterminants);
 		determinantEncodingStrategy = context.jobCausalLog.getDeterminantEncodingStrategy();
 
-		recoveryThreads = new LinkedList<>();
 		createSubpartitionRecoveryThreads(recoveryDeterminants);
 		for (Thread t : recoveryThreads)
 			t.start();
@@ -168,12 +169,15 @@ public class ReplayingState extends AbstractState {
 	}
 
 	private void finishReplaying() {
+
+		//Safety check that recovery brought us to the exact same state as pre-failure
+		assert mainThreadRecoveryBuffer.capacity() == context.jobCausalLog.mainThreadLogLength();
+
 		if (mainThreadRecoveryBuffer != null)
 			mainThreadRecoveryBuffer.release();
 
 		LOG.info("Finished recovering main thread! Transitioning to RunningState!");
 		context.setState(new RunningState(context));
-		context.processingTimeForceable.concludeReplay();
 	}
 
 	@Override

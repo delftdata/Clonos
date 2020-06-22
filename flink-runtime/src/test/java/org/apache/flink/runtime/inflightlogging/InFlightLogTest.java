@@ -40,7 +40,7 @@ public class InFlightLogTest {
 		InFlightLog log = new SubpartitionInFlightLogger();
 		populate(log);
 
-		InFlightLogIterator<Buffer> iterator = log.getInFlightIterator();
+		InFlightLogIterator<Buffer> iterator = log.getInFlightIterator(0);
 
 		assertEquals(15 + 3, iterator.numberRemaining());
 	}
@@ -51,7 +51,7 @@ public class InFlightLogTest {
 		populate(log);
 
 		log.notifyCheckpointComplete(1);
-		InFlightLogIterator<Buffer> iterator = log.getInFlightIterator();
+		InFlightLogIterator<Buffer> iterator = log.getInFlightIterator(0);
 
 		assertEquals(10 + 2, iterator.numberRemaining());
 	}
@@ -62,7 +62,7 @@ public class InFlightLogTest {
 		populate(log);
 
 		log.notifyCheckpointComplete(1);
-		InFlightLogIterator<Buffer> iterator = log.getInFlightIterator();
+		InFlightLogIterator<Buffer> iterator = log.getInFlightIterator(0);
 		assertEquals(true, iterator.hasNext());
 	}
 
@@ -72,11 +72,11 @@ public class InFlightLogTest {
 
 				Buffer buffer = new NetworkBuffer(MemorySegmentFactory.allocateUnpooledSegment(64),
 					FreeingBufferRecycler.INSTANCE);
-				log.log(buffer);
+				log.log(buffer, epoch);
 			}
 			Buffer buffer = new NetworkBuffer(MemorySegmentFactory.allocateUnpooledSegment(64),
 				FreeingBufferRecycler.INSTANCE);
-			log.logCheckpointBarrier(buffer, epoch+1);
+			log.log(buffer, epoch);
 
 		}
 	}
@@ -88,12 +88,12 @@ public class InFlightLogTest {
 
 					Buffer buffer = new NetworkBuffer(MemorySegmentFactory.allocateUnpooledSegment(64),
 						FreeingBufferRecycler.INSTANCE);
-					log.log(buffer);
+					log.log(buffer, epoch);
 				}
 			}
 			Buffer buffer = new NetworkBuffer(MemorySegmentFactory.allocateUnpooledSegment(64),
 				FreeingBufferRecycler.INSTANCE);
-			log.logCheckpointBarrier(buffer, epoch+1);
+			log.log(buffer, epoch);
 
 		}
 	}

@@ -104,16 +104,16 @@ public class BasicUpstreamVertexCausalLog implements UpstreamVertexCausalLog {
 	}
 
 	@Override
-	public VertexCausalLogDelta getDeterminants() {
+	public VertexCausalLogDelta getDeterminants(long startEpochID) {
 		LOG.debug("Building vertexCausalLogDelta for vertexID {}", vertexId);
-		ByteBuf mainThreadBuf = mainThreadLog.getDeterminants();
+		ByteBuf mainThreadBuf = mainThreadLog.getDeterminants(startEpochID);
 
 		Map<IntermediateResultPartitionID, Map<Integer,SubpartitionThreadLogDelta>> subpartitionDeltas = new HashMap<>(subpartitionLogs.size());
 
 		for(Map.Entry<IntermediateResultPartitionID, ConcurrentMap<Integer,UpstreamThreadCausalLog>> datasetEntry : subpartitionLogs.entrySet()){
 			List<SubpartitionThreadLogDelta> deltasWithData = new ArrayList<>(datasetEntry.getValue().size());
 			for(Map.Entry<Integer, UpstreamThreadCausalLog> subpartitionEntry : datasetEntry.getValue().entrySet()){
-				ByteBuf buf = subpartitionEntry.getValue().getDeterminants();
+				ByteBuf buf = subpartitionEntry.getValue().getDeterminants(startEpochID);
 				if(buf.capacity() > 0)
 					deltasWithData.add(new SubpartitionThreadLogDelta(buf, 0, subpartitionEntry.getKey()));
 			}
@@ -162,6 +162,20 @@ public class BasicUpstreamVertexCausalLog implements UpstreamVertexCausalLog {
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
+	}
+
+	@Override
+	public int mainThreadLogLength() {
+		return mainThreadLog.logLength();
+	}
+
+	@Override
+	public int subpartitionLogLength(IntermediateResultPartitionID intermediateResultPartitionID, int subpartitionIndex) {
+		return this.subpartitionLogs
+			.computeIfAbsent(intermediateResultPartitionID,
+				k-> new ConcurrentHashMap<>(10))
+			.computeIfAbsent(subpartitionIndex, k ->
+				new NetworkBufferBasedContiguousUpstreamThreadCausalLog(bufferPool)).logLength();
 	}
 
 	@Override

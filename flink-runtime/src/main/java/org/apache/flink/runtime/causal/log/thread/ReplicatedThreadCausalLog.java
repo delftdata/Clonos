@@ -27,7 +27,6 @@ package org.apache.flink.runtime.causal.log.thread;
 
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
-import org.apache.flink.shaded.netty4.io.netty.buffer.CompositeByteBuf;
 import org.apache.flink.shaded.netty4.io.netty.buffer.Unpooled;
 
 import javax.annotation.concurrent.NotThreadSafe;
@@ -54,7 +53,7 @@ public class ReplicatedThreadCausalLog implements UpstreamThreadCausalLog {
 	}
 
 	@Override
-	public ByteBuf getDeterminants() {
+	public ByteBuf getDeterminants(long startEpochID) {
 		return Unpooled.wrappedBuffer(checkpointIDToEpoch.values().stream().map(Epoch::getDeterminants).toArray(ByteBuf[]::new));
 	}
 
@@ -89,6 +88,11 @@ public class ReplicatedThreadCausalLog implements UpstreamThreadCausalLog {
 
 		return new ThreadLogDelta(bufferAndSegmentOffset.getBuf(), consumerByteOffset);
 
+	}
+
+	@Override
+	public int logLength() {
+		throw new RuntimeException("Not implemented");
 	}
 
 

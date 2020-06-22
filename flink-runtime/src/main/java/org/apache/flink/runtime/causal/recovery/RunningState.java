@@ -72,7 +72,7 @@ public class RunningState extends AbstractState {
 		VertexID vertex = e.getFailedVertex();
 
 		try {
-			DeterminantResponseEvent responseEvent = new DeterminantResponseEvent(context.jobCausalLog.getDeterminantsOfVertex(vertex));
+			DeterminantResponseEvent responseEvent = new DeterminantResponseEvent(context.jobCausalLog.getDeterminantsOfVertex(vertex, e.getStartEpochID()));
 			LOG.info("Responding with: {}", responseEvent);
 
 			context.inputGate.getInputChannel(channelRequestArrivedFrom).sendTaskEvent(responseEvent);

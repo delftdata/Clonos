@@ -51,7 +51,7 @@ public interface IJobCausalLog extends CheckpointListener {
 
 	void processUpstreamVertexCausalLogDelta(VertexCausalLogDelta d, long checkpointID);
 
-	VertexCausalLogDelta getDeterminantsOfVertex(VertexID vertexId);
+	VertexCausalLogDelta getDeterminantsOfVertex(VertexID vertexId, long startEpochID);
 
 	List<VertexCausalLogDelta> getNextDeterminantsForDownstream(InputChannelID inputChannelID, long checkpointID);
 
@@ -60,4 +60,6 @@ public interface IJobCausalLog extends CheckpointListener {
 	VertexID getVertexId();
 
 
+    int mainThreadLogLength();
+    int subpartitionLogLength(IntermediateResultPartitionID intermediateResultPartitionID, int subpartitionIndex);
 }

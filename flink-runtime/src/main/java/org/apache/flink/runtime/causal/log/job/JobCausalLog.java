@@ -29,9 +29,7 @@ import org.apache.flink.runtime.causal.VertexID;
 import org.apache.flink.runtime.causal.determinant.*;
 import org.apache.flink.runtime.causal.log.vertex.*;
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
-import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferPool;
-import org.apache.flink.runtime.io.network.partition.ResultPartition;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.apache.flink.shaded.netty4.io.netty.util.internal.ConcurrentSet;
@@ -130,6 +128,16 @@ public class JobCausalLog implements IJobCausalLog {
 	}
 
 	@Override
+	public int mainThreadLogLength() {
+		return this.localCausalLog.mainThreadLogLength();
+	}
+
+	@Override
+	public int subpartitionLogLength(IntermediateResultPartitionID intermediateResultPartitionID, int subpartitionIndex) {
+		return this.localCausalLog.subpartitionLogLength(intermediateResultPartitionID, subpartitionIndex);
+	}
+
+	@Override
 	public void unregisterDownstreamConsumer(InputChannelID toCancel) {
 		this.registeredConsumers.remove(toCancel);
 		localCausalLog.unregisterDownstreamConsumer(toCancel);
@@ -138,9 +146,9 @@ public class JobCausalLog implements IJobCausalLog {
 	}
 
 	@Override
-	public VertexCausalLogDelta getDeterminantsOfVertex(VertexID vertexId) {
+	public VertexCausalLogDelta getDeterminantsOfVertex(VertexID vertexId, long startEpochID) {
 		LOG.debug("Got request for determinants of vertexID {}", vertexId);
-		return upstreamDeterminantLogs.computeIfAbsent(vertexId, k -> new BasicUpstreamVertexCausalLog(vertexId, bufferPool)).getDeterminants();
+		return upstreamDeterminantLogs.computeIfAbsent(vertexId, k -> new BasicUpstreamVertexCausalLog(vertexId, bufferPool)).getDeterminants(startEpochID);
 	}
 
 	@Override

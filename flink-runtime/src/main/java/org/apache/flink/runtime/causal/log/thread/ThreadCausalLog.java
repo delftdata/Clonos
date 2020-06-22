@@ -38,15 +38,17 @@ public interface ThreadCausalLog extends CheckpointListener {
 	/**
 	 * Get all determinants in this log from start to end. Does not advance any internal offsets.
 	 * @return a byte[] containing all determinants in sequence
+	 * @param startEpochID
 	 */
-	ByteBuf getDeterminants();
+	ByteBuf getDeterminants(long startEpochID);
 
 
 	/**
 	 * Calculates the next update to send downstream. Advances internal counters as well.
 	 * @param consumer the channel to get the next update for.
-	 * @return a {@link CausalLogThreadDelta} containing the update to send downstream
+	 * @return a  containing the update to send downstream
 	 */
 	ThreadLogDelta getNextDeterminantsForDownstream(InputChannelID consumer, long checkpointID);
 
+    int logLength();
 }
