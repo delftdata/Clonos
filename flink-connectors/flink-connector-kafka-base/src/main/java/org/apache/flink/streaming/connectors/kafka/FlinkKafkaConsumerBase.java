@@ -30,6 +30,7 @@ import org.apache.flink.api.java.typeutils.ResultTypeQueryable;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.MetricGroup;
+import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 import org.apache.flink.runtime.state.CheckpointListener;
 import org.apache.flink.runtime.state.DefaultOperatorStateBackend;
 import org.apache.flink.runtime.state.FunctionInitializationContext;
@@ -222,6 +223,7 @@ public abstract class FlinkKafkaConsumerBase<T> extends RichParallelSourceFuncti
 
 	// ------------------------------------------------------------------------
 
+
 	/**
 	 * Base constructor.
 	 *
@@ -235,9 +237,9 @@ public abstract class FlinkKafkaConsumerBase<T> extends RichParallelSourceFuncti
 			List<String> topics,
 			Pattern topicPattern,
 			KeyedDeserializationSchema<T> deserializer,
-			long discoveryIntervalMillis,
-			boolean useMetrics) {
-		this.topicsDescriptor = new KafkaTopicsDescriptor(topics, topicPattern);
+		long discoveryIntervalMillis,
+		boolean useMetrics) {
+			this.topicsDescriptor = new KafkaTopicsDescriptor(topics, topicPattern);
 		this.deserializer = checkNotNull(deserializer, "valueDeserializer");
 
 		checkArgument(
@@ -642,6 +644,8 @@ public abstract class FlinkKafkaConsumerBase<T> extends RichParallelSourceFuncti
 			sourceContext.markAsTemporarilyIdle();
 		}
 
+		LOG.info("Is recoveryManager null? {}", ((StreamingRuntimeContext)getRuntimeContext()).getRecoveryManager());
+
 		// from this point forward:
 		//   - 'snapshotState' will draw offsets from the fetcher,
 		//     instead of being built from `subscribedPartitionsToStartOffsets`
@@ -655,7 +659,7 @@ public abstract class FlinkKafkaConsumerBase<T> extends RichParallelSourceFuncti
 				(StreamingRuntimeContext) getRuntimeContext(),
 				offsetCommitMode,
 				getRuntimeContext().getMetricGroup().addGroup(KAFKA_CONSUMER_METRICS_GROUP),
-				useMetrics);
+				useMetrics, ((StreamingRuntimeContext)getRuntimeContext()).getRecoveryManager());
 
 		if (!running) {
 			return;
@@ -940,7 +944,7 @@ public abstract class FlinkKafkaConsumerBase<T> extends RichParallelSourceFuncti
 			StreamingRuntimeContext runtimeContext,
 			OffsetCommitMode offsetCommitMode,
 			MetricGroup kafkaMetricGroup,
-			boolean useMetrics) throws Exception;
+			boolean useMetrics, IRecoveryManager recoveryManager) throws Exception;
 
 	/**
 	 * Creates the partition discoverer that is used to find new partitions for this subtask.

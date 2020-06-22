@@ -19,6 +19,7 @@ package org.apache.flink.streaming.api.operators;
 
 import org.apache.flink.runtime.causal.RecordCountProvider;
 import org.apache.flink.runtime.causal.determinant.ProcessingTimeCallbackID;
+import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
 import org.apache.flink.streaming.api.watermark.Watermark;
@@ -372,6 +373,7 @@ public class StreamSourceContexts {
 		private volatile boolean failOnNextCheck;
 
 		private final RecordCountProvider recordCountProvider;
+
 		/**
 		 * Create a watermark context.
 		 *  @param timeService the time service to schedule idleness detection tasks
@@ -460,7 +462,7 @@ public class StreamSourceContexts {
 		public Object getCheckpointLock() {
 			return checkpointLock;
 		}
-
+		
 		@Override
 		public void close() {
 			cancelNextIdleDetectionTask();

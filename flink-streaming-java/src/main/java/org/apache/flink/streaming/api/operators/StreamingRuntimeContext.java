@@ -36,6 +36,8 @@ import org.apache.flink.api.common.state.ReducingStateDescriptor;
 import org.apache.flink.api.common.state.StateDescriptor;
 import org.apache.flink.api.common.state.ValueState;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
+import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
+import org.apache.flink.runtime.causal.recovery.RecoveryManager;
 import org.apache.flink.runtime.causal.services.RandomService;
 import org.apache.flink.runtime.causal.services.TimeService;
 import org.apache.flink.runtime.execution.Environment;
@@ -68,13 +70,10 @@ public class StreamingRuntimeContext extends AbstractRuntimeUDFContext {
 	private final RandomService randomService;
 	private final TimeService timeService;
 
-	public StreamingRuntimeContext(AbstractStreamOperator<?> operator,
-								   Environment env, Map<String, Accumulator<?, ?>> accumulators){
-		this(operator, env, accumulators, null, null);
-	}
+	private final IRecoveryManager recoveryManager;
 
 	public StreamingRuntimeContext(AbstractStreamOperator<?> operator,
-								   Environment env, Map<String, Accumulator<?, ?>> accumulators, TimeService timeService, RandomService randomService) {
+								   Environment env, Map<String, Accumulator<?, ?>> accumulators){
 		super(env.getTaskInfo(),
 				env.getUserClassLoader(),
 				operator.getExecutionConfig(),
@@ -86,8 +85,9 @@ public class StreamingRuntimeContext extends AbstractRuntimeUDFContext {
 		this.taskEnvironment = env;
 		this.streamConfig = new StreamConfig(env.getTaskConfiguration());
 		this.operatorUniqueID = operator.getOperatorID().toString();
-		this.timeService = timeService;
-		this.randomService = randomService;
+		this.timeService = this.operator.getContainingTask().getTimeService();
+		this.randomService = operator.getContainingTask().getRandomService();
+		this.recoveryManager = operator.getContainingTask().getRecoveryManager();
 	}
 
 	// ------------------------------------------------------------------------
@@ -123,6 +123,10 @@ public class StreamingRuntimeContext extends AbstractRuntimeUDFContext {
 
 	public RandomService getRandomService(){
 		return randomService;
+	}
+
+	public IRecoveryManager getRecoveryManager(){
+		return recoveryManager;
 	}
 
 	// ------------------------------------------------------------------------
