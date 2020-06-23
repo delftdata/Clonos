@@ -67,7 +67,7 @@ public class BasicUpstreamVertexCausalLog implements UpstreamVertexCausalLog {
 		LOG.debug("Processing Vertex Delta: {}", causalLogDelta );
 
 		if(causalLogDelta.mainThreadDelta != null)
-			mainThreadLog.processUpstreamVertexCausalLogDelta(causalLogDelta.getMainThreadDelta(), checkpointID);
+			mainThreadLog.processUpstreamCausalLogDelta(causalLogDelta.getMainThreadDelta(), checkpointID);
 
 		for(Map.Entry<IntermediateResultPartitionID, SortedMap<Integer,SubpartitionThreadLogDelta>> entry : causalLogDelta.partitionDeltas.entrySet()){
 
@@ -78,7 +78,7 @@ public class BasicUpstreamVertexCausalLog implements UpstreamVertexCausalLog {
 			for(SubpartitionThreadLogDelta logDelta : entry.getValue().values()) {
 				UpstreamThreadCausalLog threadLog = idsLogs.computeIfAbsent(logDelta.getSubpartitionIndex(),  k -> new NetworkBufferBasedContiguousUpstreamThreadCausalLog(bufferPool));
 				LOG.debug("{},{} before: {}", entry.getKey(), logDelta.getSubpartitionIndex(), mainThreadLog);
-				threadLog.processUpstreamVertexCausalLogDelta(logDelta, checkpointID);
+				threadLog.processUpstreamCausalLogDelta(logDelta, checkpointID);
 				LOG.debug("{},{} after: {}", entry.getKey(), logDelta.getSubpartitionIndex(), mainThreadLog);
 			}
 		}

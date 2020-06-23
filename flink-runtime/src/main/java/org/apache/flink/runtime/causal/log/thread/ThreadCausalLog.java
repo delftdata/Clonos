@@ -48,7 +48,11 @@ public interface ThreadCausalLog extends CheckpointListener {
 	 * @param consumer the channel to get the next update for.
 	 * @return a  containing the update to send downstream
 	 */
-	ThreadLogDelta getNextDeterminantsForDownstream(InputChannelID consumer, long checkpointID);
+	ThreadLogDelta getNextDeterminantsForDownstream(InputChannelID consumer, long epochID);
 
+	/**
+	 * This is only used for testing and runtime assertions that recovery went correctly.
+	 * Obtains the length in bytes of the log
+	 */
     int logLength();
 }

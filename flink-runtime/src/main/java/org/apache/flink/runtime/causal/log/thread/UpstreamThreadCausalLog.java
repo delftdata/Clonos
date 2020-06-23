@@ -28,10 +28,10 @@ package org.apache.flink.runtime.causal.log.thread;
 public interface UpstreamThreadCausalLog extends ThreadCausalLog {
 
 	/**
-	 * Process a {@link CausalLogThreadDelta}.
+	 * Process a {@link ThreadLogDelta}.
 	 * This involves using the provided offset to determine if any new determinants are present and appending only those.
 	 * @param causalLogDelta
 	 */
-	void processUpstreamVertexCausalLogDelta(ThreadLogDelta causalLogDelta, long epochID);
+	void processUpstreamCausalLogDelta(ThreadLogDelta causalLogDelta, long epochID);
 
 }

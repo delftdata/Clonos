@@ -119,7 +119,7 @@ public class CircularLocalThreadLogThread implements LocalThreadCausalLog {
 	}
 
 	@Override
-	public synchronized ThreadLogDelta getNextDeterminantsForDownstream(InputChannelID channel, long checkpointID) {
+	public synchronized ThreadLogDelta getNextDeterminantsForDownstream(InputChannelID channel, long epochID) {
 
 
 		DownstreamChannelOffset channelOffset = channelOffsetMap.get(channel);

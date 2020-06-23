@@ -58,7 +58,7 @@ public class ReplicatedThreadCausalLog implements UpstreamThreadCausalLog {
 	}
 
 	@Override
-	public void processUpstreamVertexCausalLogDelta(ThreadLogDelta causalLogDelta, long epochID) {
+	public void processUpstreamCausalLogDelta(ThreadLogDelta causalLogDelta, long epochID) {
 		Epoch epoch = checkpointIDToEpoch.computeIfAbsent(epochID, Epoch::new);
 		//todo change to a nonblocking strategy
 		synchronized (epoch){
@@ -67,16 +67,16 @@ public class ReplicatedThreadCausalLog implements UpstreamThreadCausalLog {
 	}
 
 	@Override
-	public ThreadLogDelta getNextDeterminantsForDownstream(InputChannelID consumer, long checkpointID) {
-		ConsumerIndex consumerIndex = consumerIDToOffset.computeIfAbsent(consumer, k -> new ConsumerIndex(checkpointID));
+	public ThreadLogDelta getNextDeterminantsForDownstream(InputChannelID consumer, long epochID) {
+		ConsumerIndex consumerIndex = consumerIDToOffset.computeIfAbsent(consumer, k -> new ConsumerIndex(epochID));
 
-		if(consumerIndex.getEpochID() != checkpointID)
-			consumerIndex.startConsumingEpoch(checkpointID);
+		if(consumerIndex.getEpochID() != epochID)
+			consumerIndex.startConsumingEpoch(epochID);
 
 		int consumerSegmentOffset = consumerIndex.getSegmentOffset();
 		int consumerByteOffset = consumerIndex.getByteOffset();
 
-		Epoch requestedEpoch = checkpointIDToEpoch.computeIfAbsent(checkpointID, Epoch::new);
+		Epoch requestedEpoch = checkpointIDToEpoch.computeIfAbsent(epochID, Epoch::new);
 
 		BufferAndSegmentOffset bufferAndSegmentOffset;
 		synchronized (requestedEpoch){

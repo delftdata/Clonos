@@ -36,7 +36,7 @@ public final class NetworkBufferBasedContiguousUpstreamThreadCausalLog extends N
 
 	//Multiple producers may call this concurrently, thus we synchronize on buf
 	@Override
-	public void processUpstreamVertexCausalLogDelta(ThreadLogDelta causalLogDelta, long epochID) {
+	public void processUpstreamCausalLogDelta(ThreadLogDelta causalLogDelta, long epochID) {
 
 		int determinantSize = causalLogDelta.getDeltaSize();
 		if (determinantSize > 0) {
