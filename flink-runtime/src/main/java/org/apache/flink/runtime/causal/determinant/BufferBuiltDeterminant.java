@@ -58,4 +58,9 @@ public final class BufferBuiltDeterminant extends Determinant{
 			"numberOfBytes=" + numberOfBytes +
 			'}';
 	}
+
+	@Override
+	public int getEncodedSizeInBytes() {
+		return super.getEncodedSizeInBytes() + Integer.BYTES;
+	}
 }

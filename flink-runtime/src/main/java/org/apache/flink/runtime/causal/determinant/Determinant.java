@@ -21,11 +21,10 @@ public abstract class Determinant {
 
 	public static final byte ORDER_DETERMINANT_TAG = 0;
 	public static final byte TIMESTAMP_DETERMINANT_TAG = 1;
-	public static final byte RANDOM_EMIT_DETERMINANT_TAG = 2;
-	public static final byte RNG_DETERMINANT_TAG = 3;
-	public static final byte BUFFER_BUILT_TAG = 4;
-	public static final byte TIMER_TRIGGER_DETERMINANT = 5;
-	public static final byte SOURCE_CHECKPOINT_DETERMINANT = 6;
+	public static final byte RNG_DETERMINANT_TAG = 2;
+	public static final byte BUFFER_BUILT_TAG = 3;
+	public static final byte TIMER_TRIGGER_DETERMINANT = 4;
+	public static final byte SOURCE_CHECKPOINT_DETERMINANT = 5;
 
 
 	public boolean isOrderDeterminant() {
@@ -42,14 +41,6 @@ public abstract class Determinant {
 
 	public TimestampDeterminant asTimestampDeterminant() {
 		return (TimestampDeterminant) this;
-	}
-
-	public boolean isRandomEmitDeterminant() {
-		return getClass() == RandomEmitDeterminant.class;
-	}
-
-	public RandomEmitDeterminant asRandomEmitDeterminant() {
-		return (RandomEmitDeterminant) this;
 	}
 
 	public boolean isRNGDeterminant() {
@@ -85,4 +76,7 @@ public abstract class Determinant {
 		return (SourceCheckpointDeterminant) this;
 	}
 
+	public int getEncodedSizeInBytes(){
+		return Byte.BYTES;
+	}
 }

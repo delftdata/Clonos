@@ -17,28 +17,22 @@
  */
 package org.apache.flink.runtime.causal.determinant;
 
-public final class RandomEmitDeterminant extends Determinant {
-	byte channel;
 
-	public RandomEmitDeterminant(){}
+import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 
-	public RandomEmitDeterminant(byte channel) {
-		this.channel = channel;
-	}
+import java.nio.ByteBuffer;
+import java.util.List;
 
-	public byte getChannel() {
-		return channel;
-	}
+/**
+ * Encoding strategy for determinants. Takes a determinant and returns its representation as bytes.
+ * The tag must always be written first, as this allows the determinant to later be decoded.
+ */
+public interface DeterminantEncoder {
 
-	public RandomEmitDeterminant replace(byte channel) {
-		this.channel = channel;
-		return this;
-	}
+	byte[] encode(Determinant determinant);
 
-	@Override
-	public String toString() {
-		return "RandomEmitDeterminant{" +
-			"channel=" + channel +
-			'}';
-	}
+	void encodeTo(Determinant determinant, ByteBuf targetBuf);
+
+	Determinant decodeNext(ByteBuf buffer);
+
 }

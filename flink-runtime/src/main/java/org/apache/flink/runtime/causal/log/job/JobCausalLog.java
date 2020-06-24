@@ -53,7 +53,7 @@ public class JobCausalLog implements IJobCausalLog {
 	ConcurrentMap<VertexID, UpstreamVertexCausalLog> upstreamDeterminantLogs;
 
 	LocalVertexCausalLog localCausalLog;
-	DeterminantEncodingStrategy determinantEncodingStrategy;
+	DeterminantEncoder determinantEncoder;
 
 	ConcurrentSet<InputChannelID> registeredConsumers;
 
@@ -66,7 +66,7 @@ public class JobCausalLog implements IJobCausalLog {
 		this.bufferPool = bufferPool;
 
 		LOG.info("Creating new CausalLoggingManager for id {}, with upstreams {} ", myVertexID, String.join(", ", vertexGraphInformation.getUpstreamVertexes().stream().map(Object::toString).collect(Collectors.toList())));
-		this.determinantEncodingStrategy = new SimpleDeterminantEncodingStrategy();
+		this.determinantEncoder = new SimpleDeterminantEncoder();
 
 		localCausalLog = new BasicLocalVertexCausalLog(vertexGraphInformation,resultPartitionsOfLocalVertex, bufferPool);
 
@@ -93,7 +93,7 @@ public class JobCausalLog implements IJobCausalLog {
 		assert (Thread.holdsLock(lock));
 		LOG.debug("Appending determinant {}", determinant);
 		localCausalLog.appendDeterminants(
-			this.determinantEncodingStrategy.encode(determinant),
+			this.determinantEncoder.encode(determinant),
 			checkpointID
 		);
 	}
@@ -102,7 +102,7 @@ public class JobCausalLog implements IJobCausalLog {
 	public void appendSubpartitionDeterminants(Determinant determinant, long epochID, IntermediateResultPartitionID intermediateResultPartitionID, int subpartitionIndex) {
 		LOG.debug("Appending determinant {} for epochID {} to intermediateDataSetID {} subpartition {}", determinant, epochID, intermediateResultPartitionID, subpartitionIndex);
 		localCausalLog.appendSubpartitionDeterminants(
-			this.determinantEncodingStrategy.encode(determinant),
+			this.determinantEncoder.encode(determinant),
 			epochID,
 			intermediateResultPartitionID,
 			subpartitionIndex
@@ -118,8 +118,8 @@ public class JobCausalLog implements IJobCausalLog {
 	}
 
 	@Override
-	public DeterminantEncodingStrategy getDeterminantEncodingStrategy() {
-		return determinantEncodingStrategy;
+	public DeterminantEncoder getDeterminantEncoder() {
+		return determinantEncoder;
 	}
 
 	@Override

@@ -53,7 +53,7 @@ public class ReplayingState extends AbstractState {
 
 	private static final Logger LOG = LoggerFactory.getLogger(ReplayingState.class);
 
-	DeterminantEncodingStrategy determinantEncodingStrategy;
+	DeterminantEncoder determinantEncoder;
 
 	ByteBuf mainThreadRecoveryBuffer;
 
@@ -66,7 +66,7 @@ public class ReplayingState extends AbstractState {
 		super(context);
 
 		LOG.info("Entered replaying state with delta: {}", recoveryDeterminants);
-		determinantEncodingStrategy = context.jobCausalLog.getDeterminantEncodingStrategy();
+		determinantEncoder = context.jobCausalLog.getDeterminantEncoder();
 
 		createSubpartitionRecoveryThreads(recoveryDeterminants);
 		for (Thread t : recoveryThreads)
@@ -165,7 +165,7 @@ public class ReplayingState extends AbstractState {
 		if (mainThreadRecoveryBuffer == null || !mainThreadRecoveryBuffer.isReadable())
 			finishReplaying();
 		else
-			nextDeterminant = determinantEncodingStrategy.decodeNext(mainThreadRecoveryBuffer);
+			nextDeterminant = determinantEncoder.decodeNext(mainThreadRecoveryBuffer);
 	}
 
 	private void finishReplaying() {
@@ -188,7 +188,7 @@ public class ReplayingState extends AbstractState {
 	private static class SubpartitionRecoveryThread extends Thread {
 		private final PipelinedSubpartition pipelinedSubpartition;
 		private final ByteBuf recoveryBuffer;
-		private final DeterminantEncodingStrategy determinantEncodingStrategy;
+		private final DeterminantEncoder determinantEncoder;
 		private final RecoveryManager context;
 		private final IntermediateResultPartitionID partitionID;
 		private final int index;
@@ -196,7 +196,7 @@ public class ReplayingState extends AbstractState {
 		public SubpartitionRecoveryThread(ByteBuf recoveryBuffer, PipelinedSubpartition pipelinedSubpartition, RecoveryManager context, IntermediateResultPartitionID partitionID, int index) {
 			this.recoveryBuffer = recoveryBuffer;
 			this.pipelinedSubpartition = pipelinedSubpartition;
-			this.determinantEncodingStrategy = context.jobCausalLog.getDeterminantEncodingStrategy();
+			this.determinantEncoder = context.jobCausalLog.getDeterminantEncoder();
 			this.context = context;
 			this.partitionID = partitionID;
 			this.index = index;
@@ -211,7 +211,7 @@ public class ReplayingState extends AbstractState {
 			//2. Rebuild in-fligh log and subpartition state
 			while (recoveryBuffer.isReadable()) {
 
-				Determinant determinant = determinantEncodingStrategy.decodeNext(recoveryBuffer);
+				Determinant determinant = determinantEncoder.decodeNext(recoveryBuffer);
 
 				if (!(determinant instanceof BufferBuiltDeterminant))
 					throw new RuntimeException("Subpartition has corrupt recovery buffer, expected buffer built, got: " + determinant);

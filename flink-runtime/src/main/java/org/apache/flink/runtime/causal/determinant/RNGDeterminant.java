@@ -43,4 +43,8 @@ public final class RNGDeterminant extends Determinant {
 			'}';
 	}
 
+	@Override
+	public int getEncodedSizeInBytes() {
+		return super.getEncodedSizeInBytes() + Integer.BYTES;
+	}
 }

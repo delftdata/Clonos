@@ -80,4 +80,11 @@ public class TimerTriggerDeterminant extends NonMainThreadDeterminant {
 			", timestamp=" + timestamp +
 			'}';
 	}
+
+	@Override
+	public int getEncodedSizeInBytes() {
+		// size of super, long for ts, 1 for id type ordinal, size of name if exists and name if exists.
+		return super.getEncodedSizeInBytes() + Long.BYTES + Byte.BYTES + (processingTimeCallbackID.getType() != ProcessingTimeCallbackID.Type.INTERNAL ?
+			0 : Integer.BYTES + processingTimeCallbackID.getName().getBytes().length);
+	}
 }

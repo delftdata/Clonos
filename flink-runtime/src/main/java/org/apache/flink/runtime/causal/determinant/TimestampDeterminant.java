@@ -41,4 +41,9 @@ public final class TimestampDeterminant extends Determinant {
 			"timestamp=" + timestamp +
 			'}';
 	}
+
+	@Override
+	public int getEncodedSizeInBytes() {
+		return super.getEncodedSizeInBytes() + Long.BYTES;
+	}
 }

@@ -31,7 +31,6 @@ public final class OrderDeterminant extends Determinant {
 	}
 
 
-
 	public byte getChannel() {
 		return channel;
 	}
@@ -46,5 +45,10 @@ public final class OrderDeterminant extends Determinant {
 		return "OrderDeterminant{" +
 			"channel=" + channel +
 			'}';
+	}
+
+	@Override
+	public int getEncodedSizeInBytes() {
+		return super.getEncodedSizeInBytes() + Byte.BYTES;
 	}
 }

@@ -55,7 +55,7 @@ public interface IJobCausalLog extends CheckpointListener {
 
 	List<VertexCausalLogDelta> getNextDeterminantsForDownstream(InputChannelID inputChannelID, long checkpointID);
 
-	DeterminantEncodingStrategy getDeterminantEncodingStrategy();
+	DeterminantEncoder getDeterminantEncoder();
 
 	VertexID getVertexId();
 

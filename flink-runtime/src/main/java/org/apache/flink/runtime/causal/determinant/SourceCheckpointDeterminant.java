@@ -102,4 +102,11 @@ public class SourceCheckpointDeterminant extends NonMainThreadDeterminant {
 			"recordCount=" + recordCount +
 			'}';
 	}
+
+	@Override
+	public int getEncodedSizeInBytes() {
+		//An extra byte is used to encode if storage reference exists
+		return super.getEncodedSizeInBytes() + Long.BYTES + Long.BYTES + Byte.BYTES + Byte.BYTES +
+			(storageReference != null ? Integer.BYTES + storageReference.length : 0);
+	}
 }

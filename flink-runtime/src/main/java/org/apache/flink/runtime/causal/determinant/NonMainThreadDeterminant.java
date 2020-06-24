@@ -47,4 +47,9 @@ public abstract class NonMainThreadDeterminant extends Determinant {
 	public void replace(int recordCount) {
 		this.recordCount = recordCount;
 	}
+
+	@Override
+	public int getEncodedSizeInBytes() {
+		return super.getEncodedSizeInBytes() + Integer.BYTES;
+	}
 }
