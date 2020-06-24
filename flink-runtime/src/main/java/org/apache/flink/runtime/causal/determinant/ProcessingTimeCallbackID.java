@@ -36,6 +36,8 @@ public class ProcessingTimeCallbackID{
 	private Type type;
 	private String name;
 
+	public ProcessingTimeCallbackID(){}
+
 	public ProcessingTimeCallbackID(Type type) {
 		this.type = type;
 	}
@@ -50,6 +52,18 @@ public class ProcessingTimeCallbackID{
 	}
 
 	public String getName(){return name;}
+
+	public ProcessingTimeCallbackID replace(Type type){
+		this.name = null;
+		this.type = type;
+		return this;
+	}
+
+	public ProcessingTimeCallbackID replace(String name){
+		this.type = Type.INTERNAL;
+		this.name = name;
+		return this;
+	}
 
 	@Override
 	public boolean equals(Object o) {

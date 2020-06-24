@@ -20,6 +20,8 @@ package org.apache.flink.runtime.causal.determinant;
 public final class RandomEmitDeterminant extends Determinant {
 	byte channel;
 
+	public RandomEmitDeterminant(){}
+
 	public RandomEmitDeterminant(byte channel) {
 		this.channel = channel;
 	}
@@ -28,8 +30,9 @@ public final class RandomEmitDeterminant extends Determinant {
 		return channel;
 	}
 
-	public void replace(byte channel) {
+	public RandomEmitDeterminant replace(byte channel) {
 		this.channel = channel;
+		return this;
 	}
 
 	@Override

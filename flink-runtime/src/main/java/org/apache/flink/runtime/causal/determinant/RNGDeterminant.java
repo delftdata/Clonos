@@ -20,6 +20,8 @@ package org.apache.flink.runtime.causal.determinant;
 public final class RNGDeterminant extends Determinant {
 	int number;
 
+	public RNGDeterminant(){}
+
 	public RNGDeterminant(int number) {
 		this.number = number;
 	}
@@ -29,8 +31,9 @@ public final class RNGDeterminant extends Determinant {
 	}
 
 
-	public void replace(int number) {
+	public RNGDeterminant replace(int number) {
 		this.number = number;
+		return this;
 	}
 
 	@Override

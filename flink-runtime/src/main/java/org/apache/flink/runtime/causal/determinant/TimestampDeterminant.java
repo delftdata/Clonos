@@ -20,6 +20,7 @@ package org.apache.flink.runtime.causal.determinant;
 public final class TimestampDeterminant extends Determinant {
 	long timestamp;
 
+	public TimestampDeterminant(){}
 
 	public TimestampDeterminant(long timestamp) {
 		this.timestamp = timestamp;
@@ -29,8 +30,9 @@ public final class TimestampDeterminant extends Determinant {
 		return timestamp;
 	}
 
-	public void replace(long timestamp) {
+	public TimestampDeterminant replace(long timestamp) {
 		this.timestamp = timestamp;
+		return this;
 	}
 
 	@Override

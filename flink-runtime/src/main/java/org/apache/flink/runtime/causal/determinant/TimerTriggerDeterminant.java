@@ -25,7 +25,7 @@ public class TimerTriggerDeterminant extends NonMainThreadDeterminant {
 	private long timestamp;
 
 	public TimerTriggerDeterminant(){
-
+		this.processingTimeCallbackID = new ProcessingTimeCallbackID();
 	}
 
 	public TimerTriggerDeterminant(int recordCount, ProcessingTimeCallbackID processingTimeCallbackID, long timestamp){
@@ -46,10 +46,25 @@ public class TimerTriggerDeterminant extends NonMainThreadDeterminant {
 		return timestamp;
 	}
 
-	public void replace(int recordCount, ProcessingTimeCallbackID processingTimeCallbackID, long timestamp){
+	public TimerTriggerDeterminant replace(int recordCount, ProcessingTimeCallbackID processingTimeCallbackID, long timestamp){
 		super.replace(recordCount);
 		this.processingTimeCallbackID = processingTimeCallbackID;
 		this.timestamp = timestamp;
+		return this;
+	}
+
+	public TimerTriggerDeterminant replace(int recordCount, String callbackIDName, long timestamp){
+		super.replace(recordCount);
+		this.processingTimeCallbackID.replace(callbackIDName);
+		this.timestamp = timestamp;
+		return this;
+	}
+
+	public TimerTriggerDeterminant replace(int recordCount, ProcessingTimeCallbackID.Type type, long timestamp){
+		super.replace(recordCount);
+		this.processingTimeCallbackID.replace(type);
+		this.timestamp = timestamp;
+		return this;
 	}
 
 	@Override

@@ -26,6 +26,7 @@
 package org.apache.flink.runtime.causal.determinant;
 
 import org.apache.flink.runtime.causal.recovery.RecoveryManager;
+import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.partition.PipelinedSubpartition;
 import org.apache.flink.runtime.io.network.partition.ResultSubpartition;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
@@ -35,6 +36,7 @@ public final class BufferBuiltDeterminant extends Determinant{
 
 	private int numberOfBytes;
 
+	public BufferBuiltDeterminant(){}
 	public BufferBuiltDeterminant( int numberOfBytes) {
 		this.numberOfBytes = numberOfBytes;
 	}
@@ -45,8 +47,9 @@ public final class BufferBuiltDeterminant extends Determinant{
 		return numberOfBytes;
 	}
 
-	public void replace(int numberOfBytes) {
+	public BufferBuiltDeterminant replace(int numberOfBytes) {
 		this.numberOfBytes = numberOfBytes;
+		return this;
 	}
 
 	@Override

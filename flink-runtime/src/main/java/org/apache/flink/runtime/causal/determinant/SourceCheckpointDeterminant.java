@@ -70,12 +70,13 @@ public class SourceCheckpointDeterminant extends NonMainThreadDeterminant {
 		return type;
 	}
 
-	public void replace(int recordCount, long checkpointID, long checkpointTimestamp, CheckpointType type, byte[] storageReference){
+	public SourceCheckpointDeterminant replace(int recordCount, long checkpointID, long checkpointTimestamp, CheckpointType type, byte[] storageReference){
 		super.replace(recordCount);
 		this.checkpointID = checkpointID;
 		this.checkpointTimestamp = checkpointTimestamp;
 		this.type = type;
 		this.storageReference = storageReference;
+		return this;
 	}
 
 
