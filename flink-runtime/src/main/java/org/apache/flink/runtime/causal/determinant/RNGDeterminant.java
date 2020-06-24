@@ -29,7 +29,7 @@ public final class RNGDeterminant extends Determinant {
 	}
 
 
-	public void setNumber(int number) {
+	public void replace(int number) {
 		this.number = number;
 	}
 

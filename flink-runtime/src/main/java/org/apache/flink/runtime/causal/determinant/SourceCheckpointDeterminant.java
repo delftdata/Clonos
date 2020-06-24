@@ -32,15 +32,19 @@ import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.checkpoint.CheckpointType;
 import org.apache.flink.runtime.state.CheckpointStorageLocationReference;
 
-public class SourceCheckpointDeterminant extends NonMainThreadDeterminant{
+public class SourceCheckpointDeterminant extends NonMainThreadDeterminant {
 
 
-	private final byte[] storageReference;
-	private final long checkpointID;
-	private final long checkpointTimestamp;
-	private final CheckpointType type;
+	private byte[] storageReference;
+	private long checkpointID;
+	private long checkpointTimestamp;
+	private CheckpointType type;
 
-	public SourceCheckpointDeterminant(int recordCount, long checkpointID, long checkpointTimestamp, CheckpointType type, byte[] storageReference){
+	public SourceCheckpointDeterminant() {
+		super();
+	}
+
+	public SourceCheckpointDeterminant(int recordCount, long checkpointID, long checkpointTimestamp, CheckpointType type, byte[] storageReference) {
 		super(recordCount);
 		this.checkpointID = checkpointID;
 		this.checkpointTimestamp = checkpointTimestamp;
@@ -48,12 +52,7 @@ public class SourceCheckpointDeterminant extends NonMainThreadDeterminant{
 		this.storageReference = storageReference;
 	}
 
-	@Override
-	public String toString() {
-		return "SourceCheckpointDeterminant{" +
-			"recordCount=" + recordCount +
-			'}';
-	}
+
 
 	public byte[] getStorageReference() {
 		return storageReference;
@@ -71,6 +70,15 @@ public class SourceCheckpointDeterminant extends NonMainThreadDeterminant{
 		return type;
 	}
 
+	public void replace(int recordCount, long checkpointID, long checkpointTimestamp, CheckpointType type, byte[] storageReference){
+		super.replace(recordCount);
+		this.checkpointID = checkpointID;
+		this.checkpointTimestamp = checkpointTimestamp;
+		this.type = type;
+		this.storageReference = storageReference;
+	}
+
+
 	@Override
 	public void process(RecoveryManager recoveryManager) {
 		CheckpointMetrics metrics = new CheckpointMetrics()
@@ -79,11 +87,18 @@ public class SourceCheckpointDeterminant extends NonMainThreadDeterminant{
 
 		try {
 			recoveryManager.getCheckpointForceable().performCheckpoint(
-				new CheckpointMetaData(checkpointID,checkpointTimestamp),
+				new CheckpointMetaData(checkpointID, checkpointTimestamp),
 				new CheckpointOptions(type, (storageReference.length > 0 ? new CheckpointStorageLocationReference(storageReference) : CheckpointStorageLocationReference.getDefault())),
 				metrics);
 		} catch (Exception e) {
 			e.printStackTrace();
-		};
+		}
+	}
+
+	@Override
+	public String toString() {
+		return "SourceCheckpointDeterminant{" +
+			"recordCount=" + recordCount +
+			'}';
 	}
 }

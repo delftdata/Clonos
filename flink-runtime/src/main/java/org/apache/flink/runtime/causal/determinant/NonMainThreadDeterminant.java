@@ -30,7 +30,11 @@ import org.apache.flink.runtime.causal.recovery.RecoveryManager;
 public abstract class NonMainThreadDeterminant extends Determinant {
 	protected int recordCount;
 
-	public NonMainThreadDeterminant(int recordCount){
+	protected NonMainThreadDeterminant(){
+
+	}
+
+	protected NonMainThreadDeterminant(int recordCount){
 		this.recordCount = recordCount;
 	}
 
@@ -40,4 +44,7 @@ public abstract class NonMainThreadDeterminant extends Determinant {
 		return recordCount;
 	}
 
+	public void replace(int recordCount) {
+		this.recordCount = recordCount;
+	}
 }

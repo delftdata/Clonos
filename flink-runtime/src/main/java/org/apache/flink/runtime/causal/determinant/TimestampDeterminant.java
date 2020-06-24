@@ -29,7 +29,7 @@ public final class TimestampDeterminant extends Determinant {
 		return timestamp;
 	}
 
-	public void setTimestamp(long timestamp) {
+	public void replace(long timestamp) {
 		this.timestamp = timestamp;
 	}
 

@@ -28,7 +28,7 @@ public final class RandomEmitDeterminant extends Determinant {
 		return channel;
 	}
 
-	public void setChannel(byte channel) {
+	public void replace(byte channel) {
 		this.channel = channel;
 	}
 

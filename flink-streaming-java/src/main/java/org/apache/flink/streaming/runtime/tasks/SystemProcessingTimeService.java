@@ -392,7 +392,7 @@ public class SystemProcessingTimeService extends ProcessingTimeService implement
 			synchronized (lock) {
 				try {
 					if (serviceStatus.get() == STATUS_ALIVE) {
-						causalLog.appendDeterminant(new TimerTriggerDeterminant(target.getID(), recordCountProvider.getRecordCount(), timestamp), epochProvider.getCurrentEpochID());
+						causalLog.appendDeterminant(new TimerTriggerDeterminant(recordCountProvider.getRecordCount(), target.getID(), timestamp), epochProvider.getCurrentEpochID());
 						target.onProcessingTime(timestamp);
 					}
 				} catch (Throwable t) {
@@ -457,7 +457,7 @@ public class SystemProcessingTimeService extends ProcessingTimeService implement
 			synchronized (lock) {
 				try {
 					if (serviceStatus.get() == STATUS_ALIVE) {
-						causalLog.appendDeterminant(new TimerTriggerDeterminant(target.getID(), recordCountProvider.getRecordCount(), timestamp), epochProvider.getCurrentEpochID());
+						causalLog.appendDeterminant(new TimerTriggerDeterminant(recordCountProvider.getRecordCount(), target.getID(), timestamp), epochProvider.getCurrentEpochID());
 						target.onProcessingTime(nextTimestamp);
 					}
 

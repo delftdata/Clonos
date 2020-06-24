@@ -45,6 +45,10 @@ public final class BufferBuiltDeterminant extends Determinant{
 		return numberOfBytes;
 	}
 
+	public void replace(int numberOfBytes) {
+		this.numberOfBytes = numberOfBytes;
+	}
+
 	@Override
 	public String toString() {
 		return "BufferBuiltDeterminant{" +

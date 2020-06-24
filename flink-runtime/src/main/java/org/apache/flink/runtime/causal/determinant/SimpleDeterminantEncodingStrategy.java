@@ -18,13 +18,9 @@
 package org.apache.flink.runtime.causal.determinant;
 
 
-import org.apache.flink.core.memory.DataInputDeserializer;
-import org.apache.flink.core.memory.DataOutputSerializer;
-import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.runtime.checkpoint.CheckpointType;
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 
-import java.io.IOException;
 import java.nio.ByteBuffer;
 
 public class SimpleDeterminantEncodingStrategy implements DeterminantEncodingStrategy {
@@ -170,7 +166,7 @@ public class SimpleDeterminantEncodingStrategy implements DeterminantEncodingStr
 			id = new ProcessingTimeCallbackID(type);
 		}
 
-		return new TimerTriggerDeterminant(id, recordCount, timestamp);
+		return new TimerTriggerDeterminant(recordCount, id, timestamp);
 	}
 
 	private byte[] encodeSourceCheckpointDeterminant(SourceCheckpointDeterminant det) {

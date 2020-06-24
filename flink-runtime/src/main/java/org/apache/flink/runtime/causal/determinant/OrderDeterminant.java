@@ -29,7 +29,7 @@ public final class OrderDeterminant extends Determinant {
 		return channel;
 	}
 
-	public void setChannel(byte channel) {
+	public void replace(byte channel) {
 		this.channel = channel;
 	}
 
