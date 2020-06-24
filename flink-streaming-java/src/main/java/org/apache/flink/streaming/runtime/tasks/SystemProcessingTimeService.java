@@ -37,6 +37,7 @@ import javax.annotation.Nonnull;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Timer;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -78,6 +79,7 @@ public class SystemProcessingTimeService extends ProcessingTimeService implement
 	private final RecordCountProvider recordCountProvider;
 	private final JobCausalLog causalLog;
 	private final RecoveryManager recoveryManager;
+	private TimerTriggerDeterminant reuseTimerTriggerDeterminant;
 
 	private final Map<ProcessingTimeCallbackID, PreregisteredTimer> preregisteredTimerTasks;
 
@@ -103,6 +105,9 @@ public class SystemProcessingTimeService extends ProcessingTimeService implement
 		this.causalLog = causalLog;
 		this.recoveryManager = recoveryManager;
 
+		this.preregisteredTimerTasks = new HashMap<>();
+		this.reuseTimerTriggerDeterminant = new TimerTriggerDeterminant();
+
 		this.status = new AtomicInteger(STATUS_ALIVE);
 
 		if (threadFactory == null) {
@@ -117,7 +122,7 @@ public class SystemProcessingTimeService extends ProcessingTimeService implement
 		// make sure shutdown removes all pending tasks
 		this.timerService.setContinueExistingPeriodicTasksAfterShutdownPolicy(false);
 		this.timerService.setExecuteExistingDelayedTasksAfterShutdownPolicy(false);
-		this.preregisteredTimerTasks = new HashMap<>();
+
 	}
 
 	@Override
@@ -146,7 +151,8 @@ public class SystemProcessingTimeService extends ProcessingTimeService implement
 		// With processing time, we therefore need to delay firing the timer by one ms.
 		long delay = Math.max(timestamp - getCurrentProcessingTime(), 0) + 1;
 		ScheduledFuture<?> future;
-		TriggerTask toRegister = new TriggerTask(status, task, checkpointLock, target, timestamp, causalLog, epochProvider, recordCountProvider);
+		TriggerTask toRegister = new TriggerTask(status, task, checkpointLock, target, timestamp, causalLog,
+			epochProvider, recordCountProvider, reuseTimerTriggerDeterminant);
 		if (recoveryManager.isRunning())
 			future = registerTimerRunning(toRegister, delay);
 		else
@@ -187,7 +193,8 @@ public class SystemProcessingTimeService extends ProcessingTimeService implement
 	public ScheduledFuture<?> scheduleAtFixedRate(ProcessingTimeCallback callback, long initialDelay, long period) {
 		long nextTimestamp = getCurrentProcessingTime() + initialDelay;
 
-		RepeatedTriggerTask toRegister = new RepeatedTriggerTask(status, task, checkpointLock, callback, nextTimestamp, period, causalLog, epochProvider, recordCountProvider);
+		RepeatedTriggerTask toRegister = new RepeatedTriggerTask(status, task, checkpointLock, callback, nextTimestamp,
+			period, causalLog, epochProvider, recordCountProvider, reuseTimerTriggerDeterminant);
 		ScheduledFuture<?> future;
 		if (recoveryManager.isRunning())
 			future = registerAtFixedRateRunning(initialDelay, period, toRegister);
@@ -364,13 +371,19 @@ public class SystemProcessingTimeService extends ProcessingTimeService implement
 		private final RecordCountProvider recordCountProvider;
 		private final EpochProvider epochProvider;
 		private final JobCausalLog causalLog;
+		private final TimerTriggerDeterminant timerTriggerDeterminantToUse;
+
 
 		private TriggerTask(
 			final AtomicInteger serviceStatus,
 			final AsyncExceptionHandler exceptionHandler,
 			final Object lock,
 			final ProcessingTimeCallback target,
-			final long timestamp, JobCausalLog causalLog, EpochProvider epochProvider, RecordCountProvider recordCountProvider) {
+			final long timestamp,
+			JobCausalLog causalLog,
+			EpochProvider epochProvider,
+			RecordCountProvider recordCountProvider,
+			TimerTriggerDeterminant toUse) {
 
 			this.serviceStatus = Preconditions.checkNotNull(serviceStatus);
 			this.exceptionHandler = Preconditions.checkNotNull(exceptionHandler);
@@ -380,6 +393,7 @@ public class SystemProcessingTimeService extends ProcessingTimeService implement
 			this.causalLog = causalLog;
 			this.epochProvider = epochProvider;
 			this.recordCountProvider = recordCountProvider;
+			this.timerTriggerDeterminantToUse = toUse;
 		}
 
 
@@ -392,7 +406,12 @@ public class SystemProcessingTimeService extends ProcessingTimeService implement
 			synchronized (lock) {
 				try {
 					if (serviceStatus.get() == STATUS_ALIVE) {
-						causalLog.appendDeterminant(new TimerTriggerDeterminant(recordCountProvider.getRecordCount(), target.getID(), timestamp), epochProvider.getCurrentEpochID());
+						causalLog.appendDeterminant(
+							timerTriggerDeterminantToUse.replace(
+								recordCountProvider.getRecordCount(),
+								target.getID(),
+								timestamp),
+							epochProvider.getCurrentEpochID());
 						target.onProcessingTime(timestamp);
 					}
 				} catch (Throwable t) {
@@ -421,6 +440,7 @@ public class SystemProcessingTimeService extends ProcessingTimeService implement
 		private final ProcessingTimeCallback target;
 		private final long period;
 		private final AsyncExceptionHandler exceptionHandler;
+		private final TimerTriggerDeterminant timerTriggerDeterminantToUse;
 
 		private long nextTimestamp;
 
@@ -434,7 +454,11 @@ public class SystemProcessingTimeService extends ProcessingTimeService implement
 			final Object lock,
 			final ProcessingTimeCallback target,
 			final long nextTimestamp,
-			final long period, JobCausalLog causalLog, EpochProvider epochProvider, RecordCountProvider recordCountProvider) {
+			final long period,
+			JobCausalLog causalLog,
+			EpochProvider epochProvider,
+			RecordCountProvider recordCountProvider,
+			TimerTriggerDeterminant toUse) {
 
 			this.serviceStatus = Preconditions.checkNotNull(serviceStatus);
 			this.lock = Preconditions.checkNotNull(lock);
@@ -446,6 +470,7 @@ public class SystemProcessingTimeService extends ProcessingTimeService implement
 			this.causalLog = causalLog;
 			this.epochProvider = epochProvider;
 			this.recordCountProvider = recordCountProvider;
+			this.timerTriggerDeterminantToUse = toUse;
 		}
 
 		@Override
@@ -457,7 +482,12 @@ public class SystemProcessingTimeService extends ProcessingTimeService implement
 			synchronized (lock) {
 				try {
 					if (serviceStatus.get() == STATUS_ALIVE) {
-						causalLog.appendDeterminant(new TimerTriggerDeterminant(recordCountProvider.getRecordCount(), target.getID(), timestamp), epochProvider.getCurrentEpochID());
+						causalLog.appendDeterminant(
+							timerTriggerDeterminantToUse.replace(
+								recordCountProvider.getRecordCount(),
+								target.getID(),
+								timestamp),
+							epochProvider.getCurrentEpochID());
 						target.onProcessingTime(nextTimestamp);
 					}
 

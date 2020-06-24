@@ -41,11 +41,13 @@ public class CausalRandomService implements RandomService {
 	//Not thread safe
 	protected final Random rng = new XORShiftRandom();
 
+	private RNGDeterminant reuseRNGDeterminant;
 
 	public CausalRandomService(IJobCausalLog causalLoggingManager, IRecoveryManager recoveryManager, EpochProvider epochProvider) {
 		this.causalLoggingManager = causalLoggingManager;
 		this.recoveryManager = recoveryManager;
 		this.epochProvider = epochProvider;
+		this.reuseRNGDeterminant = new RNGDeterminant();
 	}
 
 	@Override
@@ -59,7 +61,7 @@ public class CausalRandomService implements RandomService {
 			 return  recoveryManager.replayRandomInt();
 
 		int generatedNumber = rng.nextInt(maxExclusive);
-		causalLoggingManager.appendDeterminant(new RNGDeterminant(generatedNumber),epochProvider.getCurrentEpochID());
+		causalLoggingManager.appendDeterminant(reuseRNGDeterminant.replace(generatedNumber),epochProvider.getCurrentEpochID());
 		return generatedNumber;
 	}
 

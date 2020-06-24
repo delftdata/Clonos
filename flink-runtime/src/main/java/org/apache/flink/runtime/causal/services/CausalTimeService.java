@@ -37,6 +37,7 @@ public class CausalTimeService implements TimeService {
 	private final EpochProvider epochProvider;
 	private IJobCausalLog causalLoggingManager;
 	private IRecoveryManager recoveryManager;
+	private final TimestampDeterminant reuseTimestampDeterminant;
 
 	private static final Logger LOG = LoggerFactory.getLogger(CausalTimeService.class);
 
@@ -44,6 +45,7 @@ public class CausalTimeService implements TimeService {
 		this.causalLoggingManager = causalLoggingManager;
 		this.recoveryManager = recoveryManager;
 		this.epochProvider = epochProvider;
+		this.reuseTimestampDeterminant = new TimestampDeterminant();
 	}
 
 	@Override
@@ -69,7 +71,7 @@ public class CausalTimeService implements TimeService {
 		}
 
 		LOG.debug("We are running, returning a fresh timestamp and recording it.");
-		causalLoggingManager.appendDeterminant(new TimestampDeterminant(toReturn), epochProvider.getCurrentEpochID());
+		causalLoggingManager.appendDeterminant(reuseTimestampDeterminant.replace(toReturn), epochProvider.getCurrentEpochID());
 		return toReturn;
 	}
 }

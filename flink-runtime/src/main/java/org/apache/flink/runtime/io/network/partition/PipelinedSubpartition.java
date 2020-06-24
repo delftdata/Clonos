@@ -96,6 +96,8 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 	private AtomicBoolean isRecoveringSubpartitionInFlightState;
 
+	private BufferBuiltDeterminant reuseBufferBuiltDeterminant;
+
 	PipelinedSubpartition(int index, ResultPartition parent) {
 		super(index, parent);
 
@@ -106,6 +108,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 		this.currentEpochID = 0L;
 		this.isRecoveringSubpartitionInFlightState = new AtomicBoolean(false);
 		this.determinantRequests = new LinkedList<>();
+		this.reuseBufferBuiltDeterminant = new BufferBuiltDeterminant();
 	}
 
 	public void setIsRecoveringSubpartitionInFlightState(boolean isRecoveringSubpartitionInFlightState) {
@@ -353,7 +356,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 				return null;
 			}
 
-			causalLoggingManager.appendSubpartitionDeterminants(new BufferBuiltDeterminant(buffer.readableBytes()), currentEpochID, this.parent.getPartitionId().getPartitionId(), this.index);
+			causalLoggingManager.appendSubpartitionDeterminants(reuseBufferBuiltDeterminant.replace(buffer.readableBytes()), currentEpochID, this.parent.getPartitionId().getPartitionId(), this.index);
 
 			updateStatistics(buffer);
 			inFlightLog.log(buffer, currentEpochID);
@@ -515,7 +518,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 					//This assumes that the input buffers which are before this close in the determinant log have been
 					// fully processed, thus the bufferconsumer will have this amount of data.
-					causalLoggingManager.appendSubpartitionDeterminants(new BufferBuiltDeterminant(bufferSize), currentEpochID, this.parent.getPartitionId().getPartitionId(), this.index);
+					causalLoggingManager.appendSubpartitionDeterminants(reuseBufferBuiltDeterminant.replace(bufferSize), currentEpochID, this.parent.getPartitionId().getPartitionId(), this.index);
 					Buffer buffer = bufferConsumer.build(bufferSize);
 
 

@@ -215,6 +215,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	private final CausalRandomService randomService;
 	private long currentEpochID;
 	private final RecordCountProvider recordCountProvider;
+	private SourceCheckpointDeterminant reuseSourceCheckpointDeterminant;
 
 	// ------------------------------------------------------------------------
 
@@ -298,6 +299,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		}
 
 		currentEpochID = environment.getTaskStateManager().getCurrentCheckpointRestoreID();
+
+		reuseSourceCheckpointDeterminant = new SourceCheckpointDeterminant();
 	}
 
 	// ------------------------------------------------------------------------
@@ -775,7 +778,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 				// checkpoint alignments
 
 				if(!this.recoveryManager.vertexGraphInformation.hasUpstream()) {
-					this.jobCausalLog.appendDeterminant(new SourceCheckpointDeterminant(
+					this.jobCausalLog.appendDeterminant(reuseSourceCheckpointDeterminant.replace(
 						recordCountProvider.getRecordCount(),
 						checkpointMetaData.getCheckpointId(),
 						checkpointMetaData.getTimestamp(),

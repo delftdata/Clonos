@@ -17,6 +17,7 @@
  */
 package org.apache.flink.streaming.runtime.io;
 
+import org.apache.flink.api.common.operators.Order;
 import org.apache.flink.runtime.causal.EpochProvider;
 import org.apache.flink.runtime.causal.log.job.IJobCausalLog;
 import org.apache.flink.runtime.causal.determinant.OrderDeterminant;
@@ -48,6 +49,8 @@ public class CausalBufferHandler implements CheckpointBarrierHandler {
 	//This is just to reduce the complexity of going over bufferedBuffersPerChannel
 	private int numUnprocessedBuffers;
 
+	private OrderDeterminant reuseOrderDeterminant;
+
 	public CausalBufferHandler(EpochProvider epochProvider, IJobCausalLog causalLoggingManager, IRecoveryManager recoveryManager, CheckpointBarrierHandler wrapped, int numInputChannels, Object checkpointLock) {
 		this.epochProvider = epochProvider;
 		this.causalLoggingManager = causalLoggingManager;
@@ -58,6 +61,7 @@ public class CausalBufferHandler implements CheckpointBarrierHandler {
 			bufferedBuffersPerChannel[i] = new LinkedList<>();
 		numUnprocessedBuffers = 0;
 		this.lock = checkpointLock;
+		this.reuseOrderDeterminant = new OrderDeterminant();
 	}
 
 
@@ -108,7 +112,7 @@ public class CausalBufferHandler implements CheckpointBarrierHandler {
 		}
 		LOG.info("Returning buffer from channel {} : {}", toReturn.getChannelIndex(), toReturn);
 		synchronized (lock) {
-			causalLoggingManager.appendDeterminant(new OrderDeterminant((byte) toReturn.getChannelIndex()), epochProvider.getCurrentEpochID());
+			causalLoggingManager.appendDeterminant(reuseOrderDeterminant.replace((byte) toReturn.getChannelIndex()), epochProvider.getCurrentEpochID());
 		}
 
 		return toReturn;
