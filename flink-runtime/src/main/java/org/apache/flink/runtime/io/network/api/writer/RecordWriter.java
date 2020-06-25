@@ -21,6 +21,7 @@ package org.apache.flink.runtime.io.network.api.writer;
 import org.apache.flink.core.io.IOReadableWritable;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.SimpleCounter;
+import org.apache.flink.runtime.causal.CheckpointBarrierListener;
 import org.apache.flink.runtime.causal.services.CausalRandomService;
 import org.apache.flink.runtime.causal.services.RandomService;
 import org.apache.flink.runtime.causal.services.SimpleRandomService;
@@ -31,13 +32,12 @@ import org.apache.flink.runtime.io.network.api.serialization.SpanningRecordSeria
 import org.apache.flink.runtime.io.network.buffer.BufferBuilder;
 import org.apache.flink.runtime.io.network.buffer.BufferConsumer;
 import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
-import org.apache.flink.util.XORShiftRandom;
+import org.apache.flink.runtime.state.CheckpointListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.Optional;
-import java.util.Random;
 
 import static org.apache.flink.runtime.io.network.api.serialization.RecordSerializer.SerializationResult;
 import static org.apache.flink.util.Preconditions.checkState;
@@ -55,7 +55,7 @@ import static org.apache.flink.util.Preconditions.checkState;
  *
  * @param <T> the type of the record that can be emitted with this record writer
  */
-public class RecordWriter<T extends IOReadableWritable> {
+public class RecordWriter<T extends IOReadableWritable> implements CheckpointListener, CheckpointBarrierListener {
 
 	private static final Logger LOG = LoggerFactory.getLogger(RecordWriter.class);
 
@@ -92,6 +92,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 		this.flushAlways = flushAlways;
 		this.targetPartition = writer;
 		this.channelSelector = channelSelector;
+		this.channelSelector.setRandomService(randomService);
 
 		this.numChannels = writer.getNumberOfSubpartitions();
 
@@ -259,4 +260,14 @@ public class RecordWriter<T extends IOReadableWritable> {
 		}
 	}
 
+	@Override
+	public void notifyCheckpointBarrier(long checkpointID) {
+		targetPartition.notifyCheckpointBarrier(checkpointID);
+		channelSelector.notifyCheckpointBarrier(checkpointID);
+	}
+
+	@Override
+	public void notifyCheckpointComplete(long checkpointId) throws Exception {
+		targetPartition.notifyCheckpointComplete(checkpointId);
+	}
 }

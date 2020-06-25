@@ -39,7 +39,6 @@ import java.io.IOException;
 import java.util.Deque;
 import java.util.LinkedList;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.stream.Collectors;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
@@ -288,8 +287,10 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 			long epoch = inflightReplayIterator.getEpoch();
 
-			if (!inflightReplayIterator.hasNext())
+			if (!inflightReplayIterator.hasNext()) {
 				inflightReplayIterator = null;
+				LOG.info("Finished replaying inflight log!");
+			}
 
 			return new BufferAndBacklog(buffer,
 				inflightReplayIterator != null || isAvailableUnsafe(),
@@ -356,7 +357,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 				return null;
 			}
 
-			causalLoggingManager.appendSubpartitionDeterminants(reuseBufferBuiltDeterminant.replace(buffer.readableBytes()), currentEpochID, this.parent.getPartitionId().getPartitionId(), this.index);
+			causalLoggingManager.appendSubpartitionDeterminant(reuseBufferBuiltDeterminant.replace(buffer.readableBytes()), currentEpochID, this.parent.getPartitionId().getPartitionId(), this.index);
 
 			updateStatistics(buffer);
 			inFlightLog.log(buffer, currentEpochID);
@@ -470,7 +471,8 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 	public void requestReplay(long checkpointId, int ignoreMessages) {
 		inflightReplayIterator = inFlightLog.getInFlightIterator(checkpointId);
-		LOG.info("Replay has been requested for pipelined subpartition {}, skipping {} buffers, buffers to replay {}. Setting downstreamFailed to false", this, ignoreMessages, inflightReplayIterator.numberRemaining());
+		LOG.info("Check replay");
+		LOG.info("Replay has been requested for pipelined subpartition of id {}, index {}, skipping {} buffers, buffers to replay {}. Setting downstreamFailed to false", this.parent.getPartitionId(), this.index, ignoreMessages, inflightReplayIterator.numberRemaining());
 		if (inflightReplayIterator.numberRemaining() < ignoreMessages)
 			throw new RuntimeException("Invalid state: pipelined subpartition can replay " + inflightReplayIterator.numberRemaining() + " messages, but a replay skipping " + ignoreMessages + " was requested.");
 		for (int i = 0; i < ignoreMessages; i++)
@@ -509,45 +511,58 @@ public class PipelinedSubpartition extends ResultSubpartition {
 		while (true) {
 			synchronized (buffers) {
 				LOG.info("Acquired buffers lock to build and discard");
+				if (!buffers.isEmpty()) {
 
-				if (!buffers.isEmpty() && buffers.peek().getUnreadBytes() >= bufferSize) {
+					BufferConsumer consumer = buffers.peek();
 
-					LOG.info("There are enough bytes to build the requested buffer!");
-					BufferConsumer bufferConsumer = buffers.peek();
-					long checkpointId = checkpointIds.peek();
-
-					//This assumes that the input buffers which are before this close in the determinant log have been
-					// fully processed, thus the bufferconsumer will have this amount of data.
-					causalLoggingManager.appendSubpartitionDeterminants(reuseBufferBuiltDeterminant.replace(bufferSize), currentEpochID, this.parent.getPartitionId().getPartitionId(), this.index);
-					Buffer buffer = bufferConsumer.build(bufferSize);
-
-
-					checkState(bufferConsumer.isFinished() || buffers.size() == 1,
-						"When there are multiple buffers, an unfinished bufferConsumer can not be at the head of the buffers queue.");
-
-					if (buffers.size() == 1) {
-						// turn off flushRequested flag if we drained all of the available data
-						flushRequested = false;
+					if (consumer.isFinished()) {
+						if (consumer.getUnreadBytes() > 0) {
+							if (consumer.getUnreadBytes() < bufferSize)
+								throw new RuntimeException("Size of finished buffer does not match size of recovery request to build buffer.");
+						} else {
+							buffers.pop().close();
+							checkpointIds.pop();
+							continue;
+						}
 					}
+					//If there is enough data in consumer for building the correct buffer
+					if (consumer.getUnreadBytes() >= bufferSize) {
+						LOG.info("There are enough bytes to build the requested buffer!");
+						long checkpointId = checkpointIds.peek();
 
-					if (bufferConsumer.isFinished()) {
-						buffers.pop().close();
-						checkpointIds.pop();
+						//This assumes that the input buffers which are before this close in the determinant log have been
+						// fully processed, thus the bufferconsumer will have this amount of data.
+						causalLoggingManager.appendSubpartitionDeterminant(reuseBufferBuiltDeterminant.replace(bufferSize), currentEpochID, this.parent.getPartitionId().getPartitionId(), this.index);
+						Buffer buffer = consumer.build(bufferSize);
+
+
+						checkState(consumer.isFinished() || buffers.size() == 1,
+							"When there are multiple buffers, an unfinished bufferConsumer can not be at the head of the buffers queue.");
+
+						if (buffers.size() == 1) {
+							// turn off flushRequested flag if we drained all of the available data
+							flushRequested = false;
+						}
+
+						if (consumer.isFinished()) {
+							buffers.pop().close();
+							checkpointIds.pop();
+						}
+
+						if (buffer.readableBytes() == 0)
+							throw new RuntimeException("Requested to rebuild buffer with 0 bytes.");
+
+						updateStatistics(buffer);
+						inFlightLog.log(buffer, currentEpochID);
+						//We do this after the determinant because a checkpoint x belongs to epoch x-1
+						if (checkpointId != -1)
+							currentEpochID = checkpointId;
+						break;
 					}
-
-					if (buffer.readableBytes() == 0)
-						throw new RuntimeException("Requested to rebuild buffer with 0 bytes.");
-
-					updateStatistics(buffer);
-					inFlightLog.log(buffer, currentEpochID);
-					//We do this after the determinant because a checkpoint x belongs to epoch x-1
-					if (checkpointId != -1)
-						currentEpochID = checkpointId;
-					break;
 				}
 			}
 			try {
-				Thread.sleep(5l);
+				Thread.sleep(1l);
 			} catch (InterruptedException e) {
 				e.printStackTrace();
 			}

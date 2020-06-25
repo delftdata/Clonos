@@ -25,27 +25,33 @@
 
 package org.apache.flink.runtime.causal.log.thread;
 
+import org.apache.flink.runtime.causal.determinant.Determinant;
+import org.apache.flink.runtime.causal.determinant.DeterminantEncoder;
 import org.apache.flink.runtime.io.network.buffer.BufferPool;
 
 public final class NetworkBufferBasedContiguousLocalThreadCausalLog extends NetworkBufferBasedContiguousThreadCausalLog implements LocalThreadCausalLog {
 
-	public NetworkBufferBasedContiguousLocalThreadCausalLog(BufferPool bufferPool) {
+	DeterminantEncoder encoder;
+
+	public NetworkBufferBasedContiguousLocalThreadCausalLog(BufferPool bufferPool, DeterminantEncoder encoder) {
 		super(bufferPool);
+		this.encoder = encoder;
 	}
 
-	//This method has a single producer, thus we do not need to synchronize accesses.
+	// A local log has a single producer, thus we do not need to synchronize accesses.
+	// writerIndex is used to control visibility for consumers, by only making available bytes that are fully written.
 	@Override
-	public void appendDeterminants(byte[] determinants, long epochID) {
+	public void appendDeterminant(Determinant determinant, long epochID) {
+		int determinantEncodedSize = determinant.getEncodedSizeInBytes();
 		readLock.lock();
 		try {
 			int writeIndex = writerIndex.get();
 			epochStartOffsets.computeIfAbsent(epochID, k -> new EpochStartOffset(k, writeIndex));
-
-			while (notEnoughSpaceFor(determinants.length))
+			while (notEnoughSpaceFor(determinantEncodedSize))
 				addComponent();
 
-			buf.writeBytes(determinants);
-			writerIndex.addAndGet(determinants.length);
+			encoder.encodeTo(determinant, buf);
+			writerIndex.addAndGet(determinantEncodedSize);
 		} finally {
 			readLock.unlock();
 		}

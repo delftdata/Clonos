@@ -34,7 +34,7 @@ import org.apache.flink.runtime.state.CheckpointListener;
 import java.util.List;
 
 /**
- * A CausalLog contains the determinant logs of all upstream operators and itself.
+ * A CausalLog contains the determinant logs of all upstream vertexes and itself.
  */
 public interface IJobCausalLog extends CheckpointListener {
 
@@ -45,11 +45,11 @@ public interface IJobCausalLog extends CheckpointListener {
 	/*
 	Encodes and appends to this tasks log
 	 */
-	void appendDeterminant(Determinant determinant, long checkpointID);
+	void appendDeterminant(Determinant determinant, long epochID);
 
-	void appendSubpartitionDeterminants(Determinant determinant, long checkpointID, IntermediateResultPartitionID intermediateResultPartitionID, int subpartitionIndex);
+	void appendSubpartitionDeterminant(Determinant determinant, long epochID, IntermediateResultPartitionID intermediateResultPartitionID, int subpartitionIndex);
 
-	void processUpstreamVertexCausalLogDelta(VertexCausalLogDelta d, long checkpointID);
+	void processUpstreamVertexCausalLogDelta(VertexCausalLogDelta d, long epochID);
 
 	VertexCausalLogDelta getDeterminantsOfVertex(VertexID vertexId, long startEpochID);
 

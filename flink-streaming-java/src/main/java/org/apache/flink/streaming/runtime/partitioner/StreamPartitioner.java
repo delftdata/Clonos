@@ -18,6 +18,7 @@
 package org.apache.flink.streaming.runtime.partitioner;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.runtime.causal.services.RandomService;
 import org.apache.flink.runtime.io.network.api.writer.ChannelSelector;
 import org.apache.flink.runtime.plugable.SerializationDelegate;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
@@ -33,4 +34,13 @@ public abstract class StreamPartitioner<T> implements
 	private static final long serialVersionUID = 1L;
 
 	public abstract StreamPartitioner<T> copy();
+
+	@Override
+	public void setRandomService(RandomService randomService) {
+		//Default implementation do nothing
+	}
+	@Override
+	public void notifyCheckpointBarrier(long checkpointID) {
+		//Default implementation do nothing
+	}
 }

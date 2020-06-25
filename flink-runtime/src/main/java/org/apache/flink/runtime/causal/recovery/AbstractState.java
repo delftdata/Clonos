@@ -79,7 +79,6 @@ public abstract class AbstractState implements State {
 		this.context.incompleteStateRestorations.put(checkpointId, true);
 		if(checkpointId > context.finalRestoredCheckpointId)
 			context.finalRestoredCheckpointId = checkpointId;
-		//throw new RuntimeException("Unexpected notification StateRestorationStart in state " + this.getClass());
 
 		for (RecordWriter recordWriter : context.recordWriters)
 			for(ResultSubpartition rs : recordWriter.getResultPartition().getResultSubpartitions())
@@ -92,7 +91,6 @@ public abstract class AbstractState implements State {
 	public void notifyStateRestorationComplete(long checkpointId) {
 		LOG.info("Completed restoring state of checkpoint {}", checkpointId);
 		this.context.incompleteStateRestorations.remove(checkpointId);
-		//throw new RuntimeException("Unexpected notification StateRestorationComplete in state " + this.getClass());
 	}
 
 	@Override

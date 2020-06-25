@@ -69,7 +69,6 @@ public class NetworkBufferBasedContiguousThreadCausalLog implements ThreadCausal
 	protected Lock readLock;
 	protected Lock writeLock;
 
-	//Writers compare and set to reserve space in the buffer.
 	protected AtomicInteger writerIndex;
 
 	protected long earliestEpoch;
@@ -178,7 +177,7 @@ public class NetworkBufferBasedContiguousThreadCausalLog implements ThreadCausal
 		LOG.debug("Notify checkpoint complete for id {}", checkpointId);
 		writeLock.lock();
 		try {
-			EpochStartOffset followingEpoch = epochStartOffsets.computeIfAbsent(checkpointId, k -> new EpochStartOffset(k, writerIndex.get()));
+			EpochStartOffset followingEpoch = epochStartOffsets.computeIfAbsent(checkpointId, epochID -> new EpochStartOffset(epochID, writerIndex.get()));
 			for (Long epochID : epochStartOffsets.keySet())
 				if (epochID < checkpointId)
 					epochStartOffsets.remove(epochID);

@@ -19,6 +19,7 @@
 package org.apache.flink.runtime.io.network.api.writer;
 
 import org.apache.flink.core.io.IOReadableWritable;
+import org.apache.flink.runtime.causal.services.RandomService;
 
 /**
  * This is the default implementation of the {@link ChannelSelector} interface. It represents a simple round-robin
@@ -50,5 +51,16 @@ public class RoundRobinChannelSelector<T extends IOReadableWritable> implements 
 		}
 
 		return this.nextChannelToSendTo;
+	}
+
+	@Override
+	public void setRandomService(RandomService randomService) {
+
+	}
+
+
+	@Override
+	public void notifyCheckpointBarrier(long checkpointID) {
+		this.nextChannelToSendTo[0] = 0;
 	}
 }

@@ -18,6 +18,7 @@
 package org.apache.flink.streaming.runtime.partitioner;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.runtime.causal.services.RandomService;
 import org.apache.flink.runtime.jobgraph.DistributionPattern;
 import org.apache.flink.runtime.plugable.SerializationDelegate;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
@@ -59,6 +60,11 @@ public class RescalePartitioner<T> extends StreamPartitioner<T> {
 		return this.returnArray;
 	}
 
+	@Override
+	public void setRandomService(RandomService randomService) {
+
+	}
+
 	public StreamPartitioner<T> copy() {
 		return this;
 	}
@@ -66,5 +72,10 @@ public class RescalePartitioner<T> extends StreamPartitioner<T> {
 	@Override
 	public String toString() {
 		return "RESCALE";
+	}
+
+	@Override
+	public void notifyCheckpointBarrier(long checkpointID) {
+		this.returnArray[0] = -1;
 	}
 }

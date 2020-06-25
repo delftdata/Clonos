@@ -23,19 +23,10 @@
  *
  */
 
-package org.apache.flink.runtime.causal.log.vertex;
+package org.apache.flink.runtime.causal;
 
-import org.apache.flink.runtime.causal.determinant.Determinant;
-import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
+public interface CheckpointBarrierListener {
 
-public interface LocalVertexCausalLog extends VertexCausalLog {
-
-	/**
-	 * Appends the provided determinants to the  log.
-	 * @param determinant to append
-	 */
-	void appendDeterminant(Determinant determinant, long checkpointID);
-
-	void appendSubpartitionDeterminants(Determinant determinant, long checkpointID, IntermediateResultPartitionID intermediateResultPartitionID, int subpartitionIndex);
+	void notifyCheckpointBarrier(long checkpointID);
 
 }

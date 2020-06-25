@@ -51,4 +51,10 @@ public class RebalancePartitioner<T> extends StreamPartitioner<T> {
 	public String toString() {
 		return "REBALANCE";
 	}
+
+	@Override
+	public void notifyCheckpointBarrier(long checkpointID) {
+		this.returnArray[0] = -1;
+
+	}
 }

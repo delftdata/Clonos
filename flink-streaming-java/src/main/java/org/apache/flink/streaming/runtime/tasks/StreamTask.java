@@ -276,7 +276,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		this.randomService = new CausalRandomService(jobCausalLog, recoveryManager, this);
 
 		this.streamRecordWriters = createStreamRecordWriters(configuration, environment, randomService);
-		List<RecordWriter> recordWriters = streamRecordWriters.stream().map(x -> (RecordWriter) x).collect(Collectors.toList()); //todo better way to do this?
+		List<RecordWriter> recordWriters = streamRecordWriters.stream().map(x -> (RecordWriter) x).collect(Collectors.toList());
 		recoveryManager.setRecordWriters(recordWriters);
 
 
@@ -792,10 +792,9 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 				operatorChain.prepareSnapshotPreBarrier(checkpointMetaData.getCheckpointId());
 
 				currentEpochID = checkpointMetaData.getCheckpointId();
-				ResultPartition[] partitions = this.getEnvironment().getContainingTask().getProducedPartitions();
+
 				//Inform the partitions that a checkpoint barrier is going to come next
-				for(ResultPartition rp : partitions)
-					rp.notifyCheckpointBarrier(currentEpochID);
+				this.streamRecordWriters.forEach(rw -> rw.notifyCheckpointBarrier(currentEpochID));
 
 				// Step (2): Send the checkpoint barrier downstream
 				operatorChain.broadcastCheckpointBarrier(
@@ -857,9 +856,13 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 				jobCausalLog.notifyCheckpointComplete(checkpointId);
 				//Notify InFlightLogger
-				ResultPartition[] partitions = this.getEnvironment().getContainingTask().getProducedPartitions();
-				for(ResultPartition rp : partitions)
-					rp.notifyCheckpointComplete(checkpointId);
+				this.streamRecordWriters.forEach(rw -> {
+					try {
+						rw.notifyCheckpointComplete(checkpointId);
+					} catch (Exception e) {
+						e.printStackTrace();
+					}
+				});
 			}
 			else {
 				LOG.debug("Ignoring notification of complete checkpoint for not-running task {}", getName());

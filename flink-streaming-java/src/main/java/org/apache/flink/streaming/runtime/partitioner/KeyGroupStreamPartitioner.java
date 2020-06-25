@@ -19,6 +19,7 @@ package org.apache.flink.streaming.runtime.partitioner;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.java.functions.KeySelector;
+import org.apache.flink.runtime.causal.services.RandomService;
 import org.apache.flink.runtime.plugable.SerializationDelegate;
 import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
@@ -64,6 +65,7 @@ public class KeyGroupStreamPartitioner<T, K> extends StreamPartitioner<T> implem
 		return returnArray;
 	}
 
+
 	@Override
 	public StreamPartitioner<T> copy() {
 		return this;
@@ -79,4 +81,6 @@ public class KeyGroupStreamPartitioner<T, K> extends StreamPartitioner<T> implem
 		KeyGroupRangeAssignment.checkParallelismPreconditions(maxParallelism);
 		this.maxParallelism = maxParallelism;
 	}
+
+
 }

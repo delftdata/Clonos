@@ -23,6 +23,7 @@ import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.core.memory.MemorySegmentFactory;
+import org.apache.flink.runtime.causal.services.RandomService;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.event.AbstractEvent;
 import org.apache.flink.runtime.io.network.api.CheckpointBarrier;
@@ -564,6 +565,16 @@ public class RecordWriterTest {
 		public int[] selectChannels(final T record, final int numberOfOutputChannels) {
 			nextChannel[0] = (nextChannel[0] + 1) % numberOfOutputChannels;
 			return nextChannel;
+		}
+
+		@Override
+		public void setRandomService(RandomService randomService) {
+
+		}
+
+		@Override
+		public void notifyCheckpointBarrier(long checkpointID) {
+
 		}
 	}
 

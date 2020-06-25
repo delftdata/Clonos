@@ -20,6 +20,7 @@ package org.apache.flink.streaming.runtime.partitioner;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.functions.Partitioner;
 import org.apache.flink.api.java.functions.KeySelector;
+import org.apache.flink.runtime.causal.services.RandomService;
 import org.apache.flink.runtime.plugable.SerializationDelegate;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
@@ -61,6 +62,11 @@ public class CustomPartitionerWrapper<K, T> extends StreamPartitioner<T> {
 	}
 
 	@Override
+	public void setRandomService(RandomService randomService) {
+
+	}
+
+	@Override
 	public StreamPartitioner<T> copy() {
 		return this;
 	}
@@ -68,5 +74,10 @@ public class CustomPartitionerWrapper<K, T> extends StreamPartitioner<T> {
 	@Override
 	public String toString() {
 		return "CUSTOM";
+	}
+
+	@Override
+	public void notifyCheckpointBarrier(long checkpointID) {
+		//TODO partitioner.notifyCheckpointBarrier(long checkpointID);
 	}
 }

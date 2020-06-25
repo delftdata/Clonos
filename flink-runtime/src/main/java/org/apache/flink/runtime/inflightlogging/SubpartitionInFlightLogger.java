@@ -70,8 +70,8 @@ public class SubpartitionInFlightLogger implements InFlightLog {
 	}
 
 	private void increaseReferenceCountsUnsafe(Long epochID) {
-		for (List<Buffer> list : slicedLog.tailMap(epochID).values())
-			for (Buffer buffer : list)
+		for (List<Buffer> epoch : slicedLog.tailMap(epochID).values())
+			for (Buffer buffer : epoch)
 				buffer.retainBuffer();
 	}
 

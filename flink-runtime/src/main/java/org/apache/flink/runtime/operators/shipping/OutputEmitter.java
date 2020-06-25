@@ -21,6 +21,7 @@ package org.apache.flink.runtime.operators.shipping;
 import org.apache.flink.api.common.distributions.DataDistribution;
 import org.apache.flink.api.common.functions.Partitioner;
 import org.apache.flink.api.common.typeutils.TypeComparator;
+import org.apache.flink.runtime.causal.services.RandomService;
 import org.apache.flink.runtime.io.network.api.writer.ChannelSelector;
 import org.apache.flink.runtime.plugable.SerializationDelegate;
 import org.apache.flink.util.MathUtils;
@@ -150,7 +151,12 @@ public class OutputEmitter<T> implements ChannelSelector<SerializationDelegate<T
 			throw new UnsupportedOperationException("Unsupported distribution strategy: " + strategy.name());
 		}
 	}
-	
+
+	@Override
+	public void setRandomService(RandomService randomService) {
+
+	}
+
 	// --------------------------------------------------------------------------------------------
 
 	private int[] forward() {
@@ -269,5 +275,10 @@ public class OutputEmitter<T> implements ChannelSelector<SerializationDelegate<T
 			}
 		}
 		return 0;
+	}
+
+	@Override
+	public void notifyCheckpointBarrier(long checkpointID) {
+
 	}
 }

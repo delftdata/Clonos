@@ -53,7 +53,6 @@ public class JobCausalLog implements IJobCausalLog {
 	ConcurrentMap<VertexID, UpstreamVertexCausalLog> upstreamDeterminantLogs;
 
 	LocalVertexCausalLog localCausalLog;
-	DeterminantEncoder determinantEncoder;
 
 	ConcurrentSet<InputChannelID> registeredConsumers;
 
@@ -61,14 +60,16 @@ public class JobCausalLog implements IJobCausalLog {
 
 	Object lock;
 
+	DeterminantEncoder encoder;
+
 	public JobCausalLog(VertexGraphInformation vertexGraphInformation, ResultPartitionWriter[] resultPartitionsOfLocalVertex, BufferPool bufferPool, Object lock) {
 		this.myVertexID = vertexGraphInformation.getThisTasksVertexID();
 		this.bufferPool = bufferPool;
 
-		LOG.info("Creating new CausalLoggingManager for id {}, with upstreams {} ", myVertexID, String.join(", ", vertexGraphInformation.getUpstreamVertexes().stream().map(Object::toString).collect(Collectors.toList())));
-		this.determinantEncoder = new SimpleDeterminantEncoder();
+		this.encoder = new SimpleDeterminantEncoder();
 
-		localCausalLog = new BasicLocalVertexCausalLog(vertexGraphInformation,resultPartitionsOfLocalVertex, bufferPool);
+		LOG.info("Creating new CausalLoggingManager for id {}, with upstreams {} ", myVertexID, String.join(", ", vertexGraphInformation.getUpstreamVertexes().stream().map(Object::toString).collect(Collectors.toList())));
+		localCausalLog = new BasicLocalVertexCausalLog(vertexGraphInformation,resultPartitionsOfLocalVertex, bufferPool, encoder);
 
 		//Defer initializing the determinant logs to avoid having to perform reachability analysis
 		this.upstreamDeterminantLogs = new ConcurrentHashMap<>();
@@ -89,20 +90,20 @@ public class JobCausalLog implements IJobCausalLog {
 	}
 
 	@Override
-	public void appendDeterminant(Determinant determinant, long checkpointID) {
+	public void appendDeterminant(Determinant determinant, long epochID) {
 		assert (Thread.holdsLock(lock));
 		LOG.debug("Appending determinant {}", determinant);
-		localCausalLog.appendDeterminants(
-			this.determinantEncoder.encode(determinant),
-			checkpointID
+		localCausalLog.appendDeterminant(
+			determinant,
+			epochID
 		);
 	}
 
 	@Override
-	public void appendSubpartitionDeterminants(Determinant determinant, long epochID, IntermediateResultPartitionID intermediateResultPartitionID, int subpartitionIndex) {
+	public void appendSubpartitionDeterminant(Determinant determinant, long epochID, IntermediateResultPartitionID intermediateResultPartitionID, int subpartitionIndex) {
 		LOG.debug("Appending determinant {} for epochID {} to intermediateDataSetID {} subpartition {}", determinant, epochID, intermediateResultPartitionID, subpartitionIndex);
 		localCausalLog.appendSubpartitionDeterminants(
-			this.determinantEncoder.encode(determinant),
+			determinant,
 			epochID,
 			intermediateResultPartitionID,
 			subpartitionIndex
@@ -119,7 +120,7 @@ public class JobCausalLog implements IJobCausalLog {
 
 	@Override
 	public DeterminantEncoder getDeterminantEncoder() {
-		return determinantEncoder;
+		return encoder;
 	}
 
 	@Override

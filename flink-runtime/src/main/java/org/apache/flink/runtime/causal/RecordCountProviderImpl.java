@@ -25,8 +25,12 @@
 
 package org.apache.flink.runtime.causal;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public class RecordCountProviderImpl implements RecordCountProvider{
 
+	private static final Logger LOG = LoggerFactory.getLogger(RecordCountProviderImpl.class);
 	int recordCount;
 
 	public RecordCountProviderImpl() {
@@ -35,16 +39,19 @@ public class RecordCountProviderImpl implements RecordCountProvider{
 
 	@Override
 	public int getRecordCount() {
+		LOG.debug("Call to getRecordCount(), returning {}", recordCount);
 		return recordCount;
 	}
 
 	@Override
 	public void incRecordCount() {
+		LOG.debug("Call to incRecordCount(), {} to {}", recordCount, recordCount+1);
 		recordCount++;
 	}
 
 	@Override
 	public void resetRecordCount() {
+		LOG.debug("Call to resetRecordCount(), {} to {}", recordCount, 0);
 		recordCount = 0;
 	}
 

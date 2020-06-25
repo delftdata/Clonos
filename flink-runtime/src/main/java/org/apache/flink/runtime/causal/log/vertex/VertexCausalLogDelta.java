@@ -65,21 +65,13 @@ public class VertexCausalLogDelta implements NettyMessageWritable, IOReadableWri
 		partitionDeltas = new TreeMap<>();
 	}
 
-	/**
-	 * When creatign a VertexCausalLogDelta pass null for mainThreadDelta if no update and an empty map for the subpartition deltas if no updates.
-	 */
-	public VertexCausalLogDelta(VertexID vertexID, ThreadLogDelta mainThreadDelta, Map<IntermediateResultPartitionID, Map<Integer, SubpartitionThreadLogDelta>> partitionDeltas) {
-		this.vertexID = vertexID;
+    public VertexCausalLogDelta(VertexID vertexId, ThreadLogDelta mainThreadDelta, SortedMap<IntermediateResultPartitionID, SortedMap<Integer, SubpartitionThreadLogDelta>> subpartitionDeltas) {
+		this.vertexID = vertexId;
 		this.mainThreadDelta = mainThreadDelta;
-		this.partitionDeltas = new TreeMap<>();
+		this.partitionDeltas = subpartitionDeltas;
+    }
 
-		//sort the entries.
-		for (Map.Entry<IntermediateResultPartitionID, Map<Integer, SubpartitionThreadLogDelta>> e : partitionDeltas.entrySet()) {
-			this.partitionDeltas.put(e.getKey(), new TreeMap<>(e.getValue()));
-		}
-	}
-
-	public VertexID getVertexId() {
+    public VertexID getVertexId() {
 		return vertexID;
 	}
 

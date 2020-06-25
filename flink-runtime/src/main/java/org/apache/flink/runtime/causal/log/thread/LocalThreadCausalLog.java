@@ -25,10 +25,12 @@
 
 package org.apache.flink.runtime.causal.log.thread;
 
+import org.apache.flink.runtime.causal.determinant.Determinant;
+
 public interface LocalThreadCausalLog extends ThreadCausalLog {
 	/**
 	 * Appends the provided determinants to the  log.
-	 * @param determinants to append
+	 * @param determinant to append
 	 */
-	void appendDeterminants(byte[] determinants, long epochID);
+	void appendDeterminant(Determinant determinant, long epochID);
 }

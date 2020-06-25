@@ -19,6 +19,8 @@
 package org.apache.flink.runtime.io.network.api.writer;
 
 import org.apache.flink.core.io.IOReadableWritable;
+import org.apache.flink.runtime.causal.CheckpointBarrierListener;
+import org.apache.flink.runtime.causal.services.RandomService;
 
 /**
  * The {@link ChannelSelector} determines to which logical channels a record
@@ -26,7 +28,7 @@ import org.apache.flink.core.io.IOReadableWritable;
  *
  * @param <T> the type of record which is sent through the attached output gate
  */
-public interface ChannelSelector<T extends IOReadableWritable> {
+public interface ChannelSelector<T extends IOReadableWritable> extends CheckpointBarrierListener {
 
 	/**
 	 * Returns the logical channel indexes, to which the given record should be
@@ -38,4 +40,6 @@ public interface ChannelSelector<T extends IOReadableWritable> {
 	 * which the record shall be forwarded
 	 */
 	int[] selectChannels(T record, int numChannels);
+
+	void setRandomService(RandomService randomService);
 }
