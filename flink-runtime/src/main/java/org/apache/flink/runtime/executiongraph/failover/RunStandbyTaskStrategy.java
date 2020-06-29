@@ -53,16 +53,20 @@ public class RunStandbyTaskStrategy extends FailoverStrategy {
 	 */
 	private final Executor callbackExecutor;
 
+	private final int numStandbyTasksToMaintain;
+
 
 	/**
 	 * Creates a new failover strategy that recovers from failures by restarting all tasks
 	 * of the execution graph.
 	 *
-	 * @param executionGraph The execution graph to handle.
+	 * @param executionGraph            The execution graph to handle.
+	 * @param numStandbyTasksToMaintain
 	 */
-	public RunStandbyTaskStrategy(ExecutionGraph executionGraph) {
+	public RunStandbyTaskStrategy(ExecutionGraph executionGraph, int numStandbyTasksToMaintain) {
 		this.executionGraph = checkNotNull(executionGraph);
 		this.callbackExecutor = checkNotNull(executionGraph.getFutureExecutor());
+		this.numStandbyTasksToMaintain = numStandbyTasksToMaintain;
 	}
 
 	// ------------------------------------------------------------------------
@@ -94,27 +98,29 @@ public class RunStandbyTaskStrategy extends FailoverStrategy {
 	public void notifyNewVertices(List<ExecutionJobVertex> newExecutionJobVerticesTopological) {
 		final ArrayList<CompletableFuture<Void>> schedulingFutures = new ArrayList<>();
 
-		for (ExecutionJobVertex executionJobVertex : newExecutionJobVerticesTopological) {
-			for (ExecutionVertex executionVertex : executionJobVertex.getTaskVertices()) {
+		for (int i = 0; i < numStandbyTasksToMaintain; i++) {
+			for (ExecutionJobVertex executionJobVertex : newExecutionJobVerticesTopological) {
+				for (ExecutionVertex executionVertex : executionJobVertex.getTaskVertices()) {
 
-				final CompletableFuture<Void> currentExecutionFuture =
-					// TODO: Anti-affinity constraint
-					CompletableFuture.runAsync(
-						() -> waitForExecutionToReachRunningState(executionVertex));
-				currentExecutionFuture.whenComplete(
-					(Void ignored, Throwable t) -> {
-						if (t == null) {
-							// this should aalso respect the topological order
-							final CompletableFuture<Void> standbyExecutionFuture =
-								executionVertex.addStandbyExecution();
-							schedulingFutures.add(standbyExecutionFuture);
-						} else {
-							schedulingFutures.add(
-								new CompletableFuture<>());
-							schedulingFutures.get(schedulingFutures.size() - 1)
-								.completeExceptionally(t);
-						}
-					});
+					final CompletableFuture<Void> currentExecutionFuture =
+						// TODO: Anti-affinity constraint
+						CompletableFuture.runAsync(
+							() -> waitForExecutionToReachRunningState(executionVertex));
+					currentExecutionFuture.whenComplete(
+						(Void ignored, Throwable t) -> {
+							if (t == null) {
+								// this should aalso respect the topological order
+								final CompletableFuture<Void> standbyExecutionFuture =
+									executionVertex.addStandbyExecution();
+								schedulingFutures.add(standbyExecutionFuture);
+							} else {
+								schedulingFutures.add(
+									new CompletableFuture<>());
+								schedulingFutures.get(schedulingFutures.size() - 1)
+									.completeExceptionally(t);
+							}
+						});
+				}
 			}
 		}
 
@@ -155,9 +161,15 @@ public class RunStandbyTaskStrategy extends FailoverStrategy {
 	 */
 	public static class Factory implements FailoverStrategy.Factory {
 
+		int numStandbyTasksToMaintain;
+
+		public Factory(int numStandbyTasksToMaintain) {
+			this.numStandbyTasksToMaintain = numStandbyTasksToMaintain;
+		}
+
 		@Override
 		public FailoverStrategy create(ExecutionGraph executionGraph) {
-			return new RunStandbyTaskStrategy(executionGraph);
+			return new RunStandbyTaskStrategy(executionGraph, numStandbyTasksToMaintain);
 		}
 	}
 }

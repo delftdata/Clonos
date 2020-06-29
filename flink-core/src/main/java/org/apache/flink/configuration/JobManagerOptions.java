@@ -109,6 +109,10 @@ public class JobManagerOptions {
 			.defaultValue("full")
 			.withDescription("The maximum number of prior execution attempts kept in history.");
 
+	public static final ConfigOption<Integer> NUMBER_OF_STANDBY_TASKS_TO_MAINTAIN =
+		key("jobmanager.execution.num-standby-tasks")
+			.defaultValue(1)
+			.withDescription("The number of standbytasks to maintain.");
 	/**
 	 * This option specifies the interval in order to trigger a resource manager reconnection if the connection
 	 * to the resource manager has been lost.

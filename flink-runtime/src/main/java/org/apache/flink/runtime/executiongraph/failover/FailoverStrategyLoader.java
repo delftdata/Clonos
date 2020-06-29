@@ -72,7 +72,8 @@ public class FailoverStrategyLoader {
 					return new RestartIndividualStrategy.Factory();
 
 				case STANDBY_TASK_RUN_STRATEGY_NAME:
-					return new RunStandbyTaskStrategy.Factory();
+					final int numStandbyTasksToMaintain = config.getInteger(JobManagerOptions.NUMBER_OF_STANDBY_TASKS_TO_MAINTAIN);
+					return new RunStandbyTaskStrategy.Factory(numStandbyTasksToMaintain);
 
 				default:
 					// we could interpret the parameter as a factory class name and instantiate that

@@ -90,7 +90,7 @@ public class RunStandbyTaskStrategyTest extends TestLogger {
 			AkkaUtils.getDefaultTimeout(),
 			// We want to manually control the restart and delay
 			new InfiniteDelayRestartStrategy(),
-			new RunStandbyTaskStrategy.Factory(),
+			new RunStandbyTaskStrategy.Factory(1),
 			scheduler);
 
 		JobVertex jobVertex = new JobVertex("NoOpInvokable");
@@ -144,7 +144,7 @@ public class RunStandbyTaskStrategyTest extends TestLogger {
 			AkkaUtils.getDefaultTimeout(),
 			// We want to manually control the restart and delay
 			new InfiniteDelayRestartStrategy(),
-			new RunStandbyTaskStrategy.Factory(),
+			new RunStandbyTaskStrategy.Factory(1),
 			scheduler);
 
 		JobVertex jobVertex = new JobVertex("NoOpInvokable");
@@ -202,7 +202,7 @@ public class RunStandbyTaskStrategyTest extends TestLogger {
 			AkkaUtils.getDefaultTimeout(),
 			// We want to manually control the restart and delay
 			new InfiniteDelayRestartStrategy(),
-			new RunStandbyTaskStrategy.Factory(),
+			new RunStandbyTaskStrategy.Factory(1),
 			scheduler);
 
 		JobVertex jobVertex = new JobVertex("NoInvokable");
@@ -280,7 +280,7 @@ public class RunStandbyTaskStrategyTest extends TestLogger {
 			AkkaUtils.getDefaultTimeout(),
 			// We want to manually control the restart and delay
 			new InfiniteDelayRestartStrategy(),
-			new RunStandbyTaskStrategy.Factory(),
+			new RunStandbyTaskStrategy.Factory(1),
 			scheduler);
 
 		JobVertex jobVertex = new JobVertex("NoInvokable");
@@ -352,7 +352,7 @@ public class RunStandbyTaskStrategyTest extends TestLogger {
 			AkkaUtils.getDefaultTimeout(),
 			// We want to manually control the restart and delay
 			new InfiniteDelayRestartStrategy(),
-			new RunStandbyTaskStrategy.Factory(),
+			new RunStandbyTaskStrategy.Factory(1),
 			scheduler);
 
 		JobVertex jobVertex = new JobVertex("NoInvokable");
@@ -440,7 +440,7 @@ public class RunStandbyTaskStrategyTest extends TestLogger {
 			AkkaUtils.getDefaultTimeout(),
 			// We want to manually control the restart and delay
 			new InfiniteDelayRestartStrategy(),
-			new RunStandbyTaskStrategy.Factory(),
+			new RunStandbyTaskStrategy.Factory(1),
 			scheduler);
 
 		JobVertex jobVertex = new JobVertex("NoInvokable");

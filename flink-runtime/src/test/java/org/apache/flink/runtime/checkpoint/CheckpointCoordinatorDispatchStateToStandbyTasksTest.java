@@ -154,7 +154,7 @@ public class CheckpointCoordinatorDispatchStateToStandbyTasksTest {
 		Map<JobVertexID, ExecutionJobVertex> tasks = new HashMap<>();
 		tasks.put(jobVertexID1, jobVertex1);
 		tasks.put(jobVertexID2, jobVertex2);
-		FailoverStrategy.Factory runStandbyTaskStrategy = new RunStandbyTaskStrategy.Factory();
+		FailoverStrategy.Factory runStandbyTaskStrategy = new RunStandbyTaskStrategy.Factory(1);
 		ExecutionGraph executionGraph = mockExecutionGraph(tasks, runStandbyTaskStrategy);
 		for (ExecutionVertex executionVertex : allExecutionVertices) {
 			when(executionVertex.getExecutionGraph()).thenReturn(executionGraph);
@@ -420,7 +420,7 @@ public class CheckpointCoordinatorDispatchStateToStandbyTasksTest {
 		Map<JobVertexID, ExecutionJobVertex> tasks = new HashMap<>();
 		tasks.put(jobVertexID1, jobVertex1);
 		tasks.put(jobVertexID2, jobVertex2);
-		FailoverStrategy.Factory runStandbyTaskStrategy = new RunStandbyTaskStrategy.Factory();
+		FailoverStrategy.Factory runStandbyTaskStrategy = new RunStandbyTaskStrategy.Factory(1);
 		ExecutionGraph executionGraph = mockExecutionGraph(tasks, runStandbyTaskStrategy);
 		for (ExecutionVertex executionVertex : allExecutionVertices) {
 			when(executionVertex.getExecutionGraph()).thenReturn(executionGraph);

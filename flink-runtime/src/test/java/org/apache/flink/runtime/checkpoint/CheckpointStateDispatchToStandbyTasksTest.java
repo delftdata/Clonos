@@ -125,7 +125,7 @@ public class CheckpointStateDispatchToStandbyTasksTest {
 			map.put(statefulId, stateful);
 			map.put(statelessId, stateless);
 
-			FailoverStrategy.Factory runStandbyTaskStrategy = new RunStandbyTaskStrategy.Factory();
+			FailoverStrategy.Factory runStandbyTaskStrategy = new RunStandbyTaskStrategy.Factory(1);
 			ExecutionGraph executionGraph = mockExecutionGraph(map, runStandbyTaskStrategy);
 			when(stateful1.getExecutionGraph()).thenReturn(executionGraph);
 			when(stateful2.getExecutionGraph()).thenReturn(executionGraph);
