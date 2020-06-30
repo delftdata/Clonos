@@ -27,7 +27,7 @@ import javax.annotation.Nonnull;
  * Class which contains the connection details of an established
  * connection with the ResourceManager.
  */
-class EstablishedResourceManagerConnection {
+public class EstablishedResourceManagerConnection {
 
 	@Nonnull
 	private final ResourceManagerGateway resourceManagerGateway;

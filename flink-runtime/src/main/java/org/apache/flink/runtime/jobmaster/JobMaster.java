@@ -1199,7 +1199,7 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 	private ExecutionGraph createAndRestoreExecutionGraph(JobManagerJobMetricGroup currentJobManagerJobMetricGroup) throws Exception {
 
 		ExecutionGraph newExecutionGraph = createExecutionGraph(currentJobManagerJobMetricGroup);
-
+		newExecutionGraph.setSlotPool(this.slotPool);
 		final CheckpointCoordinator checkpointCoordinator = newExecutionGraph.getCheckpointCoordinator();
 
 		if (checkpointCoordinator != null) {
@@ -1383,6 +1383,8 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 			establishedResourceManagerConnection = new EstablishedResourceManagerConnection(
 				resourceManagerGateway,
 				resourceManagerResourceId);
+
+			this.executionGraph.setResourceManagerConnection(establishedResourceManagerConnection);
 
 			slotPoolGateway.connectToResourceManager(resourceManagerGateway);
 

@@ -18,18 +18,29 @@
 
 package org.apache.flink.runtime.executiongraph.failover;
 
+import akka.remote.Ack;
+import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.executiongraph.Execution;
 import org.apache.flink.runtime.executiongraph.ExecutionGraph;
 import org.apache.flink.runtime.executiongraph.ExecutionJobVertex;
 import org.apache.flink.runtime.executiongraph.ExecutionVertex;
+import org.apache.flink.runtime.instance.SlotSharingGroupId;
+import org.apache.flink.runtime.jobmaster.EstablishedResourceManagerConnection;
+import org.apache.flink.runtime.jobmaster.SlotRequestId;
+import org.apache.flink.runtime.jobmaster.slotpool.SlotPool;
+import org.apache.flink.runtime.messages.Acknowledge;
+import org.apache.flink.util.FlinkException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -77,21 +88,75 @@ public class RunStandbyTaskStrategy extends FailoverStrategy {
 		// Note: currently all tasks passed here are already in their terminal state,
 		//       so we could actually avoid the future. We use it anyways because it is cheap and
 		//       it helps to support better testing
-		final CompletableFuture<ExecutionState> terminationFuture = taskExecution.getTerminalStateFuture();
 		final ExecutionVertex vertexToRecover = taskExecution.getVertex();
 
-		try {
-			LOG.info(getStrategyName() + "failover strategy is triggered for the recovery of task " +
-				vertexToRecover.getTaskNameWithSubtaskIndex() +
-				". Activating standby task for this task.");
+		LOG.info(getStrategyName() + "failover strategy is triggered for the recovery of task " +
+			vertexToRecover.getTaskNameWithSubtaskIndex() + ".");
+
+
+		CompletableFuture<Void> removeSlotsFuture = asyncRemoveFailedSlots(taskExecution);
+
+		//By default, there should already be a standby ready
+		CompletableFuture<Void> standbyReady = CompletableFuture.completedFuture(null);
+
+		//If there isnt, we need to wait for the remove slots to complete, before scheduling a new standby
+		//This guarantees we do not reschedule to the same slot
+		if (vertexToRecover.getStandbyExecutions().size() == 0)
+			standbyReady = composePrepareNewStandby(vertexToRecover, removeSlotsFuture);
+
+		//If there was a standby, this runs without waiting for the failed vertex to be removed, otherwise it performs
+		//the necessary steps first
+		standbyReady.thenAcceptAsync((Void) -> {
+			LOG.info("Running the standby execution.");
 			vertexToRecover.runStandbyExecution();
-		} catch (IllegalStateException e) {
+		});
+
+		//In case of exceptions during the whole execution, trigger full recovery
+		standbyReady.exceptionally((Throwable t) -> {
 			executionGraph.failGlobal(
-				new Exception("Error during standby task recovery: no standby execution to run -- triggering full recovery", e));
-		} catch (Exception e) {
-			executionGraph.failGlobal(
-				new Exception("Error during standby task recovery -- triggering full recovery", e));
-		}
+				new Exception("Error during standby task recovery, triggering full recovery: ", t));
+			return null;
+		});
+	}
+
+	private CompletableFuture<Void> composePrepareNewStandby(ExecutionVertex vertexToRecover, CompletableFuture<Void> removeSlotsFuture) {
+		return removeSlotsFuture.thenComposeAsync((ignored) -> {
+			//I believe the compose call should then wait for the addStandbyExecution to complete
+			LOG.info("Adding a new standby execution");
+			return vertexToRecover.addStandbyExecution();
+		}).thenApplyAsync((ignored) -> {
+			LOG.info("Waiting for standby to be ready");
+			while (vertexToRecover.getStandbyExecutions().get(0).getState() != ExecutionState.STANDBY) ;
+			LOG.info("Standby is ready.");
+			LOG.info("Dispatching state.");
+			try {
+				executionGraph.getCheckpointCoordinator().dispatchLatestCheckpointedStateToStandbyTasks(
+					Collections.singletonMap(vertexToRecover.getJobvertexId(), vertexToRecover.getJobVertex()),
+					false, true);
+			} catch (Exception e) {
+				throw new CompletionException(e);
+			}
+			return null;
+		});
+	}
+
+	private CompletableFuture<Void> asyncRemoveFailedSlots(Execution taskExecution) {
+		Executor exec = executionGraph.getFutureExecutor();
+
+		ResourceID resourceIDOfFailedTM = taskExecution.getAssignedResourceLocation().getResourceID();
+		Exception disconnectionCause = new FlinkException("disconnecting TM preventatively");
+
+		return CompletableFuture.supplyAsync(() -> {
+			LOG.info("Releasing failed slots");
+			//Note: this happens synchronously, even if it returns a future.
+			executionGraph.getSlotPool().releaseTaskManager(resourceIDOfFailedTM, disconnectionCause);
+
+			LOG.info("Disconnect current TM to avoid rescheduling to failed TM");
+			EstablishedResourceManagerConnection resManCon = executionGraph.getResourceManagerConnection();
+			resManCon.getResourceManagerGateway().disconnectTaskManager(resourceIDOfFailedTM, disconnectionCause);
+
+			return null;
+		}, exec);
 	}
 
 	@Override

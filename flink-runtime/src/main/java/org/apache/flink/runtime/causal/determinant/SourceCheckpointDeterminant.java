@@ -32,6 +32,8 @@ import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.checkpoint.CheckpointType;
 import org.apache.flink.runtime.state.CheckpointStorageLocationReference;
 
+import java.util.Arrays;
+
 public class SourceCheckpointDeterminant extends NonMainThreadDeterminant {
 
 
@@ -99,7 +101,11 @@ public class SourceCheckpointDeterminant extends NonMainThreadDeterminant {
 	@Override
 	public String toString() {
 		return "SourceCheckpointDeterminant{" +
-			"recordCount=" + recordCount +
+			"storageReference=" + Arrays.toString(storageReference) +
+			", checkpointID=" + checkpointID +
+			", checkpointTimestamp=" + checkpointTimestamp +
+			", type=" + type +
+			", recordCount=" + recordCount +
 			'}';
 	}
 

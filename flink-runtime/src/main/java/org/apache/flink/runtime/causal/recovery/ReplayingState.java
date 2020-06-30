@@ -106,7 +106,7 @@ public class ReplayingState extends AbstractState {
 		LOG.info("Got notified of new input channel event, while in state " + this.getClass() + " requesting upstream to replay and skip numberOfBuffersRemoved");
 		IntermediateResultPartitionID id = remoteInputChannel.getPartitionId().getPartitionId();
 		try {
-			remoteInputChannel.sendTaskEvent(new InFlightLogRequestEvent(id, consumedSubpartitionIndex, context.finalRestoredCheckpointId, numberOfBuffersRemoved));
+			remoteInputChannel.sendTaskEvent(new InFlightLogRequestEvent(id, consumedSubpartitionIndex, context.epochProvider.getCurrentEpochID(), numberOfBuffersRemoved));
 		} catch (IOException | InterruptedException e) {
 			e.printStackTrace();
 		}

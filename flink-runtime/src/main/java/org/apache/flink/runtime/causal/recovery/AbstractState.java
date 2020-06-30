@@ -77,14 +77,14 @@ public abstract class AbstractState implements State {
 	public void notifyStateRestorationStart(long checkpointId) {
 		LOG.info("Started restoring state of checkpoint {}", checkpointId);
 		this.context.incompleteStateRestorations.put(checkpointId, true);
-		if(checkpointId > context.finalRestoredCheckpointId)
-			context.finalRestoredCheckpointId = checkpointId;
+		if(checkpointId > context.epochProvider.getCurrentEpochID())
+			context.epochProvider.setCurrentEpochID(checkpointId);
 
 		for (RecordWriter recordWriter : context.recordWriters)
 			for(ResultSubpartition rs : recordWriter.getResultPartition().getResultSubpartitions())
-				((PipelinedSubpartition)rs).setStartingEpoch(context.finalRestoredCheckpointId);
+				((PipelinedSubpartition)rs).setStartingEpoch(context.epochProvider.getCurrentEpochID());
 
-			context.epochProvider.setCurrentEpochID(context.finalRestoredCheckpointId);
+			context.epochProvider.setCurrentEpochID(context.epochProvider.getCurrentEpochID());
 	}
 
 	@Override

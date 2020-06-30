@@ -92,7 +92,6 @@ public class BasicLocalVertexCausalLog implements LocalVertexCausalLog {
 	@Override
 	public void appendSubpartitionDeterminants(Determinant determinant, long epochID, IntermediateResultPartitionID intermediateResultPartitionID, int subpartitionIndex) {
 		LOG.debug("Appending determinant for epochID {} to intermediateResultPartitionID {} subpartition {}", epochID, intermediateResultPartitionID, subpartitionIndex);
-		LOG.debug("PartitionMap {}", Arrays.toString(subpartitionLogs.get(intermediateResultPartitionID)));
 		subpartitionLogs.get(intermediateResultPartitionID)[subpartitionIndex].appendDeterminant(determinant, epochID);
 	}
 
@@ -104,8 +103,6 @@ public class BasicLocalVertexCausalLog implements LocalVertexCausalLog {
 		consumerPartitions.put(inputChannelID, new Tuple2<>(intermediateResultPartitionID, consumedSubpartition));
 		//only register this consumer with his specific subpartition
 		//He is not causally affected by the state of the other subpartitions
-		//subpartitionLogs.get(intermediateResultPartitionID)[consumedSubpartition].registerDownstreamConsumer(inputChannelID);
-
 	}
 
 	@Override
@@ -160,14 +157,8 @@ public class BasicLocalVertexCausalLog implements LocalVertexCausalLog {
 		return "BasicLocalVertexCausalLog{" +
 			"vertexId=" + vertexId +
 			", mainThreadLog=" + mainThreadLog +
-			", subpartitionLogs=" + representSubpartitionLogsAsString() +
 			", totalSubpartitions=" + totalSubpartitions +
 			'}';
 	}
 
-	private String representSubpartitionLogsAsString() {
-		return "{" + subpartitionLogs.entrySet().stream().map(
-			x -> x.getKey() + "->" + Arrays.toString(x.getValue())).collect(Collectors.joining(", "))
-			+ "}";
-	}
 }

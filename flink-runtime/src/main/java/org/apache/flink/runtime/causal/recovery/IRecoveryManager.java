@@ -82,8 +82,6 @@ public interface IRecoveryManager {
 
     boolean isRecovering();
 
-    long getFinalRestoreStateCheckpointId();
-
 	//====================================================
 	/*
 	The following methods must be called from deterministic contexts. Otherwise it will

@@ -82,7 +82,7 @@ public class WaitingDeterminantsState extends AbstractState {
 			//Send all Determinant requests
 			if (context.vertexGraphInformation.hasDownstream()) {
 				LOG.info("Sending determinant requests");
-				DeterminantRequestEvent determinantRequestEvent = new DeterminantRequestEvent(context.vertexGraphInformation.getThisTasksVertexID(), context.finalRestoredCheckpointId);
+				DeterminantRequestEvent determinantRequestEvent = new DeterminantRequestEvent(context.vertexGraphInformation.getThisTasksVertexID(), context.epochProvider.getCurrentEpochID());
 				broadcastDeterminantRequest(determinantRequestEvent);
 			}
 
@@ -92,7 +92,7 @@ public class WaitingDeterminantsState extends AbstractState {
 					int consumedIndex = singleInputGate.getConsumedSubpartitionIndex();
 					for (int i = 0; i < singleInputGate.getNumberOfInputChannels(); i++) {
 						RemoteInputChannel inputChannel = (RemoteInputChannel) singleInputGate.getInputChannel(i);
-						InFlightLogRequestEvent inFlightLogRequestEvent = new InFlightLogRequestEvent(inputChannel.getPartitionId().getPartitionId(), consumedIndex, context.getFinalRestoreStateCheckpointId());
+						InFlightLogRequestEvent inFlightLogRequestEvent = new InFlightLogRequestEvent(inputChannel.getPartitionId().getPartitionId(), consumedIndex, context.epochProvider.getCurrentEpochID());
 						LOG.info("Sending inFlightLog request {} through input gate {}, channel {}.", inFlightLogRequestEvent, singleInputGate, i);
 						inputChannel.sendTaskEvent(inFlightLogRequestEvent);
 					}
@@ -138,7 +138,7 @@ public class WaitingDeterminantsState extends AbstractState {
 		//This means that  we now have to wait for the upstream to finish recovering before we do.
 		IntermediateResultPartitionID requestReplayFor = inputChannel.getPartitionId().getPartitionId();
 		try {
-			inputChannel.sendTaskEvent(new InFlightLogRequestEvent(requestReplayFor, channelIndex, context.finalRestoredCheckpointId));
+			inputChannel.sendTaskEvent(new InFlightLogRequestEvent(requestReplayFor, channelIndex, context.epochProvider.getCurrentEpochID()));
 		} catch (IOException | InterruptedException e) {
 			e.printStackTrace();
 		}
@@ -149,7 +149,7 @@ public class WaitingDeterminantsState extends AbstractState {
 		try {
 			RecordWriter recordWriter = context.intermediateResultPartitionIDRecordWriterMap.get(intermediateResultPartitionID);
 			PipelinedSubpartition subpartition = (PipelinedSubpartition) recordWriter.getResultPartition().getResultSubpartitions()[index];
-			DeterminantRequestEvent event = new DeterminantRequestEvent(context.vertexGraphInformation.getThisTasksVertexID(), context.finalRestoredCheckpointId);
+			DeterminantRequestEvent event = new DeterminantRequestEvent(context.vertexGraphInformation.getThisTasksVertexID(), context.epochProvider.getCurrentEpochID());
 			subpartition.bypassDeterminantRequest(EventSerializer.toBufferConsumer(event));
 		} catch (IOException e) {
 			e.printStackTrace();

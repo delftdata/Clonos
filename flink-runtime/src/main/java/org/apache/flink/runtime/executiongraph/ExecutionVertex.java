@@ -52,6 +52,7 @@ import javax.annotation.Nullable;
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 
 import static org.apache.flink.runtime.execution.ExecutionState.FINISHED;
 import static org.apache.flink.runtime.execution.ExecutionState.RUNNING;
@@ -684,12 +685,12 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			throw new IllegalStateException("No standby execution to run.");
 		}
 
-		Execution firstStandbyExecution = this.standbyExecutions.get(0);
+		Execution firstStandbyExecution = this.standbyExecutions.remove(0);
 		priorExecutions.add(currentExecution);
 		currentExecution = firstStandbyExecution;
 
-		//send an RPC to switch execution to running
 		currentExecution.runStandbyExecution();
+
 
 		boolean updateConsumersOnFailover = true;
 

@@ -52,6 +52,8 @@ import org.apache.flink.runtime.jobgraph.tasks.CheckpointCoordinatorConfiguratio
 import org.apache.flink.runtime.jobmanager.scheduler.CoLocationGroup;
 import org.apache.flink.runtime.jobmanager.scheduler.LocationPreferenceConstraint;
 import org.apache.flink.runtime.jobmanager.scheduler.NoResourceAvailableException;
+import org.apache.flink.runtime.jobmaster.EstablishedResourceManagerConnection;
+import org.apache.flink.runtime.jobmaster.slotpool.SlotPool;
 import org.apache.flink.runtime.jobmaster.slotpool.SlotProvider;
 import org.apache.flink.runtime.query.KvStateLocationRegistry;
 import org.apache.flink.runtime.state.SharedStateRegistry;
@@ -257,6 +259,10 @@ public class ExecutionGraph implements AccessExecutionGraph {
 
 	// ------ Fields that are only relevant for archived execution graphs ------------
 	private String jsonPlan;
+
+	// ------ Connection allowing failoverstrategy to fail taskmanagers
+	EstablishedResourceManagerConnection resourceManagerConnection;
+	private SlotPool slotPool;
 
 	// --------------------------------------------------------------------------------------------
 	//   Constructors
@@ -1757,5 +1763,21 @@ public class ExecutionGraph implements AccessExecutionGraph {
 				}
 			}
 		}
+	}
+
+	public void setSlotPool(SlotPool slotPool){
+		this.slotPool = slotPool;
+	}
+
+	public SlotPool getSlotPool(){
+		return slotPool;
+	}
+
+	public void setResourceManagerConnection(EstablishedResourceManagerConnection resourceManagerConnection){
+		this.resourceManagerConnection = resourceManagerConnection;
+	}
+
+	public EstablishedResourceManagerConnection getResourceManagerConnection(){
+		return resourceManagerConnection;
 	}
 }

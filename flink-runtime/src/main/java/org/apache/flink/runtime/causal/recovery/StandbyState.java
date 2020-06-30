@@ -25,8 +25,13 @@
 
 package org.apache.flink.runtime.causal.recovery;
 
+import org.apache.flink.runtime.io.network.partition.consumer.RemoteInputChannel;
+import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 /**
  * In this state, we are waiting for recovery to begin.
@@ -38,8 +43,16 @@ import org.slf4j.LoggerFactory;
 public class StandbyState extends AbstractState {
 	private static final Logger LOG = LoggerFactory.getLogger(StandbyState.class);
 
+	//Concurrent sets with notifications received before the WaitConnectionsState
+	//These may happen when we do not use highly available standby tasks
+	private ConcurrentMap<EarlyNewInputChannelNotification, Boolean> inputChannelNotifications;
+	private ConcurrentMap<EarlyNewOutputChannelNotification, Boolean> outputChannelNotifications;
+
 	public StandbyState(RecoveryManager context) {
 		super(context);
+
+		this.inputChannelNotifications = new ConcurrentHashMap<>();
+		this.outputChannelNotifications = new ConcurrentHashMap<>();
 	}
 
 	@Override
@@ -53,11 +66,73 @@ public class StandbyState extends AbstractState {
 
 		State newState = new WaitingConnectionsState(context);
 		context.setState(newState);
+
+		// Notify state of save notifications
+		for(EarlyNewInputChannelNotification i : inputChannelNotifications.keySet()){
+			newState.notifyNewInputChannel(i.getRemoteInputChannel(), i.getConsumedSubpartitionIndex(), i.getNumBuffersRemoved());
+		}
+		for(EarlyNewOutputChannelNotification o : outputChannelNotifications.keySet()){
+			newState.notifyNewOutputChannel(o.getIntermediateResultPartitionID(), o.subpartitionIndex);
+		}
 	}
 
+	@Override
+	public void notifyNewInputChannel(RemoteInputChannel remoteInputChannel, int consumedSubpartitionIndex, int numBuffersRemoved){
+		this.inputChannelNotifications.put(new EarlyNewInputChannelNotification(remoteInputChannel, consumedSubpartitionIndex, numBuffersRemoved), Boolean.TRUE);
+
+	}
+
+	@Override
+	public void notifyNewOutputChannel(IntermediateResultPartitionID intermediateResultPartitionID, int subpartitionIndex){
+		this.outputChannelNotifications.put(new EarlyNewOutputChannelNotification(intermediateResultPartitionID, subpartitionIndex), Boolean.TRUE);
+	}
 
 	@Override
 	public String toString() {
 		return "StandbyState{}";
 	}
+
+	// ========== Notification parameter storage
+	private static class EarlyNewOutputChannelNotification {
+		private final IntermediateResultPartitionID intermediateResultPartitionID;
+		private final int subpartitionIndex;
+
+		public EarlyNewOutputChannelNotification(IntermediateResultPartitionID intermediateResultPartitionID, int subpartitionIndex) {
+			this.intermediateResultPartitionID = intermediateResultPartitionID;
+			this.subpartitionIndex = subpartitionIndex;
+		}
+
+		public IntermediateResultPartitionID getIntermediateResultPartitionID() {
+			return intermediateResultPartitionID;
+		}
+
+		public int getSubpartitionIndex() {
+			return subpartitionIndex;
+		}
+	}
+
+	private static class EarlyNewInputChannelNotification {
+		private final RemoteInputChannel remoteInputChannel;
+		private final int consumedSubpartitionIndex;
+		private final int numBuffersRemoved;
+
+		public EarlyNewInputChannelNotification(RemoteInputChannel remoteInputChannel, int consumedSubpartitionIndex, int numBuffersRemoved) {
+			this.remoteInputChannel = remoteInputChannel;
+			this.consumedSubpartitionIndex = consumedSubpartitionIndex;
+			this.numBuffersRemoved = numBuffersRemoved;
+		}
+
+		public RemoteInputChannel getRemoteInputChannel() {
+			return remoteInputChannel;
+		}
+
+		public int getConsumedSubpartitionIndex() {
+			return consumedSubpartitionIndex;
+		}
+
+		public int getNumBuffersRemoved() {
+			return numBuffersRemoved;
+		}
+	}
+
 }

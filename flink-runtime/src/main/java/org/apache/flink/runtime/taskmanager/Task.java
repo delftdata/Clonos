@@ -841,18 +841,8 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 			// by the time we switched to running.
 			this.invokable = invokable;
 
-			if (this.isStandby) {
-				// switch to the STANDBY state, if that fails, we have been canceled/failed in the meantime
-				if (!transitionState(ExecutionState.DEPLOYING, ExecutionState.STANDBY)) {
-					throw new CancelTaskException();
-				}
 
-				LOG.info("Standby task " + taskNameWithSubtask + " is at STANDBY state.");
-				// notify everyone that we switched to standby
-				notifyObservers(ExecutionState.STANDBY, null);
-				taskManagerActions.updateTaskExecutionState(new TaskExecutionState(jobId, executionId, ExecutionState.STANDBY));
-			}
-			else {
+			if(!this.isStandby) {
 				// switch to the RUNNING state, if that fails, we have been canceled/failed in the meantime
 				if (!transitionState(ExecutionState.DEPLOYING, ExecutionState.RUNNING)) {
 					throw new CancelTaskException();
@@ -1018,6 +1008,20 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 			catch (Throwable t) {
 				LOG.error("Error during metrics de-registration of task {} ({}).", taskNameWithSubtask, executionId, t);
 			}
+		}
+	}
+
+	public void transitionToStandbyState(){
+		if (this.isStandby) {
+			// switch to the STANDBY state, if that fails, we have been canceled/failed in the meantime
+			if (!transitionState(ExecutionState.DEPLOYING, ExecutionState.STANDBY)) {
+				throw new CancelTaskException();
+			}
+
+			LOG.info("Standby task " + taskNameWithSubtask + " is at STANDBY state.");
+			// notify everyone that we switched to standby
+			notifyObservers(ExecutionState.STANDBY, null);
+			taskManagerActions.updateTaskExecutionState(new TaskExecutionState(jobId, executionId, ExecutionState.STANDBY));
 		}
 	}
 

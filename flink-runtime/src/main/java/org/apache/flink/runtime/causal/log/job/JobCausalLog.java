@@ -158,15 +158,11 @@ public class JobCausalLog implements IJobCausalLog {
 		List<VertexCausalLogDelta> results = new LinkedList<>();
 		for (VertexID key : this.upstreamDeterminantLogs.keySet()) {
 			UpstreamVertexCausalLog upstreamVertexCausalLog = upstreamDeterminantLogs.get(key);
-			LOG.debug("Upstream log pre processing: {}", upstreamVertexCausalLog);
 			VertexCausalLogDelta causalLogDelta = upstreamVertexCausalLog.getNextDeterminantsForDownstream(inputChannelID, epochID);
 			if (causalLogDelta.hasUpdates())
 				results.add(causalLogDelta);
-			LOG.debug("Upstream log post processing: {}", upstreamDeterminantLogs.get(key));
 		}
-		LOG.debug("Local log pre processing: {}", localCausalLog);
 		VertexCausalLogDelta vertexCausalLogDelta = localCausalLog.getNextDeterminantsForDownstream(inputChannelID, epochID);
-		LOG.debug("Local log post processing: {}", localCausalLog);
 		if(vertexCausalLogDelta.hasUpdates())
 			results.add(vertexCausalLogDelta);
 		return results;
@@ -176,9 +172,7 @@ public class JobCausalLog implements IJobCausalLog {
 	public synchronized void notifyCheckpointComplete(long checkpointId) throws Exception {
 		LOG.debug("Processing checkpoint complete notification for id {}", checkpointId);
 		for (UpstreamVertexCausalLog log : upstreamDeterminantLogs.values()) {
-			LOG.debug("Determinant log pre processing: {}", log);
 			log.notifyCheckpointComplete(checkpointId);
-			LOG.debug("Determinant log post processing: {}", log);
 		}
 		localCausalLog.notifyCheckpointComplete(checkpointId);
 	}

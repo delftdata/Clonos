@@ -39,7 +39,6 @@ import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.instance.SlotSharingGroupId;
 import org.apache.flink.runtime.io.network.ConnectionID;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
-import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.jobmanager.scheduler.CoLocationConstraint;
 import org.apache.flink.runtime.jobmanager.scheduler.LocationPreferenceConstraint;
 import org.apache.flink.runtime.jobmanager.scheduler.ScheduledUnit;
@@ -66,11 +65,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.Executor;
-import java.util.concurrent.TimeoutException;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.stream.Collectors;
 
@@ -382,7 +377,13 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 		this.taskRestore = taskRestore;
 
 		if (isStandby && state == STANDBY) {
-			dispatchStateToStandbyTaskRpcCall(taskRestore);
+			CompletableFuture<Acknowledge> ack = dispatchStateToStandbyTaskRpcCall(taskRestore);
+			//We must synchronously wait for the result
+			try {
+				ack.get();
+			} catch (InterruptedException | ExecutionException e) {
+				e.printStackTrace();
+			}
 			LOG.debug("Dispatch state snapshot {} to standby task {}.", taskRestore, vertex.getTaskNameWithSubtaskIndex());
 		}
 	}
@@ -734,7 +735,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 		}
 	}
 
-	void runStandbyExecution() throws IllegalStateException {
+	CompletableFuture<Acknowledge> runStandbyExecution() throws IllegalStateException {
 		if (!this.isStandby) {
 			markFailed(new Exception("Tried to run a standby execution instance that is not a standby one."));
 		}
@@ -744,8 +745,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 			throw new IllegalStateException("Tried to run a standby execution that is not in STANDBY state, but in " + current + " state.");
 		}
 
-		LOG.debug("Run standby execution {}.", this);
-		sendSwitchStandbyToRunningRpcCall();
+		return sendSwitchStandbyToRunningRpcCall();
 	}
 
 	void scheduleOrUpdateConsumers(List<List<ExecutionEdge>> allConsumers, boolean updateConsumersOnFailover) {
@@ -1294,8 +1294,9 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 	 * This method sends a dispatchStateToStandbyTask message to the instance of the assigned slot.
 	 *
 	 * <p>The sending is tried up to NUM_CANCEL_CALL_TRIES times.
+	 * @return
 	 */
-	private void dispatchStateToStandbyTaskRpcCall(JobManagerTaskRestore taskRestore) {
+	private CompletableFuture<Acknowledge> dispatchStateToStandbyTaskRpcCall(JobManagerTaskRestore taskRestore) {
 		final LogicalSlot slot = assignedResource;
 
 		final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
@@ -1313,6 +1314,8 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 				}
 			},
 			executor);
+
+		return dispatchStateResultFuture;
 	}
 
 	/**
@@ -1320,9 +1323,10 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 	 *
 	 * <p>The sending is tried up to NUM_CANCEL_CALL_TRIES times.
 	 */
-	private void sendSwitchStandbyToRunningRpcCall() {
+	private CompletableFuture<Acknowledge> sendSwitchStandbyToRunningRpcCall() {
 		final LogicalSlot slot = assignedResource;
 
+		CompletableFuture<Acknowledge> toReturn = CompletableFuture.completedFuture(Acknowledge.get());
 		if (slot != null) {
 			final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
 
@@ -1331,14 +1335,15 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 				NUM_CANCEL_CALL_TRIES,
 				executor);
 
-			switchToRunningResultFuture.whenCompleteAsync(
+			toReturn = switchToRunningResultFuture.whenCompleteAsync(
 				(ack, failure) -> {
 					if (failure != null) {
-						fail(new Exception("Standby task could not be switched to runninng.", failure));
+						fail(new Exception("Standby task could not be switched to running.", failure));
 					}
 				},
 				executor);
 		}
+		return toReturn;
 	}
 
 

@@ -43,6 +43,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class RecoveryManager implements IRecoveryManager {
 
@@ -64,8 +65,6 @@ public class RecoveryManager implements IRecoveryManager {
 
 	//TODO check iff needed, or instead can just keep the pipelined subpartitions
 	List<RecordWriter> recordWriters;
-
-	long finalRestoredCheckpointId;
 
 	//TODO check iff needed, or instead can just keep the pipelined subpartitions
 	Map<IntermediateResultPartitionID, RecordWriter> intermediateResultPartitionIDRecordWriterMap;
@@ -95,8 +94,6 @@ public class RecoveryManager implements IRecoveryManager {
 		this.unansweredDeterminantRequests = new ConcurrentHashMap<>();
 
 		this.incompleteStateRestorations = new ConcurrentHashMap<>();
-
-		this.finalRestoredCheckpointId = 0;
 
 		this.currentState = readyToReplayFuture == null ? new RunningState(this) : new StandbyState(this);
 
@@ -224,12 +221,6 @@ public class RecoveryManager implements IRecoveryManager {
 
 		return numberOfRecoveringSubpartitions.get() != 0;
 	}
-
-	@Override
-	public synchronized long getFinalRestoreStateCheckpointId() {
-		return finalRestoredCheckpointId;
-	}
-
 
 	//=============== Consult determinants ==============================
 	@Override

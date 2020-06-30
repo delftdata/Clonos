@@ -78,6 +78,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
@@ -213,7 +214,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 	private final TimeService timeService;
 	private final CausalRandomService randomService;
-	private long currentEpochID;
+	private AtomicLong currentEpochID;
 	private final RecordCountProvider recordCountProvider;
 	private SourceCheckpointDeterminant reuseSourceCheckpointDeterminant;
 
@@ -298,7 +299,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			LOG.info("Set InFlightLogRequestEventListener {} for resultPartition {}.", iflrel, partition);
 		}
 
-		currentEpochID = environment.getTaskStateManager().getCurrentCheckpointRestoreID();
+		currentEpochID = new AtomicLong(0);
 
 		reuseSourceCheckpointDeterminant = new SourceCheckpointDeterminant();
 	}
@@ -386,6 +387,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			// standby task are dispatched to the standby task. See Task.dispatchStateToStandbyTask().
 			// Also block until input channel connections are ready.
 			if (isStandby()) {
+				getEnvironment().getContainingTask().transitionToStandbyState();
 				standbyFuture.get();
 				LOG.debug("Task {} starts recovery after standbyFuture {}.", getName(), standbyFuture);
 				recoveryManager.notifyStartRecovery();
@@ -784,17 +786,17 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 						checkpointMetaData.getTimestamp(),
 						checkpointOptions.getCheckpointType(),
 						checkpointOptions.getTargetLocation().getReferenceBytes()
-						), currentEpochID);
+						), currentEpochID.get());
 				}
 
 				// Step (1): Prepare the checkpoint, allow operators to do some pre-barrier work.
 				//           The pre-barrier work should be nothing or minimal in the common case.
 				operatorChain.prepareSnapshotPreBarrier(checkpointMetaData.getCheckpointId());
 
-				currentEpochID = checkpointMetaData.getCheckpointId();
+				currentEpochID.set(checkpointMetaData.getCheckpointId());
 
 				//Inform the partitions that a checkpoint barrier is going to come next
-				this.streamRecordWriters.forEach(rw -> rw.notifyCheckpointBarrier(currentEpochID));
+				this.streamRecordWriters.forEach(rw -> rw.notifyCheckpointBarrier(currentEpochID.get()));
 
 				// Step (2): Send the checkpoint barrier downstream
 				operatorChain.broadcastCheckpointBarrier(
@@ -1232,10 +1234,10 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	}
 
 	@Override
-	public long getCurrentEpochID(){return  currentEpochID;}
+	public long getCurrentEpochID(){return  currentEpochID.get();}
 
 	@Override
-	public void setCurrentEpochID(long currentEpochID){this.currentEpochID = currentEpochID;}
+	public void setCurrentEpochID(long currentEpochID){this.currentEpochID.set(currentEpochID);}
 	// ------------------------------------------------------------------------
 
 	private static final class CheckpointingOperation {

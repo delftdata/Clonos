@@ -28,30 +28,28 @@ package org.apache.flink.runtime.causal;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class RecordCountProviderImpl implements RecordCountProvider{
+public final class RecordCountProviderImpl implements RecordCountProvider{
 
 	private static final Logger LOG = LoggerFactory.getLogger(RecordCountProviderImpl.class);
-	int recordCount;
+	private volatile int recordCount;
 
 	public RecordCountProviderImpl() {
 		recordCount = 0;
 	}
 
 	@Override
-	public int getRecordCount() {
-		LOG.debug("Call to getRecordCount(), returning {}", recordCount);
+	public final int getRecordCount() {
 		return recordCount;
 	}
 
 	@Override
-	public void incRecordCount() {
-		LOG.debug("Call to incRecordCount(), {} to {}", recordCount, recordCount+1);
+	public final void incRecordCount() {
+		//increments to record count are protected by the checkpoint lock, so this is ok
 		recordCount++;
 	}
 
 	@Override
-	public void resetRecordCount() {
-		LOG.debug("Call to resetRecordCount(), {} to {}", recordCount, 0);
+	public final void resetRecordCount() {
 		recordCount = 0;
 	}
 

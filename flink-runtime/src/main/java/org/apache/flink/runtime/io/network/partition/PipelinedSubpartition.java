@@ -518,7 +518,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 					if (consumer.isFinished()) {
 						if (consumer.getUnreadBytes() > 0) {
 							if (consumer.getUnreadBytes() < bufferSize)
-								throw new RuntimeException("Size of finished buffer does not match size of recovery request to build buffer.");
+								throw new RuntimeException(String.format("Size of finished buffer ( {} ) does not match size of recovery request to build buffer ( {} ).", consumer.getUnreadBytes(), bufferSize));
 						} else {
 							buffers.pop().close();
 							checkpointIds.pop();
