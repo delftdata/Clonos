@@ -146,18 +146,20 @@ public class ReplayingState extends AbstractState {
 
 	@Override
 	public void checkAsyncEvent() {
-		LOG.debug("Checking if an async event fired at this point");
-		while (nextDeterminant instanceof NonMainThreadDeterminant) {
-			NonMainThreadDeterminant nonMainThreadDeterminant = (NonMainThreadDeterminant) nextDeterminant;
-			LOG.info("Next determinant is NonMainThread : {}", nonMainThreadDeterminant);
-			if (context.recordCountProvider.getRecordCount() == nonMainThreadDeterminant.getRecordCount()) {
-				LOG.info("We are at the same point in the stream, with record count: {}", nonMainThreadDeterminant.getRecordCount());
-				nonMainThreadDeterminant.process(context);
+		while (nextDeterminant instanceof AsyncDeterminant) {
+			AsyncDeterminant asyncDeterminant = (AsyncDeterminant) nextDeterminant;
+			int currentRecordCount = context.recordCountProvider.getRecordCount();
+			if(currentRecordCount > asyncDeterminant.getRecordCount())
+				throw new RuntimeException("Current record count is beyond the determinants record count. Current: " + currentRecordCount + ", determinant: " + asyncDeterminant.getRecordCount());
+			LOG.info("Current: " + currentRecordCount + ", determinant: " + asyncDeterminant.getRecordCount());
+			if (context.recordCountProvider.getRecordCount() == asyncDeterminant.getRecordCount()) {
+				LOG.info("We are at the same point in the stream, with record count: {}", asyncDeterminant.getRecordCount());
+				//Prepare next first, because the async event, in being processed, may require determinants
 				prepareNext();
+				asyncDeterminant.process(context);
 			}else
 				break;
 		}
-
 	}
 
 	private void prepareNext() {

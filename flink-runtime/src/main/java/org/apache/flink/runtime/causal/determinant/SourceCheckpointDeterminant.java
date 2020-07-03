@@ -34,7 +34,7 @@ import org.apache.flink.runtime.state.CheckpointStorageLocationReference;
 
 import java.util.Arrays;
 
-public class SourceCheckpointDeterminant extends NonMainThreadDeterminant {
+public class SourceCheckpointDeterminant extends AsyncDeterminant {
 
 
 	private byte[] storageReference;

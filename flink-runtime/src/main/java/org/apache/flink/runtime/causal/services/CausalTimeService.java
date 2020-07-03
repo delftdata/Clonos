@@ -50,25 +50,15 @@ public class CausalTimeService implements TimeService {
 
 	@Override
 	public long currentTimeMillis(){
-		return checkState(System.currentTimeMillis());
-	}
-
-
-	@Override
-	public long nanoTime() {
-		return checkState(System.nanoTime());
-	}
-
-	private long checkState(long timestamp) {
-		long toReturn = timestamp;
 		while (!(recoveryManager.isRunning() || recoveryManager.isReplaying()))
 			LOG.debug("Requested timestamp but neither running nor replaying");
 
 
-		if(recoveryManager.isReplaying()) {
-			LOG.debug("We are replaying, returning the next timestamp from recovery manager");
+		long toReturn;
+		if(recoveryManager.isReplaying())
 			toReturn = recoveryManager.replayNextTimestamp();
-		}
+		else
+			toReturn = System.currentTimeMillis();
 
 		LOG.debug("We are running, returning a fresh timestamp and recording it.");
 		causalLoggingManager.appendDeterminant(reuseTimestampDeterminant.replace(toReturn), epochProvider.getCurrentEpochID());

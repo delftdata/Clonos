@@ -78,4 +78,11 @@ public class ProcessingTimeCallbackID{
 	public int hashCode() {
 		return Objects.hash(getType(), getName());
 	}
+
+	@Override
+	public String toString() {
+		return "ProcessingTimeCallbackID{" +
+			(type.equals(Type.INTERNAL) ? "name="+ name : "type=" + type.name()) +
+			'}';
+	}
 }

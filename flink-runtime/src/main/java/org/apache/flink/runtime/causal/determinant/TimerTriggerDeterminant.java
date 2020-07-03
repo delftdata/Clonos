@@ -19,7 +19,7 @@ package org.apache.flink.runtime.causal.determinant;
 import org.apache.flink.runtime.causal.recovery.RecoveryManager;
 
 
-public class TimerTriggerDeterminant extends NonMainThreadDeterminant {
+public class TimerTriggerDeterminant extends AsyncDeterminant {
 
 	ProcessingTimeCallbackID processingTimeCallbackID;
 	private long timestamp;

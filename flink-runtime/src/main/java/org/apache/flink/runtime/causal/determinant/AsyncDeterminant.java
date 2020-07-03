@@ -27,14 +27,14 @@ package org.apache.flink.runtime.causal.determinant;
 
 import org.apache.flink.runtime.causal.recovery.RecoveryManager;
 
-public abstract class NonMainThreadDeterminant extends Determinant {
+public abstract class AsyncDeterminant extends Determinant {
 	protected int recordCount;
 
-	protected NonMainThreadDeterminant(){
+	protected AsyncDeterminant(){
 
 	}
 
-	protected NonMainThreadDeterminant(int recordCount){
+	protected AsyncDeterminant(int recordCount){
 		this.recordCount = recordCount;
 	}
 

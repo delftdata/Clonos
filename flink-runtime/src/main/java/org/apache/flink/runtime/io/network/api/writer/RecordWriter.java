@@ -77,7 +77,7 @@ public class RecordWriter<T extends IOReadableWritable> implements CheckpointLis
 
 	protected Counter numBytesOut = new SimpleCounter();
 
-	protected CausalRandomService randomService;
+	protected RandomService randomService;
 
 	public RecordWriter(ResultPartitionWriter writer) {
 		this(writer, new RoundRobinChannelSelector<T>());
@@ -93,6 +93,7 @@ public class RecordWriter<T extends IOReadableWritable> implements CheckpointLis
 		this.targetPartition = writer;
 		this.channelSelector = channelSelector;
 		this.channelSelector.setRandomService(randomService);
+		this.randomService = randomService;
 
 		this.numChannels = writer.getNumberOfSubpartitions();
 

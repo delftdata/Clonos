@@ -169,7 +169,7 @@ public class StreamInputProcessor<IN> {
 
 		this.statusWatermarkValve = new StatusWatermarkValve(
 			numInputChannels,
-			new ForwardingValveOutputHandler(streamOperator, lock, recordCountProvider));
+			new ForwardingValveOutputHandler(streamOperator, lock));
 
 		this.watermarkGauge = watermarkGauge;
 		metrics.gauge("checkpointAlignmentTime", barrierHandler::getAlignmentDurationNanos);
@@ -201,25 +201,34 @@ public class StreamInputProcessor<IN> {
 					StreamElement recordOrMark = deserializationDelegate.getInstance();
 
 					//This short circuits on isRecovering if it is false, hopefully achieving higher performance when running
-					if(isRecovering && (isRecovering = recoveryManager.isReplaying()))
+					if (isRecovering && (isRecovering = recoveryManager.isReplaying()))
 						recoveryManager.checkAsyncEvent();
 
 					if (recordOrMark.isWatermark()) {
-						// handle watermark
-						statusWatermarkValve.inputWatermark(recordOrMark.asWatermark(), currentChannel);
-						continue;
+						synchronized (lock) {
+							recordCountProvider.incRecordCount();
+							// handle watermark
+							statusWatermarkValve.inputWatermark(recordOrMark.asWatermark(), currentChannel);
+							continue;
+						}
 					} else if (recordOrMark.isStreamStatus()) {
-						// handle stream status
-						statusWatermarkValve.inputStreamStatus(recordOrMark.asStreamStatus(), currentChannel);
-						continue;
+						synchronized (lock) {
+							recordCountProvider.incRecordCount();
+							// handle stream status
+							statusWatermarkValve.inputStreamStatus(recordOrMark.asStreamStatus(), currentChannel);
+							continue;
+						}
 					} else if (recordOrMark.isLatencyMarker()) {
-						// handle latency marker
-						streamOperator.processLatencyMarker(recordOrMark.asLatencyMarker());
-						continue;
+						synchronized (lock) {
+							recordCountProvider.incRecordCount();
+							// handle latency marker
+							streamOperator.processLatencyMarker(recordOrMark.asLatencyMarker());
+							continue;
+						}
 					} else {
 						// now we can do the actual processing
 						StreamRecord<IN> record = recordOrMark.asRecord();
-						LOG.info("Record: {}", record);
+
 						synchronized (lock) {
 							recordCountProvider.incRecordCount();
 							numRecordsIn.inc();
@@ -230,10 +239,6 @@ public class StreamInputProcessor<IN> {
 					}
 				}
 			}
-
-			//This short circuits on isRecovering if it is false, hopefully achieving higher performance when running
-			if(isRecovering && (isRecovering = recoveryManager.isReplaying()))
-				recoveryManager.checkAsyncEvent();
 
 			final BufferOrEvent bufferOrEvent;
 			bufferOrEvent = barrierHandler.getNextNonBlocked();
@@ -276,19 +281,16 @@ public class StreamInputProcessor<IN> {
 	private class ForwardingValveOutputHandler implements StatusWatermarkValve.ValveOutputHandler {
 		private final OneInputStreamOperator<IN, ?> operator;
 		private final Object lock;
-		private final RecordCountProvider recordCountProvider;
 
-		private ForwardingValveOutputHandler(final OneInputStreamOperator<IN, ?> operator, final Object lock, RecordCountProvider recordCountProvider) {
+		private ForwardingValveOutputHandler(final OneInputStreamOperator<IN, ?> operator, final Object lock) {
 			this.operator = checkNotNull(operator);
 			this.lock = checkNotNull(lock);
-			this.recordCountProvider = checkNotNull(recordCountProvider);
 		}
 
 		@Override
 		public void handleWatermark(Watermark watermark) {
 			try {
 				synchronized (lock) {
-					recordCountProvider.incRecordCount();
 					watermarkGauge.setCurrentWatermark(watermark.getTimestamp());
 					operator.processWatermark(watermark);
 				}

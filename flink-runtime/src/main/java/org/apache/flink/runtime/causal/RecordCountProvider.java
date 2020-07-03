@@ -29,6 +29,9 @@ public interface RecordCountProvider {
 
 	int getRecordCount();
 
+	/**
+	 * For correctness, it is important that all calls to this method are done under the checkpoint lock
+	 */
 	void incRecordCount();
 
 	void resetRecordCount();

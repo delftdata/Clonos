@@ -68,6 +68,8 @@ public class StreamSource<OUT, SRC extends SourceFunction<OUT>>
 
 		final TimeCharacteristic timeCharacteristic = getOperatorConfig().getTimeCharacteristic();
 
+		final RecordCountProvider recordCountProvider = getContainingTask().getRecordCountProvider();
+
 		LatencyMarksEmitter latencyEmitter = null;
 		if (getExecutionConfig().isLatencyTrackingEnabled()) {
 			latencyEmitter = new LatencyMarksEmitter<>(
@@ -75,12 +77,14 @@ public class StreamSource<OUT, SRC extends SourceFunction<OUT>>
 				collector,
 				getExecutionConfig().getLatencyTrackingInterval(),
 				this.getOperatorID(),
-				getRuntimeContext().getIndexOfThisSubtask());
+				getRuntimeContext().getIndexOfThisSubtask(),
+				lockingObject,
+				recordCountProvider
+				);
 		}
 
 		final long watermarkInterval = getRuntimeContext().getExecutionConfig().getAutoWatermarkInterval();
 
-		final RecordCountProvider recordCountProvider = getContainingTask().getRecordCountProvider();
 
 		this.ctx = StreamSourceContexts.getSourceContext(
 			timeCharacteristic,
@@ -144,11 +148,12 @@ public class StreamSource<OUT, SRC extends SourceFunction<OUT>>
 		private final ScheduledFuture<?> latencyMarkTimer;
 
 		public LatencyMarksEmitter(
-				final ProcessingTimeService processingTimeService,
-				final Output<StreamRecord<OUT>> output,
-				long latencyTrackingInterval,
-				final OperatorID operatorId,
-				final int subtaskIndex) {
+			final ProcessingTimeService processingTimeService,
+			final Output<StreamRecord<OUT>> output,
+			long latencyTrackingInterval,
+			final OperatorID operatorId,
+			final int subtaskIndex,
+			Object lockingObject, RecordCountProvider recordCountProvider) {
 
 			latencyMarkTimer = processingTimeService.scheduleAtFixedRate(
 				new ProcessingTimeCallback() {
@@ -157,13 +162,16 @@ public class StreamSource<OUT, SRC extends SourceFunction<OUT>>
 
 					@Override
 					public void onProcessingTime(long timestamp) throws Exception {
-						try {
-							// ProcessingTimeService callbacks are executed under the checkpointing lock
-							output.emitLatencyMarker(new LatencyMarker(timestamp, operatorId, subtaskIndex));
-						} catch (Throwable t) {
-							// we catch the Throwables here so that we don't trigger the processing
-							// timer services async exception handler
-							LOG.warn("Error while emitting latency marker.", t);
+						synchronized (lockingObject) {
+							try {
+								// ProcessingTimeService callbacks are executed under the checkpointing lock
+								recordCountProvider.incRecordCount();
+								output.emitLatencyMarker(new LatencyMarker(timestamp, operatorId, subtaskIndex));
+							} catch (Throwable t) {
+								// we catch the Throwables here so that we don't trigger the processing
+								// timer services async exception handler
+								LOG.warn("Error while emitting latency marker.", t);
+							}
 						}
 					}
 

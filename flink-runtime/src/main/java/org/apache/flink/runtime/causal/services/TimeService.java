@@ -27,6 +27,4 @@ package org.apache.flink.runtime.causal.services;
 
 public interface TimeService {
     long currentTimeMillis();
-
-    long nanoTime();
 }
