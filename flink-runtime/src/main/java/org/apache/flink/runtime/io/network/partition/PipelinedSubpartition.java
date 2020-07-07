@@ -416,7 +416,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 		}
 		//If we are recovering, when we conclude, we must notify of data availability.
-		if (recoveryManager.isRunning()) {
+		if (recoveryManager == null || recoveryManager.isRunning()) {
 			notifyDataAvailable();
 		} else {
 			recoveryManager.notifyNewOutputChannel(parent.getPartitionId().getPartitionId(), index);
