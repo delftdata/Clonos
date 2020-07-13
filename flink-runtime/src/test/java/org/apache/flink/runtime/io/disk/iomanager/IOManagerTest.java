@@ -117,6 +117,11 @@ public class IOManagerTest {
 		}
 
 		@Override
+		public BufferFileWriter createBufferFileWriter(ID channelID, RequestDoneCallback<Buffer> callback) throws IOException {
+			throw new UnsupportedOperationException();
+		}
+
+		@Override
 		public BufferFileReader createBufferFileReader(ID channelID, RequestDoneCallback<Buffer> callback) throws IOException {
 			throw new UnsupportedOperationException();
 		}

@@ -140,7 +140,6 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 		ResultPartitionConsumableNotifier partitionConsumableNotifier,
 		IOManager ioManager,
 		boolean sendScheduleOrUpdateConsumersMessage) {
-
 		this.owningTaskName = checkNotNull(owningTaskName);
 		this.taskActions = checkNotNull(taskActions);
 		this.jobId = checkNotNull(jobId);
@@ -164,7 +163,7 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 			case PIPELINED:
 			case PIPELINED_BOUNDED:
 				for (int i = 0; i < subpartitions.length; i++) {
-					subpartitions[i] = new PipelinedSubpartition(i, this);
+					subpartitions[i] = new PipelinedSubpartition(i, this, ioManager);
 				}
 
 				break;
@@ -237,7 +236,7 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 	}
 
 	@Override
-	public void notifyCheckpointComplete(long checkpointId) {
+	public void notifyCheckpointComplete(long checkpointId) throws Exception {
 		for (ResultSubpartition sb : subpartitions)
 			sb.notifyCheckpointComplete(checkpointId);
 	}

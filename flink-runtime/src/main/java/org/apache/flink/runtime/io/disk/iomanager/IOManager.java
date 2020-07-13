@@ -238,6 +238,8 @@ public abstract class IOManager {
 
 	public abstract BufferFileWriter createBufferFileWriter(FileIOChannel.ID channelID) throws IOException;
 
+	public abstract BufferFileWriter createBufferFileWriter(FileIOChannel.ID channelID, RequestDoneCallback<Buffer> callback) throws IOException;
+
 	public abstract BufferFileReader createBufferFileReader(FileIOChannel.ID channelID, RequestDoneCallback<Buffer> callback) throws IOException;
 
 	public abstract BufferFileSegmentReader createBufferFileSegmentReader(FileIOChannel.ID channelID, RequestDoneCallback<FileSegment> callback) throws IOException;

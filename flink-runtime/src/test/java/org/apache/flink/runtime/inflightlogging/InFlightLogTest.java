@@ -37,7 +37,7 @@ public class InFlightLogTest {
 
 	@Test
 	public void iteratorCountTest(){
-		InFlightLog log = new SubpartitionInFlightLogger();
+		InFlightLog log = new InMemorySubpartitionInFlightLogger();
 		populate(log);
 
 		InFlightLogIterator<Buffer> iterator = log.getInFlightIterator(0);
@@ -46,8 +46,8 @@ public class InFlightLogTest {
 	}
 
 	@Test
-	public void logCheckpointCompleteTest(){
-		InFlightLog log = new SubpartitionInFlightLogger();
+	public void logCheckpointCompleteTest() throws Exception {
+		InFlightLog log = new InMemorySubpartitionInFlightLogger();
 		populate(log);
 
 		log.notifyCheckpointComplete(1);
@@ -57,8 +57,8 @@ public class InFlightLogTest {
 	}
 
 	@Test
-	public void logIterationTest(){
-		InFlightLog log = new SubpartitionInFlightLogger();
+	public void logIterationTest() throws Exception {
+		InFlightLog log = new InMemorySubpartitionInFlightLogger();
 		populate(log);
 
 		log.notifyCheckpointComplete(1);

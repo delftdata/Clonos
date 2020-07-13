@@ -24,31 +24,31 @@ import org.slf4j.LoggerFactory;
 import java.util.*;
 import java.util.stream.Collectors;
 
-public class SubpartitionInFlightLogger implements InFlightLog {
+public class InMemorySubpartitionInFlightLogger implements InFlightLog {
 
-	private static final Logger LOG = LoggerFactory.getLogger(SubpartitionInFlightLogger.class);
+	private static final Logger LOG = LoggerFactory.getLogger(InMemorySubpartitionInFlightLogger.class);
 
 	private final SortedMap<Long, List<Buffer>> slicedLog;
 
-	public SubpartitionInFlightLogger() {
+	public InMemorySubpartitionInFlightLogger() {
 		slicedLog = new TreeMap<>();
 	}
 
-	public synchronized void log(Buffer buffer, long epoch) {
-		List<Buffer> epochLog = slicedLog.computeIfAbsent(epoch, k -> new LinkedList<>());
+	public synchronized void log(Buffer buffer, long epochID) {
+		List<Buffer> epochLog = slicedLog.computeIfAbsent(epochID, k -> new LinkedList<>());
 		epochLog.add(buffer.retainBuffer());
-		LOG.debug("Logged a new buffer for epoch {}", epoch);
+		LOG.debug("Logged a new buffer for epoch {}", epochID);
 	}
 
 	@Override
-	public synchronized void notifyCheckpointComplete(long completedCheckpointId) {
+	public synchronized void notifyCheckpointComplete(long checkpointId) throws Exception {
 
-		LOG.debug("Got notified of checkpoint {} completion\nCurrent log: {}", completedCheckpointId, representLogAsString(this.slicedLog));
+		LOG.debug("Got notified of checkpoint {} completion\nCurrent log: {}", checkpointId, representLogAsString(this.slicedLog));
 		List<Long> toRemove = new LinkedList<>();
 
 		//keys are in ascending order
 		for (long epochId : slicedLog.keySet()) {
-			if (epochId < completedCheckpointId) {
+			if (epochId < checkpointId) {
 				toRemove.add(epochId);
 				LOG.debug("Removing epoch {}", epochId);
 			}
@@ -75,7 +75,7 @@ public class SubpartitionInFlightLogger implements InFlightLog {
 				buffer.retainBuffer();
 	}
 
-	public static class ReplayIterator implements InFlightLogIterator<Buffer> {
+	public static class ReplayIterator extends InFlightLogIterator<Buffer> {
 		private long startKey;
 		private long currentKey;
 		private ListIterator<Buffer> currentIterator;
@@ -120,12 +120,6 @@ public class SubpartitionInFlightLogger implements InFlightLog {
 		}
 
 		@Override
-		public boolean hasPrevious() {
-			advanceToPreviousNonEmptyIteratorIfNeeded();
-			return currentIterator != null && currentIterator.hasPrevious();
-		}
-
-		@Override
 		public Buffer next() {
 			advanceToNextNonEmptyIteratorIfNeeded();
 			Buffer toReturn = currentIterator.next();
@@ -134,36 +128,11 @@ public class SubpartitionInFlightLogger implements InFlightLog {
 		}
 
 		@Override
-		public Buffer previous() {
-			advanceToPreviousNonEmptyIteratorIfNeeded();
-			Buffer toReturn = currentIterator.previous();
-			numberOfBuffersLeft++;
+		public Buffer peekNext() {
+			advanceToNextNonEmptyIteratorIfNeeded();
+			Buffer toReturn = currentIterator.next();
+			currentIterator.previous();
 			return toReturn;
-		}
-
-		@Override
-		public int nextIndex() {
-			throw new UnsupportedOperationException();
-		}
-
-		@Override
-		public int previousIndex() {
-			throw new UnsupportedOperationException();
-		}
-
-		@Override
-		public void remove() {
-			throw new UnsupportedOperationException();
-		}
-
-		@Override
-		public void set(Buffer buffer) {
-			throw new UnsupportedOperationException();
-		}
-
-		@Override
-		public void add(Buffer buffer) {
-			throw new UnsupportedOperationException();
 		}
 
 		@Override
@@ -175,6 +144,8 @@ public class SubpartitionInFlightLogger implements InFlightLog {
 		public long getEpoch() {
 			return currentKey;
 		}
+
+
 
 		@Override
 		public String toString() {

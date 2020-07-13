@@ -20,8 +20,10 @@ package org.apache.flink.runtime.io.network.partition;
 
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.JobID;
+import org.apache.flink.runtime.causal.CheckpointBarrierListener;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferConsumer;
+import org.apache.flink.runtime.state.CheckpointListener;
 
 import javax.annotation.concurrent.GuardedBy;
 
@@ -33,7 +35,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 /**
  * A single subpartition of a {@link ResultPartition} instance.
  */
-public abstract class ResultSubpartition {
+public abstract class ResultSubpartition implements CheckpointListener, CheckpointBarrierListener {
 
 	/** The index of the subpartition at the parent partition. */
 	protected final int index;
@@ -118,8 +120,6 @@ public abstract class ResultSubpartition {
 
 	abstract public boolean isReleased();
 
-	abstract public void notifyCheckpointBarrier(long checkpointId);
-	abstract public void notifyCheckpointComplete(long checkpointId);
 
 	/**
 	 * Gets the number of non-event buffers in this subpartition.
@@ -181,7 +181,11 @@ public abstract class ResultSubpartition {
 		return this.parent.getJobId();
     }
 
-    // ------------------------------------------------------------------------
+	public ResultPartition getParent() {
+		return parent;
+	}
+
+	// ------------------------------------------------------------------------
 
 	/**
 	 * A combination of a {@link Buffer} and the backlog length indicating

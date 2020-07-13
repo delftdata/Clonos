@@ -21,9 +21,8 @@ package org.apache.flink.runtime.io.network.partition;
 import org.apache.flink.runtime.causal.log.job.IJobCausalLog;
 import org.apache.flink.runtime.causal.determinant.BufferBuiltDeterminant;
 import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
-import org.apache.flink.runtime.inflightlogging.InFlightLog;
-import org.apache.flink.runtime.inflightlogging.InFlightLogIterator;
-import org.apache.flink.runtime.inflightlogging.SubpartitionInFlightLogger;
+import org.apache.flink.runtime.inflightlogging.*;
+import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
@@ -98,9 +97,17 @@ public class PipelinedSubpartition extends ResultSubpartition {
 	private BufferBuiltDeterminant reuseBufferBuiltDeterminant;
 
 	PipelinedSubpartition(int index, ResultPartition parent) {
+		this(index, parent, null);
+	}
+
+	PipelinedSubpartition(int index, ResultPartition parent, IOManager ioManager) {
 		super(index, parent);
 
-		this.inFlightLog = new SubpartitionInFlightLogger();
+		if(ioManager == null)
+			this.inFlightLog = new InMemorySubpartitionInFlightLogger();
+		else
+			this.inFlightLog = new SpillableSubpartitionInFlightLogger(ioManager, this, InFlightLogConfig.eagerPolicy);
+
 		this.checkpointIds = new LinkedList<>();
 		this.nextCheckpointId = -1L;
 		this.downstreamFailed = new AtomicBoolean(false);
@@ -132,7 +139,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 		this.nextCheckpointId = checkpointId;
 	}
 
-	public void notifyCheckpointComplete(long checkpointId) {
+	public void notifyCheckpointComplete(long checkpointId) throws Exception {
 		LOG.info("PipelinedSubpartition notified of checkpoint {} completion", checkpointId);
 		this.inFlightLog.notifyCheckpointComplete(checkpointId);
 	}
@@ -301,10 +308,9 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 	private boolean _recoveryNextBufferIsEvent() {
 		boolean isNextAnEvent;
-		if (inflightReplayIterator != null && inflightReplayIterator.hasNext()) {
-			isNextAnEvent = !inflightReplayIterator.next().isBuffer();
-			inflightReplayIterator.previous(); //return to previous position
-		} else
+		if (inflightReplayIterator != null && inflightReplayIterator.hasNext())
+			isNextAnEvent = !inflightReplayIterator.peekNext().isBuffer();
+		 else
 			isNextAnEvent = _nextBufferIsEvent();
 		return isNextAnEvent;
 	}

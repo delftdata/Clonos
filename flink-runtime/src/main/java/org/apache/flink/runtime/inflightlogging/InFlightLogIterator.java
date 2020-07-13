@@ -19,9 +19,48 @@ package org.apache.flink.runtime.inflightlogging;
 
 import java.util.ListIterator;
 
-public interface InFlightLogIterator<T> extends ListIterator<T> {
+public abstract class InFlightLogIterator<T> implements ListIterator<T> {
 
-	int numberRemaining();
+	public abstract int numberRemaining();
 
-	long getEpoch();
+	public abstract long getEpoch();
+
+	public abstract T peekNext();
+
+
+	@Override
+	public T previous() {
+		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	public boolean hasPrevious() {
+		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	public int nextIndex() {
+		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	public int previousIndex() {
+		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	public void remove() {
+		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	public void set(T buffer) {
+		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	public void add(T buffer) {
+		throw new UnsupportedOperationException();
+	}
+
 }

@@ -29,7 +29,11 @@ public class AsynchronousBufferFileWriter extends AsynchronousFileIOChannel<Buff
 	private static final RecyclingCallback CALLBACK = new RecyclingCallback();
 
 	protected AsynchronousBufferFileWriter(ID channelID, RequestQueue<WriteRequest> requestQueue) throws IOException {
-		super(channelID, requestQueue, CALLBACK, true);
+		this(channelID, requestQueue, CALLBACK);
+	}
+
+	protected AsynchronousBufferFileWriter(ID channelID, RequestQueue<WriteRequest> requestQueue, RequestDoneCallback<Buffer> callback) throws IOException {
+		super(channelID, requestQueue, callback, true);
 	}
 
 	/**

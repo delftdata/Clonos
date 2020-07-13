@@ -67,7 +67,7 @@ public class CausalLogManager {
 		try {
 			taskDeterminantBufferPool = determinantBufferPool.createBufferPool(numDeterminantBuffersPerTask, numDeterminantBuffersPerTask);
 		} catch (IOException e) {
-			throw new RuntimeException("Could not register determinant buffer pool!");
+			throw new RuntimeException("Could not register determinant buffer pool!: \n" + e.getMessage());
 		}
 		JobCausalLog jobCausalLog = new JobCausalLog(vertexGraphInformation, resultPartitionsOfLocalVertex, taskDeterminantBufferPool, lock);
 		jobIDToManagerMap.put(jobID, jobCausalLog);
