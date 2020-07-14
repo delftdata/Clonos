@@ -33,7 +33,6 @@ import org.apache.flink.runtime.io.network.buffer.BufferPool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.annotation.concurrent.NotThreadSafe;
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -41,35 +40,50 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.stream.Collectors;
 
-@NotThreadSafe
+/**
+ * {@link SpilledReplayIterator} is to be used in combination with {@link SpillableSubpartitionInFlightLogger}.
+ * The {@link SpillableSubpartitionInFlightLogger} spills the in-flight log to disk asynchronously, while this
+ * {@link InFlightLogIterator} implementation is able to then read those files and regenerate those buffers.
+ * This is done deterministically and buffers have the exact same size.
+ *
+ * To achieve this behaviour we split the Iterator into a producer and a consumer. The producer will first lock
+ * the <code>flushLock</code>, preventing any in-memory buffers to be spilled. Then it uses all buffers available in
+ * the partition's {@link BufferPool} to create asynchronous read requests to the spill files. It produces these
+ * segments through callbacks into separate {@link LinkedBlockingDeque}'s, since each epoch is in a different file,
+ * and each file may be served by a separate async IO thread. Not doing so could cause interleavings of messages.
+ *
+ * The consumer is simple in comparison. It simply checks if the buffer is available in memory, and if it is,
+ * returns it. Otherwise, it will check the appropriate deque for the buffer, blocking if necessary.
+ */
 public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 	private static final Logger LOG = LoggerFactory.getLogger(SpilledReplayIterator.class);
-	private final SortedMap<Long, SpillableSubpartitionInFlightLogger.Epoch> logToReplay;
 
+
+	//The queues to contain buffers	which are asynchronously read
 	private ConcurrentMap<Long, LinkedBlockingDeque<Buffer>> readyBuffersPerEpoch;
+
+	//The cursor indicating the consumers position in the log
 	private EpochCursor cursor;
 
 	public SpilledReplayIterator(SortedMap<Long, SpillableSubpartitionInFlightLogger.Epoch> logToReplay,
 								 BufferPool partitionBufferPool,
 								 IOManager ioManager,
 								 Object flushLock) {
-
 		LOG.debug("SpilledReplayIterator created");
-		this.logToReplay = logToReplay;
 		this.cursor = new EpochCursor(logToReplay);
 
 		readyBuffersPerEpoch = new ConcurrentHashMap<>(logToReplay.keySet().size());
-
+		//Initialize the queues
 		for (Map.Entry<Long, SpillableSubpartitionInFlightLogger.Epoch> entry : logToReplay.entrySet()) {
 			LinkedBlockingDeque<Buffer> queue = new LinkedBlockingDeque<>();
 			readyBuffersPerEpoch.put(entry.getKey(), queue);
 		}
 
+		//Start the producer
 		Thread producer = new Thread(new ProducerRunnable(ioManager, logToReplay, partitionBufferPool,
 			readyBuffersPerEpoch, flushLock));
 		producer.start();
 	}
-
 
 	@Override
 	public int numberRemaining() {
@@ -85,13 +99,10 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 	public Buffer next() {
 		LOG.debug("Fetching buffer, cursor: {}", cursor);
 		try {
-			LOG.debug("Attempt to fetch buffer from readyDataBuffers");
-			Buffer buffer =
-				logToReplay.get(cursor.getCurrentEpoch()).getEpochBuffers().get(cursor.getEpochOffset());
+			Buffer buffer = cursor.getCurrentBuffer();
 			if (buffer == null)
 				buffer = readyBuffersPerEpoch.get(cursor.getCurrentEpoch()).take();
 			cursor.next();
-			LOG.debug("Buffer fetched from readyDataBuffers successfully");
 			return buffer;
 		} catch (InterruptedException e) {
 			throw new RuntimeException("Error while getting next: " + e.getMessage());
@@ -102,15 +113,11 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 	public Buffer peekNext() {
 		try {
 			LOG.debug("Call to peek. Cursor {}", cursor);
-			Buffer storedBuffer =
-				logToReplay.get(cursor.getCurrentEpoch()).getEpochBuffers().get(cursor.getEpochOffset());
+			Buffer storedBuffer = cursor.getCurrentBuffer();
 			if (storedBuffer == null) {
-				LOG.debug("Buffer is on disk, waiting until ready");
 				storedBuffer = readyBuffersPerEpoch.get(cursor.getCurrentEpoch()).take();
 				//After peeking push it back
-				LOG.debug("Push it back");
 				readyBuffersPerEpoch.get(cursor.getCurrentEpoch()).putFirst(storedBuffer);
-				LOG.debug("Done pushing it back");
 			}
 			return storedBuffer;
 		} catch (InterruptedException e) {
@@ -125,12 +132,10 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 
 
 	private static class ProducerRunnable implements Runnable {
-
-		private final IOManager ioManager;
+		//The position in the log of the producer
 		private final EpochCursor cursor;
+
 		private BufferPool bufferPool;
-		private SortedMap<Long, SpillableSubpartitionInFlightLogger.Epoch> logToReplay;
-		private ConcurrentMap<Long, LinkedBlockingDeque<Buffer>> readyDataBuffersPerEpoch;
 		private Map<Long, BufferFileReader> epochReaders;
 		private final Object flushLock;
 
@@ -141,11 +146,8 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 			ConcurrentMap<Long, LinkedBlockingDeque<Buffer>> readyDataBuffersPerEpoch,
 			Object flushLock) {
 
-			this.ioManager = ioManager;
-			this.logToReplay = logToReplay;
 			this.bufferPool = bufferPool;
 			this.flushLock = flushLock;
-			this.readyDataBuffersPerEpoch = readyDataBuffersPerEpoch;
 			this.cursor = new EpochCursor(logToReplay);
 
 			this.epochReaders = new HashMap<>(logToReplay.keySet().size());
@@ -168,10 +170,9 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 				synchronized (flushLock) {
 					BufferFileReader reader;
 					while (!cursor.reachedEnd()) {
-						SpillableSubpartitionInFlightLogger.Epoch epoch = logToReplay.get(cursor.getCurrentEpoch());
 						reader = epochReaders.get(cursor.getCurrentEpoch());
 
-						Buffer storedBuffer = epoch.getEpochBuffers().get(cursor.getEpochOffset());
+						Buffer storedBuffer = cursor.getCurrentBuffer();
 						if (storedBuffer == null)
 							reader.readInto(bufferPool.requestBufferBlocking());
 						 else
@@ -214,10 +215,10 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 
 	private static class EpochCursor {
 
+		private final SortedMap<Long, SpillableSubpartitionInFlightLogger.Epoch> log;
 		private long currentEpoch;
 		private int epochOffset; //The next buffer the reader will request
 
-		Map<Long, Integer> epochSizes;
 		private long lastEpoch;
 		private int remaining;
 
@@ -227,8 +228,7 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 			this.lastEpoch = log.lastKey();
 			this.remaining =
 				log.values().stream().mapToInt(SpillableSubpartitionInFlightLogger.Epoch::getEpochSize).sum();
-			epochSizes = log.entrySet().stream().map(e -> new AbstractMap.SimpleEntry<>(e.getKey(),
-				e.getValue().getEpochSize())).collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+			this.log = log;
 		}
 
 		public void next() {
@@ -246,7 +246,7 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 		}
 
 		private boolean reachedEndOfEpoch(int offset, long epochID) {
-			return offset >= epochSizes.get(epochID);
+			return offset >= log.get(epochID).getEpochSize();
 		}
 
 		public long getCurrentEpoch() {
@@ -257,12 +257,12 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 			return epochOffset;
 		}
 
-		public int getEpochSize() {
-			return epochSizes.get(currentEpoch);
-		}
-
 		public int getRemaining() {
 			return remaining;
+		}
+
+		public Buffer getCurrentBuffer(){
+			return log.get(currentEpoch).getEpochBuffers().get(epochOffset);
 		}
 
 		@Override
@@ -270,8 +270,7 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 			return "EpochCursor{" +
 				"currentEpoch=" + currentEpoch +
 				", epochOffset=" + epochOffset +
-				", epochSizes={" + epochSizes.entrySet().stream().map(e -> e.getKey() + "->" + e.getValue()).collect(Collectors.joining(", ")) +
-				"}, remaining=" + remaining +
+				", remaining=" + remaining +
 				'}';
 		}
 	}
