@@ -38,7 +38,6 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.LinkedBlockingDeque;
-import java.util.stream.Collectors;
 
 /**
  * {@link SpilledReplayIterator} is to be used in combination with {@link SpillableSubpartitionInFlightLogger}.
@@ -99,8 +98,9 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 	public Buffer next() {
 		LOG.debug("Fetching buffer, cursor: {}", cursor);
 		try {
-			Buffer buffer = cursor.getCurrentBuffer();
-			if (buffer == null)
+			SpillableSubpartitionInFlightLogger.BufferHandle bufferHandle = cursor.getCurrentBufferHandle();
+			Buffer buffer = bufferHandle.getBuffer();
+			if (bufferHandle.isFlushed())
 				buffer = readyBuffersPerEpoch.get(cursor.getCurrentEpoch()).take();
 			cursor.next();
 			return buffer;
@@ -113,13 +113,14 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 	public Buffer peekNext() {
 		try {
 			LOG.debug("Call to peek. Cursor {}", cursor);
-			Buffer storedBuffer = cursor.getCurrentBuffer();
-			if (storedBuffer == null) {
-				storedBuffer = readyBuffersPerEpoch.get(cursor.getCurrentEpoch()).take();
+			SpillableSubpartitionInFlightLogger.BufferHandle bufferHandle = cursor.getCurrentBufferHandle();
+			Buffer buffer = bufferHandle.getBuffer();
+			if (bufferHandle.isFlushed()) {
+				buffer = readyBuffersPerEpoch.get(cursor.getCurrentEpoch()).take();
 				//After peeking push it back
-				readyBuffersPerEpoch.get(cursor.getCurrentEpoch()).putFirst(storedBuffer);
+				readyBuffersPerEpoch.get(cursor.getCurrentEpoch()).putFirst(buffer);
 			}
-			return storedBuffer;
+			return buffer;
 		} catch (InterruptedException e) {
 			throw new RuntimeException("Error while peeking: " + e.getMessage());
 		}
@@ -172,11 +173,11 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 					while (!cursor.reachedEnd()) {
 						reader = epochReaders.get(cursor.getCurrentEpoch());
 
-						Buffer storedBuffer = cursor.getCurrentBuffer();
-						if (storedBuffer == null)
+						SpillableSubpartitionInFlightLogger.BufferHandle storedBuffer = cursor.getCurrentBufferHandle();
+						if (storedBuffer.isFlushed())
 							reader.readInto(bufferPool.requestBufferBlocking());
 						 else
-							storedBuffer.retainBuffer();
+							storedBuffer.getBuffer().retainBuffer();
 
 						cursor.next();
 					}
@@ -261,7 +262,7 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 			return remaining;
 		}
 
-		public Buffer getCurrentBuffer(){
+		public SpillableSubpartitionInFlightLogger.BufferHandle getCurrentBufferHandle(){
 			return log.get(currentEpoch).getEpochBuffers().get(epochOffset);
 		}
 

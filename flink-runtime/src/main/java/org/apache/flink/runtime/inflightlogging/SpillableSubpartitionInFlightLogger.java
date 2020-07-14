@@ -4,7 +4,7 @@
  *
  *  * Licensed to the Apache Software Foundation (ASF) under one
  *  * or more contributor license agreements.  See the NOTICE file
- *  * distributed with this work for additional information
+ *  * distributed with this work for additional debugrmation
  *  * regarding copyright ownership.  The ASF licenses this file
  *  * to you under the Apache License, Version 2.0 (the
  *  * "License"); you may not use this file except in compliance
@@ -145,7 +145,7 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 	}
 
 	static class Epoch {
-		private final List<Buffer> epochBuffers;
+		private final List<BufferHandle> epochBuffers;
 		private final BufferFileWriter writer;
 		private int nextBufferToFlush;
 		private int lastBufferFlushed;
@@ -158,10 +158,10 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 		}
 
 		public void append(Buffer buffer) {
-			this.epochBuffers.add(buffer.retainBuffer());
+			this.epochBuffers.add(new BufferHandle(buffer.retainBuffer()));
 		}
 
-		public List<Buffer> getEpochBuffers() {
+		public List<BufferHandle> getEpochBuffers() {
 			return epochBuffers;
 		}
 
@@ -176,7 +176,7 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 
 		public void flushNext() {
 			try {
-				writer.writeBlock(epochBuffers.get(nextBufferToFlush++));
+				writer.writeBlock(epochBuffers.get(nextBufferToFlush++).getBuffer());
 			} catch (IOException e) {
 				throw new RuntimeException("Writer could not write buffer. Cause:" + e.getMessage());
 			}
@@ -184,14 +184,16 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 
 		public void retryLastFlush() {
 			try {
-				writer.writeBlock(epochBuffers.get(lastBufferFlushed + 1));
+				writer.writeBlock(epochBuffers.get(lastBufferFlushed + 1).getBuffer());
 			} catch (IOException e) {
 				throw new RuntimeException("Writer could not write buffer. Cause:" + e.getMessage());
 			}
 		}
 
 		public void notifyFlushCompleted() {
-			epochBuffers.set(++lastBufferFlushed, null).recycleBuffer();
+			BufferHandle handle = epochBuffers.get(++lastBufferFlushed);
+			handle.markFlushed();
+			handle.getBuffer().recycleBuffer();
 		}
 
 
@@ -204,8 +206,8 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 			try {
 				writer.closeAndDelete();
 				for (int i = nextBufferToFlush; i < epochBuffers.size(); i++) {
-					LOG.info("Released buffer {}/{} manually", i, epochBuffers.size());
-					epochBuffers.get(i).recycleBuffer(); // release the buffers left over
+					LOG.debug("Released buffer {}/{} manually", i, epochBuffers.size());
+					epochBuffers.get(i).getBuffer().recycleBuffer(); // release the buffers left over
 				}
 			} catch (IOException e) {
 				throw new RuntimeException("Could not close and delete epoch. Cause: " + e.getMessage());
@@ -219,6 +221,28 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 
 		public int getEpochSize() {
 			return epochBuffers.size();
+		}
+	}
+
+	static class BufferHandle{
+		private Buffer buffer;
+		private boolean flushed;
+
+		public BufferHandle(Buffer buffer) {
+			this.buffer = buffer;
+			this.flushed = false;
+		}
+
+		public Buffer getBuffer() {
+			return buffer;
+		}
+
+		public boolean isFlushed() {
+			return flushed;
+		}
+
+		public void markFlushed(){
+			this.flushed = true;
 		}
 	}
 
@@ -239,7 +263,7 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 
 		@Override
 		public void requestSuccessful(Buffer request) {
-			LOG.info("Flush completed");
+			LOG.debug("Flush completed");
 			synchronized (flushLock) {
 				Epoch epoch = slicedLog.get(currentAsyncStoreEpoch);
 				epoch.notifyFlushCompleted();
@@ -251,7 +275,7 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 
 		@Override
 		public void requestFailed(Buffer buffer, IOException e) {
-			LOG.info("Flush failed. Retrying. Cause: {}", e.getMessage());
+			LOG.debug("Flush failed. Retrying. Cause: {}", e.getMessage());
 			synchronized (flushLock) {
 				Epoch epoch = slicedLog.get(currentAsyncStoreEpoch);
 				epoch.retryLastFlush();
