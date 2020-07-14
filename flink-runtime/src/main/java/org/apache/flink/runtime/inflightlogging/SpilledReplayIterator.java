@@ -4,7 +4,7 @@
  *
  *  * Licensed to the Apache Software Foundation (ASF) under one
  *  * or more contributor license agreements.  See the NOTICE file
- *  * distributed with this work for additional information
+ *  * distributed with this work for additional debugrmation
  *  * regarding copyright ownership.  The ASF licenses this file
  *  * to you under the Apache License, Version 2.0 (the
  *  * "License"); you may not use this file except in compliance
@@ -33,193 +33,177 @@ import org.apache.flink.runtime.io.network.buffer.BufferPool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.annotation.concurrent.NotThreadSafe;
 import java.io.IOException;
-import java.util.List;
-import java.util.SortedMap;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.LinkedBlockingDeque;
+import java.util.stream.Collectors;
 
+@NotThreadSafe
 public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 	private static final Logger LOG = LoggerFactory.getLogger(SpilledReplayIterator.class);
+	private final SortedMap<Long, SpillableSubpartitionInFlightLogger.Epoch> logToReplay;
 
-	private static final int NUM_BUFFERS_TO_USE_IN_REPLAY = 20;
+	private ConcurrentMap<Long, LinkedBlockingDeque<Buffer>> readyBuffersPerEpoch;
+	private EpochCursor cursor;
 
-	private long currentKey;
-	private int numberOfBuffersLeft;
+	public SpilledReplayIterator(SortedMap<Long, SpillableSubpartitionInFlightLogger.Epoch> logToReplay,
+								 BufferPool partitionBufferPool,
+								 IOManager ioManager,
+								 Object flushLock) {
 
-	private ArrayBlockingQueue<Buffer> readyDataBuffers;
+		LOG.debug("SpilledReplayIterator created");
+		this.logToReplay = logToReplay;
+		this.cursor = new EpochCursor(logToReplay);
 
-	private SortedMap<Long, SpillableSubpartitionInFlightLogger.Epoch> logToReplay;
+		readyBuffersPerEpoch = new ConcurrentHashMap<>(logToReplay.keySet().size());
 
-	private int consumerEpochOffset; //The next buffer the reader will request
+		for (Map.Entry<Long, SpillableSubpartitionInFlightLogger.Epoch> entry : logToReplay.entrySet()) {
+			LinkedBlockingDeque<Buffer> queue = new LinkedBlockingDeque<>();
+			readyBuffersPerEpoch.put(entry.getKey(), queue);
+		}
 
-
-	public SpilledReplayIterator(SortedMap<Long, SpillableSubpartitionInFlightLogger.Epoch> slicedLog,
-								 long epochToStartFrom, BufferPool partitionBufferPool,
-								 IOManager ioManager, Object flushLock) {
-
-		LOG.info("SpilledReplayIterator created");
-		this.currentKey = epochToStartFrom;
-		this.logToReplay = slicedLog.tailMap(epochToStartFrom);
-
-		this.consumerEpochOffset = 0;
-		this.readyDataBuffers = new ArrayBlockingQueue<>(NUM_BUFFERS_TO_USE_IN_REPLAY);
-		this.numberOfBuffersLeft = logToReplay.values().stream()
-			.map(SpillableSubpartitionInFlightLogger.Epoch::getEpochBuffers).mapToInt(List::size).sum();
-
-		Thread producer = new Thread(new ProducerRunnable(ioManager, slicedLog, partitionBufferPool, readyDataBuffers,
-			epochToStartFrom, flushLock));
+		Thread producer = new Thread(new ProducerRunnable(ioManager, logToReplay, partitionBufferPool,
+			readyBuffersPerEpoch, flushLock));
 		producer.start();
 	}
 
+
 	@Override
 	public int numberRemaining() {
-		return numberOfBuffersLeft;
+		return cursor.getRemaining();
 	}
 
 	@Override
 	public long getEpoch() {
-		return currentKey;
+		return cursor.getCurrentEpoch();
 	}
 
 	@Override
 	public Buffer next() {
-		LOG.info("Fetching buffer {} of epoch {}", consumerEpochOffset ,currentKey);
-		numberOfBuffersLeft--;
-		if(consumerEpochOffset > logToReplay.get(currentKey).getEpochBuffers().size()){
-			consumerEpochOffset = 0;
-			currentKey++;
-			LOG.info("Moving on to epoch {}", currentKey);
-		}
-		consumerEpochOffset++;
+		LOG.debug("Fetching buffer, cursor: {}", cursor);
 		try {
-			LOG.info("Attempt to fetch buffer from readyDataBuffers");
-			Buffer toRet = readyDataBuffers.take();
-			LOG.info("Buffer fetched from readyDataBuffers successfully");
-			return toRet;
+			LOG.debug("Attempt to fetch buffer from readyDataBuffers");
+			Buffer buffer =
+				logToReplay.get(cursor.getCurrentEpoch()).getEpochBuffers().get(cursor.getEpochOffset());
+			if (buffer == null)
+				buffer = readyBuffersPerEpoch.get(cursor.getCurrentEpoch()).take();
+			cursor.next();
+			LOG.debug("Buffer fetched from readyDataBuffers successfully");
+			return buffer;
 		} catch (InterruptedException e) {
-			e.printStackTrace();
-			return null;
+			throw new RuntimeException("Error while getting next: " + e.getMessage());
 		}
 	}
 
 	@Override
 	public Buffer peekNext() {
-		LOG.info("Call to peek");
-		while(readyDataBuffers.peek() == null);
-		LOG.info("Peek available");
-		return readyDataBuffers.peek();
+		try {
+			LOG.debug("Call to peek. Cursor {}", cursor);
+			Buffer storedBuffer =
+				logToReplay.get(cursor.getCurrentEpoch()).getEpochBuffers().get(cursor.getEpochOffset());
+			if (storedBuffer == null) {
+				LOG.debug("Buffer is on disk, waiting until ready");
+				storedBuffer = readyBuffersPerEpoch.get(cursor.getCurrentEpoch()).take();
+				//After peeking push it back
+				LOG.debug("Push it back");
+				readyBuffersPerEpoch.get(cursor.getCurrentEpoch()).putFirst(storedBuffer);
+				LOG.debug("Done pushing it back");
+			}
+			return storedBuffer;
+		} catch (InterruptedException e) {
+			throw new RuntimeException("Error while peeking: " + e.getMessage());
+		}
 	}
 
 	@Override
 	public boolean hasNext() {
-		return numberOfBuffersLeft > 0;
+		return !cursor.reachedEnd();
 	}
 
 
 	private static class ProducerRunnable implements Runnable {
-		private ReadCompletedCallback CALLBACK;//todo
 
 		private final IOManager ioManager;
-		private ArrayBlockingQueue<Buffer> readyDataBuffers;
+		private final EpochCursor cursor;
 		private BufferPool bufferPool;
 		private SortedMap<Long, SpillableSubpartitionInFlightLogger.Epoch> logToReplay;
-
-		private BufferFileReader currentBufferFileReader;
-		private long producerKey;
-		private int producerEpochOffset; //The next buffer the producer will produce
-
+		private ConcurrentMap<Long, LinkedBlockingDeque<Buffer>> readyDataBuffersPerEpoch;
+		private Map<Long, BufferFileReader> epochReaders;
 		private final Object flushLock;
-		private AtomicInteger openReadRequests;
 
 		public ProducerRunnable(
 			IOManager ioManager,
 			SortedMap<Long, SpillableSubpartitionInFlightLogger.Epoch> logToReplay,
 			BufferPool bufferPool,
-			ArrayBlockingQueue<Buffer> readyDataBuffers,
-			long epochToStartFrom,
+			ConcurrentMap<Long, LinkedBlockingDeque<Buffer>> readyDataBuffersPerEpoch,
 			Object flushLock) {
 
-			this.openReadRequests = new AtomicInteger(0);
-			this.CALLBACK = new ReadCompletedCallback(readyDataBuffers,openReadRequests);
 			this.ioManager = ioManager;
 			this.logToReplay = logToReplay;
 			this.bufferPool = bufferPool;
-			this.readyDataBuffers = readyDataBuffers;
 			this.flushLock = flushLock;
+			this.readyDataBuffersPerEpoch = readyDataBuffersPerEpoch;
+			this.cursor = new EpochCursor(logToReplay);
 
-			this.producerKey = epochToStartFrom;
-			this.producerEpochOffset = 0;
-
-
-			try {
-				this.currentBufferFileReader = ioManager.createBufferFileReader(logToReplay.get(producerKey).getFileHandle(), CALLBACK);
-			} catch (IOException e) {
-				e.printStackTrace();
+			this.epochReaders = new HashMap<>(logToReplay.keySet().size());
+			for (Map.Entry<Long, SpillableSubpartitionInFlightLogger.Epoch> entry : logToReplay.entrySet()) {
+				try {
+					epochReaders.put(entry.getKey(), ioManager.createBufferFileReader(entry.getValue().getFileHandle()
+						, new ReadCompletedCallback(readyDataBuffersPerEpoch.get(entry.getKey()))));
+				} catch (Exception e) {
+					throw new RuntimeException("Error during recovery, could not create epoch readers: " + e.getMessage());
+				}
 			}
 		}
 
 		@Override
 		public void run() {
-			LOG.info("Replay Producer thread starting");
-			int numberOfBuffersToReplay = logToReplay.values().stream().map(SpillableSubpartitionInFlightLogger.Epoch::getEpochBuffers).mapToInt(List::size).sum();
-			if(numberOfBuffersToReplay == 0)
+			LOG.debug("Replay Producer thread starting");
+			if (cursor.getRemaining() == 0)
 				return;
 			try {
 				synchronized (flushLock) {
-					LOG.info("Replay Producer thread acquired flush lock");
-					while (producerKey <= logToReplay.lastKey()) {
-						LOG.info("Producer will now create async requests for epoch {}", producerKey);
-						SpillableSubpartitionInFlightLogger.Epoch epoch = logToReplay.get(producerKey);
+					BufferFileReader reader;
+					while (!cursor.reachedEnd()) {
+						SpillableSubpartitionInFlightLogger.Epoch epoch = logToReplay.get(cursor.getCurrentEpoch());
+						reader = epochReaders.get(cursor.getCurrentEpoch());
 
-						while (producerEpochOffset < epoch.getEpochBuffers().size()) {
-							Buffer storedBuffer = epoch.getEpochBuffers().get(producerEpochOffset);
-							if (storedBuffer == null) {
-								LOG.info("Create read request for buffer {} of epoch {} ", producerEpochOffset, producerKey);
-								openReadRequests.incrementAndGet();
-								currentBufferFileReader.readInto(bufferPool.requestBufferBlocking());
-							}else {
-								LOG.info("Directly get buffer {} of epoch {} ", producerEpochOffset, producerKey);
-								//tODO we really shouldnt do this, slows down recovery
-								while(openReadRequests.get() != 0){Thread.sleep(1);}; //We need to wait for all async requests to finish first
-								readyDataBuffers.put(storedBuffer);
-							}
-							producerEpochOffset++;
-						}
+						Buffer storedBuffer = epoch.getEpochBuffers().get(cursor.getEpochOffset());
+						if (storedBuffer == null)
+							reader.readInto(bufferPool.requestBufferBlocking());
+						 else
+							storedBuffer.retainBuffer();
 
-						//tODO we really shouldnt do this, slows down recovery
-						while(openReadRequests.get() != 0){Thread.sleep(1);}; //We need to wait for all async requests to finish first
-						producerKey++;
-						producerEpochOffset = 0;
-						currentBufferFileReader = ioManager.createBufferFileReader(epoch.getFileHandle(), CALLBACK);
+						cursor.next();
 					}
 				}
 			} catch (Exception e) {
-				e.printStackTrace();
+				throw new RuntimeException("An error occurred during recovery: " + e.getMessage());
 			}
 		}
 	}
 
 	private static class ReadCompletedCallback implements RequestDoneCallback<Buffer> {
 
-		private final ArrayBlockingQueue<Buffer> readyDataBuffers;
-		private final AtomicInteger openReadRequests;
+		private final LinkedBlockingDeque<Buffer> readyDataBuffers;
 
-		public ReadCompletedCallback(ArrayBlockingQueue<Buffer> readyDataBuffers, AtomicInteger openReadRequests){
+		public ReadCompletedCallback(LinkedBlockingDeque<Buffer> readyDataBuffers) {
 			this.readyDataBuffers = readyDataBuffers;
-			this.openReadRequests = openReadRequests;
 		}
 
 		@Override
 		public void requestSuccessful(Buffer request) {
-			LOG.info("Disk read completed");
+			LOG.debug("Disk read completed");
 			try {
 				readyDataBuffers.put(request);
+
 			} catch (InterruptedException e) {
 				e.printStackTrace();
 			}
-			LOG.info("Was able to push buffer to readyDataBuffers");
-			openReadRequests.decrementAndGet();
+			LOG.debug("Was able to push buffer to readyDataBuffers");
 		}
 
 		@Override
@@ -227,5 +211,70 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 			throw new RuntimeException("Read of buffer failed during replay with error: " + e.getMessage());
 		}
 	}
+
+	private static class EpochCursor {
+
+		private long currentEpoch;
+		private int epochOffset; //The next buffer the reader will request
+
+		Map<Long, Integer> epochSizes;
+		private long lastEpoch;
+		private int remaining;
+
+		public EpochCursor(SortedMap<Long, SpillableSubpartitionInFlightLogger.Epoch> log) {
+			this.currentEpoch = log.firstKey();
+			this.epochOffset = 0;
+			this.lastEpoch = log.lastKey();
+			this.remaining =
+				log.values().stream().mapToInt(SpillableSubpartitionInFlightLogger.Epoch::getEpochSize).sum();
+			epochSizes = log.entrySet().stream().map(e -> new AbstractMap.SimpleEntry<>(e.getKey(),
+				e.getValue().getEpochSize())).collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+		}
+
+		public void next() {
+			epochOffset++;
+			remaining--;
+			if (reachedEndOfEpoch(epochOffset, currentEpoch))
+				if (currentEpoch != lastEpoch) {
+					currentEpoch++;
+					epochOffset = 0;
+				}
+		}
+
+		public boolean reachedEnd() {
+			return remaining == 0;
+		}
+
+		private boolean reachedEndOfEpoch(int offset, long epochID) {
+			return offset >= epochSizes.get(epochID);
+		}
+
+		public long getCurrentEpoch() {
+			return currentEpoch;
+		}
+
+		public int getEpochOffset() {
+			return epochOffset;
+		}
+
+		public int getEpochSize() {
+			return epochSizes.get(currentEpoch);
+		}
+
+		public int getRemaining() {
+			return remaining;
+		}
+
+		@Override
+		public String toString() {
+			return "EpochCursor{" +
+				"currentEpoch=" + currentEpoch +
+				", epochOffset=" + epochOffset +
+				", epochSizes={" + epochSizes.entrySet().stream().map(e -> e.getKey() + "->" + e.getValue()).collect(Collectors.joining(", ")) +
+				"}, remaining=" + remaining +
+				'}';
+		}
+	}
+
 
 }
