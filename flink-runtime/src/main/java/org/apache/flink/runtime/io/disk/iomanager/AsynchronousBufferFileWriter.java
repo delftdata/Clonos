@@ -52,7 +52,8 @@ public class AsynchronousBufferFileWriter extends AsynchronousFileIOChannel<Buff
 			addRequest(new BufferWriteRequest(this, buffer));
 		} catch (Throwable e) {
 			// if not added, we need to recycle here
-			buffer.recycleBuffer();
+			if(this.resultHandler == CALLBACK)
+				buffer.recycleBuffer();
 			ExceptionUtils.rethrowIOException(e);
 		}
 
@@ -61,6 +62,11 @@ public class AsynchronousBufferFileWriter extends AsynchronousFileIOChannel<Buff
 	@Override
 	public int getNumberOfOutstandingRequests() {
 		return requestsNotReturned.get();
+	}
+
+	@Override
+	public final void clearRequestQueue(){
+		this.clearRequestQueueInternal();
 	}
 
 	@Override

@@ -109,6 +109,6 @@ public class InFlightLogConfig implements Serializable {
 
 	public static Predicate<SpillableSubpartitionInFlightLogger> availabilityPolicy = spillableSubpartitionInFlightLogger -> spillableSubpartitionInFlightLogger.poolAvailability() <= 0.5f;
 
-	public static Predicate<SpillableSubpartitionInFlightLogger> epochPolicy = spillableSubpartitionInFlightLogger -> spillableSubpartitionInFlightLogger.hasFullUnspilledEpoch();
+	public static Predicate<SpillableSubpartitionInFlightLogger> epochPolicy = SpillableSubpartitionInFlightLogger::hasFullUnspilledEpochUnsafe;
 
 }

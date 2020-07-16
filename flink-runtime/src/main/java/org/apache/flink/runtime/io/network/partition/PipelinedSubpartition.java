@@ -103,7 +103,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 	PipelinedSubpartition(int index, ResultPartition parent, IOManager ioManager) {
 		super(index, parent);
 
-		if(ioManager == null)
+		if (ioManager == null)
 			this.inFlightLog = new InMemorySubpartitionInFlightLogger();
 		else
 			this.inFlightLog = new SpillableSubpartitionInFlightLogger(ioManager, this, InFlightLogConfig.eagerPolicy);
@@ -301,7 +301,8 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 			return new BufferAndBacklog(buffer,
 				inflightReplayIterator != null || isAvailableUnsafe(),
-				getBuffersInBacklog() + (inflightReplayIterator != null ? inflightReplayIterator.numberRemaining() : 0),
+				getBuffersInBacklog() + (inflightReplayIterator != null ? inflightReplayIterator.numberRemaining() :
+					0),
 				_recoveryNextBufferIsEvent(), epoch);
 		}
 	}
@@ -310,7 +311,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 		boolean isNextAnEvent;
 		if (inflightReplayIterator != null && inflightReplayIterator.hasNext())
 			isNextAnEvent = !inflightReplayIterator.peekNext().isBuffer();
-		 else
+		else
 			isNextAnEvent = _nextBufferIsEvent();
 		return isNextAnEvent;
 	}
@@ -335,7 +336,8 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 
 				checkState(bufferConsumer.isFinished() || buffers.size() == 1,
-					"When there are multiple buffers, an unfinished bufferConsumer can not be at the head of the buffers queue.");
+					"When there are multiple buffers, an unfinished bufferConsumer can not be at the head of the " +
+						"buffers queue.");
 
 				if (buffers.size() == 1) {
 					// turn off flushRequested flag if we drained all of the available data
@@ -368,14 +370,18 @@ public class PipelinedSubpartition extends ResultSubpartition {
 			updateStatistics(buffer);
 			inFlightLog.log(buffer, currentEpochID);
 			LOG.debug("Creating BufferAndBacklog with epochID {}", currentEpochID);
-			BufferAndBacklog result = new BufferAndBacklog(buffer, isAvailableUnsafe(), getBuffersInBacklog(), _nextBufferIsEvent(), currentEpochID);
-			//We do this after the determinant and sending the BufferAndBacklog because a checkpoint x belongs to epoch x-1
+			BufferAndBacklog result = new BufferAndBacklog(buffer, isAvailableUnsafe(), getBuffersInBacklog(),
+				_nextBufferIsEvent(), currentEpochID);
+			//We do this after the determinant and sending the BufferAndBacklog because a checkpoint x belongs to
+			// epoch x-1
 			if (checkpointId != -1L)
 				currentEpochID = checkpointId;
 			// Do not report last remaining buffer on buffers as available to read (assuming it's unfinished).
 			// It will be reported for reading either on flush or when the number of buffers in the queue
 			// will be 2 or more.
-			LOG.info("{}:{}: Polled buffer {} (hash: {}, memorySegment hash: {}). Buffers available for dispatch: {}.", parent, this, buffer, System.identityHashCode(buffer), System.identityHashCode(buffer.getMemorySegment()), getBuffersInBacklog());
+			LOG.info("{}:{}: Polled buffer {} (hash: {}, memorySegment hash: {}). Buffers available for dispatch: {}."
+				, parent, this, buffer, System.identityHashCode(buffer),
+				System.identityHashCode(buffer.getMemorySegment()), getBuffersInBacklog());
 			return result;
 		}
 	}
@@ -411,12 +417,14 @@ public class PipelinedSubpartition extends ResultSubpartition {
 			checkState(!isReleased);
 
 			if (readView == null) {
-				LOG.info("Creating read view for {} (index: {}) of partition {}.", this, index, parent.getPartitionId());
+				LOG.info("Creating read view for {} (index: {}) of partition {}.", this, index,
+					parent.getPartitionId());
 
 				readView = new PipelinedSubpartitionView(this, availabilityListener);
 			} else {
 				readView.setAvailabilityListener(availabilityListener);
-				LOG.info("(Re)using read view {} for {} (index: {}) of partition {}.", readView, this, index, parent.getPartitionId());
+				LOG.info("(Re)using read view {} for {} (index: {}) of partition {}.", readView, this, index,
+					parent.getPartitionId());
 			}
 
 
@@ -465,7 +473,9 @@ public class PipelinedSubpartition extends ResultSubpartition {
 		}
 
 		return String.format(
-			"PipelinedSubpartition %d [number of buffers: %d (%d bytes), number of buffers in backlog: %d, finished? %s, read view? %s]",
+			"PipelinedSubpartition %d [number of buffers: %d (%d bytes), number of buffers in backlog: %d, finished?" +
+				" " +
+				"%s, read view? %s]",
 			index, numBuffers, numBytes, getBuffersInBacklog(), finished, hasReadView);
 	}
 
@@ -477,14 +487,19 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 	public void requestReplay(long checkpointId, int ignoreMessages) {
 		inflightReplayIterator = inFlightLog.getInFlightIterator(checkpointId);
-		LOG.info("Check replay");
-		LOG.info("Replay has been requested for pipelined subpartition of id {}, index {}, skipping {} buffers, buffers to replay {}. Setting downstreamFailed to false", this.parent.getPartitionId(), this.index, ignoreMessages, inflightReplayIterator.numberRemaining());
-		if (inflightReplayIterator.numberRemaining() < ignoreMessages)
-			throw new RuntimeException("Invalid state: pipelined subpartition can replay " + inflightReplayIterator.numberRemaining() + " messages, but a replay skipping " + ignoreMessages + " was requested.");
-		for (int i = 0; i < ignoreMessages; i++)
-			inflightReplayIterator.next();
-		if (!inflightReplayIterator.hasNext())
-			inflightReplayIterator = null;
+		if(inflightReplayIterator != null) {
+			LOG.info("Replay has been requested for pipelined subpartition of id {}, index {}, skipping {} buffers, " +
+					"buffers to replay {}. Setting downstreamFailed to false", this.parent.getPartitionId(), this.index,
+				ignoreMessages, inflightReplayIterator.numberRemaining());
+			if (inflightReplayIterator.numberRemaining() < ignoreMessages)
+				throw new RuntimeException("Invalid state: pipelined subpartition can replay " +
+					inflightReplayIterator.numberRemaining() + " messages, but a replay skipping " + ignoreMessages
+					+ " was requested.");
+			for (int i = 0; i < ignoreMessages; i++)
+				inflightReplayIterator.next().recycleBuffer();
+			if (!inflightReplayIterator.hasNext())
+				inflightReplayIterator = null;
+		}
 		downstreamFailed.set(false);
 	}
 
@@ -522,9 +537,12 @@ public class PipelinedSubpartition extends ResultSubpartition {
 					BufferConsumer consumer = buffers.peek();
 
 					if (consumer.isFinished()) {
-						if (consumer.getUnreadBytes() > 0) {
-							if (consumer.getUnreadBytes() < bufferSize)
-								throw new RuntimeException(String.format("Size of finished buffer ( {} ) does not match size of recovery request to build buffer ( {} ).", consumer.getUnreadBytes(), bufferSize));
+						if (consumer.getUnreadBytes() > 0 && consumer.getUnreadBytes() < bufferSize) {
+							String msg = "Size of finished buffer (" + consumer.getUnreadBytes() + ") does not match" +
+								" " +
+								"size of recovery request to build buffer ( " + bufferSize + " ).";
+							LOG.info("Exception:" + msg);
+							throw new RuntimeException(msg);
 						} else {
 							buffers.pop().close();
 							checkpointIds.pop();
@@ -536,14 +554,19 @@ public class PipelinedSubpartition extends ResultSubpartition {
 						LOG.info("There are enough bytes to build the requested buffer!");
 						long checkpointId = checkpointIds.peek();
 
-						//This assumes that the input buffers which are before this close in the determinant log have been
+						//This assumes that the input buffers which are before this close in the determinant log have
+						// been
 						// fully processed, thus the bufferconsumer will have this amount of data.
-						causalLoggingManager.appendSubpartitionDeterminant(reuseBufferBuiltDeterminant.replace(bufferSize), currentEpochID, this.parent.getPartitionId().getPartitionId(), this.index);
+						causalLoggingManager.appendSubpartitionDeterminant(
+							reuseBufferBuiltDeterminant.replace(bufferSize), currentEpochID,
+							this.parent.getPartitionId().getPartitionId(), this.index);
 						Buffer buffer = consumer.build(bufferSize);
 
 
 						checkState(consumer.isFinished() || buffers.size() == 1,
-							"When there are multiple buffers, an unfinished bufferConsumer can not be at the head of the buffers queue.");
+							"When there are multiple buffers, an unfinished bufferConsumer can not be at the head of" +
+								" " +
+								"the buffers queue.");
 
 						if (buffers.size() == 1) {
 							// turn off flushRequested flag if we drained all of the available data
@@ -560,6 +583,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 						updateStatistics(buffer);
 						inFlightLog.log(buffer, currentEpochID);
+						buffer.recycleBuffer(); //It is not sent downstream, so we must recycle it here.
 						//We do this after the determinant because a checkpoint x belongs to epoch x-1
 						if (checkpointId != -1)
 							currentEpochID = checkpointId;

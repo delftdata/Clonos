@@ -31,6 +31,11 @@ public interface BufferFileWriter extends BlockChannelWriterWithCallback<Buffer>
 	int getNumberOfOutstandingRequests();
 
 	/**
+	 * Clears any outstanding requests
+	 */
+	void clearRequestQueue();
+
+	/**
 	 * Registers a listener, which is notified after all outstanding requests have been processed.
 	 */
 	boolean registerAllRequestsProcessedListener(NotificationListener listener) throws IOException;

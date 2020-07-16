@@ -32,7 +32,6 @@ import org.apache.flink.runtime.io.network.partition.PipelinedSubpartition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.annotation.concurrent.GuardedBy;
 import java.io.IOException;
 import java.util.*;
 import java.util.function.Predicate;
@@ -51,67 +50,81 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 	private final SortedMap<Long, Epoch> slicedLog;
 	private final IOManager ioManager;
 
-	private final RequestDoneCallback<Buffer> CALLBACK = new FlushCompletedCallback();
-
-	private final Object flushLock = new Object();
-
-	@GuardedBy("flushLock")
-	private long currentAsyncStoreEpoch;
-
 	private final PipelinedSubpartition toLog;
 
 	private final Predicate<SpillableSubpartitionInFlightLogger> flushPolicy;
 
-	public SpillableSubpartitionInFlightLogger(IOManager ioManager, PipelinedSubpartition toLog, Predicate<SpillableSubpartitionInFlightLogger> flushPolicy) {
+	private final Object subpartitionLock = new Object();
+
+	public SpillableSubpartitionInFlightLogger(IOManager ioManager, PipelinedSubpartition toLog,
+											   Predicate<SpillableSubpartitionInFlightLogger> flushPolicy) {
 		this.ioManager = ioManager;
 		this.toLog = toLog;
 		this.flushPolicy = flushPolicy;
 
 		slicedLog = new TreeMap<>();
-		currentAsyncStoreEpoch = -1;
 	}
 
 	@Override
 	public void log(Buffer buffer, long epochID) {
-		Epoch epoch = slicedLog.computeIfAbsent(epochID, k -> new Epoch(createNewWriter()));
-		epoch.append(buffer);
-		//If we have fully flushed this epoch and there is a next epoch
-		synchronized (flushLock) {
-			if (currentAsyncStoreEpoch == -1) //initialize if uninitialized
-				currentAsyncStoreEpoch = epochID;
-			if (flushPolicy.test(this)) {
+		synchronized (subpartitionLock) {
+			Epoch epoch = slicedLog.computeIfAbsent(epochID, k -> new Epoch(createNewWriter(k)));
+			//If we have fully flushed this epoch and there is a next epoch
+			epoch.append(buffer);
+			if (flushPolicy.test(this))
 				epoch.flushAllUnflushed();
-			}
 		}
 		LOG.debug("Logged a new buffer for epoch {}", epochID);
 	}
 
 	@Override
-	public void notifyCheckpointComplete(long checkpointId) throws Exception {
-		LOG.debug("Got notified of checkpoint {} completion", checkpointId);
+	public void notifyCheckpointComplete(long checkpointID) throws Exception {
+		LOG.debug("Got notified of checkpoint {} completion", checkpointID);
 		List<Long> toRemove = new LinkedList<>();
 
-		//keys are in ascending order
-		for (long epochId : slicedLog.keySet()) {
-			if (epochId < checkpointId) {
-				toRemove.add(epochId);
-				LOG.debug("Removing epoch {}", epochId);
+		synchronized (subpartitionLock) {
+			//keys are in ascending order
+			for (long epochID : slicedLog.keySet()) {
+				if (epochID < checkpointID) {
+					toRemove.add(epochID);
+					LOG.debug("Removing epoch {}", epochID);
+				}
 			}
+			for (long epochID : toRemove)
+				slicedLog.remove(epochID).removeEpochFile();
 		}
-		synchronized (flushLock) {
-			for (long checkpointBarrierId : toRemove)
-				slicedLog.remove(checkpointBarrierId).removeEpochFile();
-		}
-
 	}
 
 	@Override
 	public InFlightLogIterator<Buffer> getInFlightIterator(long epochID) {
-		SortedMap<Long, Epoch> logToReplay = slicedLog.tailMap(epochID);
+		SortedMap<Long, Epoch> logToReplay;
+		synchronized (subpartitionLock) {
+			logToReplay = slicedLog.tailMap(epochID);
+			if (logToReplay.size() == 0)
+				return null;
+		}
 		BufferPool partitionBufferPool = this.toLog.getParent().getBufferPool();
 
-		return new SpilledReplayIterator(logToReplay, partitionBufferPool, ioManager, flushLock);
+		return new SpilledReplayIterator(logToReplay, partitionBufferPool, ioManager, subpartitionLock);
 	}
+
+
+	private void notifyFlushCompleted(long epochID) {
+		synchronized (subpartitionLock) {
+			Epoch epoch = slicedLog.get(epochID);
+			if (epoch != null && !epoch.stable())
+				epoch.notifyFlushCompleted();
+		}
+	}
+
+	private void notifyFlushFailed(long epochID) {
+		synchronized (subpartitionLock) {
+			Epoch epoch = slicedLog.get(epochID);
+			if (epoch != null && !epoch.stable())
+				epoch.notifyFlushFailed();
+		}
+	}
+
 
 	public float poolAvailability() {
 		BufferPool pool = this.toLog.getParent().getBufferPool();
@@ -119,26 +132,25 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 		return 1 - ((float) pool.bestEffortGetNumOfUsedBuffers()) / pool.getNumBuffers();
 	}
 
-	private BufferFileWriter createNewWriter() {
+	private BufferFileWriter createNewWriter(long epochID) {
 		BufferFileWriter writer = null;
 		try {
-			writer = ioManager.createBufferFileWriter(ioManager.createChannel(), CALLBACK);
+			writer = ioManager.createBufferFileWriter(ioManager.createChannel(), new FlushCompletedCallback(this,
+				epochID));
 		} catch (IOException e) {
 			throw new RuntimeException("Failed to create BufferFileWriter. Reason: " + e.getMessage());
 		}
 		return writer;
 	}
 
-	public boolean hasFullUnspilledEpoch() {
-		synchronized (flushLock) {
-			if (slicedLog.isEmpty())
-				return false;
+	public boolean hasFullUnspilledEpochUnsafe() {
+		if (slicedLog.isEmpty())
+			return false;
 
-			for (Map.Entry<Long, Epoch> entry : slicedLog.entrySet()) {
-				if (!entry.getKey().equals(slicedLog.lastKey()))
-					if (entry.getValue().hasNeverBeenFlushed())
-						return true;
-			}
+		for (Map.Entry<Long, Epoch> entry : slicedLog.entrySet()) {
+			if (!entry.getKey().equals(slicedLog.lastKey()))
+				if (entry.getValue().hasNeverBeenFlushed())
+					return true;
 		}
 
 		return false;
@@ -148,13 +160,14 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 		private final List<BufferHandle> epochBuffers;
 		private final BufferFileWriter writer;
 		private int nextBufferToFlush;
-		private int lastBufferFlushed;
+		private int nextBufferToCompleteFlushing;
+
 
 		public Epoch(BufferFileWriter writer) {
 			this.epochBuffers = new ArrayList<>(50);
 			this.writer = writer;
 			this.nextBufferToFlush = 0;
-			this.lastBufferFlushed = -1;
+			this.nextBufferToCompleteFlushing = 0;
 		}
 
 		public void append(Buffer buffer) {
@@ -170,35 +183,47 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 		}
 
 		public void flushAllUnflushed() {
-			for (int i = nextBufferToFlush; i < epochBuffers.size(); i++)
-				flushNext();
-		}
-
-		public void flushNext() {
-			try {
-				writer.writeBlock(epochBuffers.get(nextBufferToFlush++).getBuffer());
-			} catch (IOException e) {
-				throw new RuntimeException("Writer could not write buffer. Cause:" + e.getMessage());
+			for (int i = nextBufferToFlush; i < epochBuffers.size(); i++) {
+				LOG.info("Flushing buffer {}", i);
+				flushBuffer(epochBuffers.get(nextBufferToFlush));
+				nextBufferToFlush++;
 			}
 		}
 
-		public void retryLastFlush() {
+		public void flushBuffer(BufferHandle bufferHandle) {
 			try {
-				writer.writeBlock(epochBuffers.get(lastBufferFlushed + 1).getBuffer());
+				if (!writer.isClosed())
+					writer.writeBlock(bufferHandle.getBuffer());
 			} catch (IOException e) {
 				throw new RuntimeException("Writer could not write buffer. Cause:" + e.getMessage());
 			}
 		}
 
 		public void notifyFlushCompleted() {
-			BufferHandle handle = epochBuffers.get(++lastBufferFlushed);
+			LOG.info("Flush completed for buffer {}, recycling", nextBufferToCompleteFlushing);
+			BufferHandle handle = epochBuffers.get(nextBufferToCompleteFlushing);
 			handle.markFlushed();
 			handle.getBuffer().recycleBuffer();
+			nextBufferToCompleteFlushing++;
 		}
 
+		public void notifyFlushFailed() {
+			//Must clear request queue, otherwise buffers are stored in wrong order
+			writer.clearRequestQueue();
+			//Resubmit requests in order
+			if (!writer.isClosed())
+				for (int i = nextBufferToCompleteFlushing; i < nextBufferToFlush; i++) {
+					try {
+						writer.writeBlock(epochBuffers.get(i).getBuffer());
+					} catch (IOException e) {
+						throw new RuntimeException("Writer could not write buffer. Cause:" + e.getMessage());
+					}
+				}
 
-		public boolean fullyFlushed() {
-			return lastBufferFlushed + 1 == epochBuffers.size();
+		}
+
+		public boolean stable() {
+			return nextBufferToCompleteFlushing == epochBuffers.size() || writer.isClosed();
 		}
 
 		public void removeEpochFile() {
@@ -222,14 +247,17 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 		public int getEpochSize() {
 			return epochBuffers.size();
 		}
+
 	}
 
-	static class BufferHandle{
+	static class BufferHandle {
 		private Buffer buffer;
 		private boolean flushed;
+		private boolean availableInMemory;
 
 		public BufferHandle(Buffer buffer) {
 			this.buffer = buffer;
+			this.availableInMemory = true;
 			this.flushed = false;
 		}
 
@@ -241,45 +269,36 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 			return flushed;
 		}
 
-		public void markFlushed(){
+		public boolean isAvailableInMemory() {
+			return availableInMemory;
+		}
+
+		public void markFlushed() {
 			this.flushed = true;
+			this.availableInMemory = false;
 		}
 	}
 
-	private class FlushCompletedCallback implements RequestDoneCallback<Buffer> {
+	private static class FlushCompletedCallback implements RequestDoneCallback<Buffer> {
 
-		private long computeNextKey(SortedMap<Long, Epoch> slicedLog, long currentAsyncStoreEpoch) {
-			Set<Long> keys = slicedLog.keySet();
-			boolean foundKey = false;
-			for (Long key : keys) {
-				if (foundKey)
-					return key; //If we already found our key, this is the next one.
-				if (key == currentAsyncStoreEpoch)
-					foundKey = true;
-			}
-			//If no key found return -1, on next append, currentAsyncStoreEpoch will be set.
-			return -1;
+		private final SpillableSubpartitionInFlightLogger toNotify;
+		private final long epochID;
+
+		public FlushCompletedCallback(SpillableSubpartitionInFlightLogger toNotify, long epochID) {
+			this.epochID = epochID;
+			this.toNotify = toNotify;
 		}
 
 		@Override
 		public void requestSuccessful(Buffer request) {
 			LOG.debug("Flush completed");
-			synchronized (flushLock) {
-				Epoch epoch = slicedLog.get(currentAsyncStoreEpoch);
-				epoch.notifyFlushCompleted();
-				if (epoch.fullyFlushed()) {
-					currentAsyncStoreEpoch = computeNextKey(slicedLog, currentAsyncStoreEpoch);
-				}
-			}
+			toNotify.notifyFlushCompleted(epochID);
 		}
 
 		@Override
 		public void requestFailed(Buffer buffer, IOException e) {
 			LOG.debug("Flush failed. Retrying. Cause: {}", e.getMessage());
-			synchronized (flushLock) {
-				Epoch epoch = slicedLog.get(currentAsyncStoreEpoch);
-				epoch.retryLastFlush();
-			}
+			toNotify.notifyFlushFailed(epochID);
 		}
 	}
 
