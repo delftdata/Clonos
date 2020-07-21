@@ -41,7 +41,7 @@ public class InFlightLogFactoryImpl implements InFlightLogFactory {
 	public InFlightLog buildInFlightLoggerForSubpartition(BufferPool bufferPool){
 		switch (config.getType()){
 			case SPILLABLE:
-				return new SpillableSubpartitionInFlightLogger(ioManager, bufferPool, config.getSpillPolicy());
+				return new SpillableSubpartitionInFlightLogger(ioManager, bufferPool, config.getSpillPolicy(), config.getAvailabilityPolicyFillFactor());
 			case IN_MEMORY:
 			default:
 				return new InMemorySubpartitionInFlightLogger();
