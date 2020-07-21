@@ -67,8 +67,6 @@ public class NetworkEnvironment {
 
 	private final TaskEventDispatcher taskEventDispatcher;
 
-	private final NetworkBufferPool determinantBufferPool;
-	private final int numDeterminantBuffersPerTask;
 
 	/**
 	 * Server for {@link InternalKvState} requests.
@@ -126,7 +124,6 @@ public class NetworkEnvironment {
 		boolean enableCreditBased, int numDeterminantBuffersPerTask) {
 
 		this.networkBufferPool = checkNotNull(networkBufferPool);
-		this.determinantBufferPool = checkNotNull(determinantBufferPool);
 		this.connectionManager = checkNotNull(connectionManager);
 		this.resultPartitionManager = checkNotNull(resultPartitionManager);
 		this.taskEventDispatcher = checkNotNull(taskEventDispatcher);
@@ -145,15 +142,14 @@ public class NetworkEnvironment {
 		this.extraNetworkBuffersPerGate = extraNetworkBuffersPerGate;
 
 		this.enableCreditBased = enableCreditBased;
-		this.numDeterminantBuffersPerTask = numDeterminantBuffersPerTask;
 
 
 		this.causalLogManager = new CausalLogManager(determinantBufferPool, numDeterminantBuffersPerTask);
 
 	}
 
-	public NetworkEnvironment(NetworkBufferPool bufferPool, NettyConnectionManager nettyConnectionManager, ResultPartitionManager resultPartitionManager, TaskEventDispatcher taskEventDispatcher, KvStateRegistry kvStateRegistry, KvStateServer o, KvStateClientProxy o1, IOMode sync, Integer defaultValue, Integer defaultValue1, Integer defaultValue2, Integer defaultValue3, boolean b) {
-		this(bufferPool, null, nettyConnectionManager, resultPartitionManager, taskEventDispatcher, kvStateRegistry, o, o1, sync, defaultValue, defaultValue1, defaultValue2, defaultValue3, b, 0);
+	public NetworkEnvironment(NetworkBufferPool bufferPool, NettyConnectionManager nettyConnectionManager, ResultPartitionManager resultPartitionManager, TaskEventDispatcher taskEventDispatcher, KvStateRegistry kvStateRegistry, KvStateServer kvStateServer, KvStateClientProxy kvStateClientProxy, IOMode sync, Integer partitionRequestInitialBackoff, Integer partitionRequestMaxBackoff, Integer networkBuffersPerChannel, Integer extraNetworkBuffersPerGate, boolean enableCreditBased) {
+		this(bufferPool, null, nettyConnectionManager, resultPartitionManager, taskEventDispatcher, kvStateRegistry, kvStateServer, kvStateClientProxy, sync, partitionRequestInitialBackoff,  partitionRequestMaxBackoff, networkBuffersPerChannel, extraNetworkBuffersPerGate, enableCreditBased, 0);
 	}
 
 	// --------------------------------------------------------------------------------------------

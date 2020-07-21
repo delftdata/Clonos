@@ -56,7 +56,6 @@ public class InFlightLogConfig implements Serializable {
 
 	private final Configuration config;
 
-	private Predicate<SpillableSubpartitionInFlightLogger> spillPolicy;
 
 	private Float availabilityPolicyFillFactor;
 
@@ -89,10 +88,9 @@ public class InFlightLogConfig implements Serializable {
 		switch (policy){
 			case "eager":
 				return eagerPolicy;
-			case "availability":
-				return availabilityPolicy;
 			case "epoch":
 				return epochPolicy;
+			case "availability":
 			default:
 				return availabilityPolicy;
 		}
@@ -107,7 +105,7 @@ public class InFlightLogConfig implements Serializable {
 
 	public static Predicate<SpillableSubpartitionInFlightLogger> eagerPolicy = log -> true;
 
-	public static Predicate<SpillableSubpartitionInFlightLogger> availabilityPolicy = spillableSubpartitionInFlightLogger -> spillableSubpartitionInFlightLogger.poolAvailability() <= 0.5f;
+	public static Predicate<SpillableSubpartitionInFlightLogger> availabilityPolicy = SpillableSubpartitionInFlightLogger::isPoolAvailabilityLow;
 
 	public static Predicate<SpillableSubpartitionInFlightLogger> epochPolicy = SpillableSubpartitionInFlightLogger::hasFullUnspilledEpochUnsafe;
 

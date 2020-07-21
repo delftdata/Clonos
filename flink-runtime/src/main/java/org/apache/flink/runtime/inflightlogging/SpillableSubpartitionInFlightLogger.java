@@ -28,7 +28,6 @@ package org.apache.flink.runtime.inflightlogging;
 import org.apache.flink.runtime.io.disk.iomanager.*;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferPool;
-import org.apache.flink.runtime.io.network.partition.PipelinedSubpartition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -50,17 +49,23 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 	private final SortedMap<Long, Epoch> slicedLog;
 	private final IOManager ioManager;
 
-	private final PipelinedSubpartition toLog;
-
 	private final Predicate<SpillableSubpartitionInFlightLogger> flushPolicy;
 
 	private final Object subpartitionLock = new Object();
+	private final BufferPool partitionBufferPool;
 
-	public SpillableSubpartitionInFlightLogger(IOManager ioManager, PipelinedSubpartition toLog,
+	private float availabilityFillFactor;
+
+	public SpillableSubpartitionInFlightLogger(IOManager ioManager, BufferPool partitionBufferPool,
 											   Predicate<SpillableSubpartitionInFlightLogger> flushPolicy) {
+		this(ioManager, partitionBufferPool, flushPolicy, 0.5f);
+	}
+	public SpillableSubpartitionInFlightLogger(IOManager ioManager, BufferPool partitionBufferPool,
+											   Predicate<SpillableSubpartitionInFlightLogger> flushPolicy, float availabilityFillFactor) {
 		this.ioManager = ioManager;
-		this.toLog = toLog;
 		this.flushPolicy = flushPolicy;
+		this.partitionBufferPool = partitionBufferPool;
+		this.availabilityFillFactor = availabilityFillFactor;
 
 		slicedLog = new TreeMap<>();
 	}
@@ -103,7 +108,6 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 			if (logToReplay.size() == 0)
 				return null;
 		}
-		BufferPool partitionBufferPool = this.toLog.getParent().getBufferPool();
 
 		return new SpilledReplayIterator(logToReplay, partitionBufferPool, ioManager, subpartitionLock, ignoreBuffers);
 	}
@@ -114,9 +118,8 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 			Epoch epoch = slicedLog.get(epochID);
 			if (epoch != null && !epoch.stable())
 				epoch.notifyFlushCompleted();
-			LOG.debug("Flush completed. Pool availability: {}", poolAvailability());
-			BufferPool pool = this.toLog.getParent().getBufferPool();
-			LOG.debug("Pool {}", pool);
+			LOG.debug("Flush completed. Pool availability: {}", isPoolAvailabilityLow());
+			LOG.debug("Pool {}", partitionBufferPool);
 		}
 	}
 
@@ -129,10 +132,9 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 	}
 
 
-	public float poolAvailability() {
-		BufferPool pool = this.toLog.getParent().getBufferPool();
+	public boolean isPoolAvailabilityLow() {
 
-		return 1 - ((float) pool.bestEffortGetNumOfUsedBuffers()) / pool.getNumBuffers();
+		return (1 - ((float) partitionBufferPool.bestEffortGetNumOfUsedBuffers()) / partitionBufferPool.getNumBuffers()) < availabilityFillFactor;
 	}
 
 	private BufferFileWriter createNewWriter(long epochID) {

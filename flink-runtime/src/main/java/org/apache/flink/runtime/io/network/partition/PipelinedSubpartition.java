@@ -38,7 +38,6 @@ import java.io.IOException;
 import java.util.Deque;
 import java.util.LinkedList;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
@@ -102,14 +101,9 @@ public class PipelinedSubpartition extends ResultSubpartition {
 		this(index, parent, null);
 	}
 
-	PipelinedSubpartition(int index, ResultPartition parent, IOManager ioManager) {
+	PipelinedSubpartition(int index, ResultPartition parent, InFlightLog inFlightLog) {
 		super(index, parent);
-
-		if (ioManager == null)
-			this.inFlightLog = new InMemorySubpartitionInFlightLogger();
-		else
-			this.inFlightLog = new SpillableSubpartitionInFlightLogger(ioManager, this, InFlightLogConfig.eagerPolicy);
-
+		this.inFlightLog = inFlightLog;
 		this.checkpointIds = new LinkedList<>();
 		this.nextCheckpointId = -1L;
 		this.downstreamFailed = new AtomicBoolean(false);

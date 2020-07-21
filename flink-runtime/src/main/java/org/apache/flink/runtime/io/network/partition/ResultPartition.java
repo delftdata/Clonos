@@ -22,6 +22,7 @@ import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 import org.apache.flink.runtime.event.*;
 import org.apache.flink.runtime.executiongraph.IntermediateResultPartition;
+import org.apache.flink.runtime.inflightlogging.InFlightLogFactory;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
@@ -139,6 +140,7 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 		ResultPartitionManager partitionManager,
 		ResultPartitionConsumableNotifier partitionConsumableNotifier,
 		IOManager ioManager,
+		InFlightLogFactory inFlightLogFactory,
 		boolean sendScheduleOrUpdateConsumersMessage) {
 		this.owningTaskName = checkNotNull(owningTaskName);
 		this.taskActions = checkNotNull(taskActions);
@@ -162,9 +164,8 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 
 			case PIPELINED:
 			case PIPELINED_BOUNDED:
-				for (int i = 0; i < subpartitions.length; i++) {
-					subpartitions[i] = new PipelinedSubpartition(i, this, ioManager);
-				}
+				for (int i = 0; i < subpartitions.length; i++)
+					subpartitions[i] = new PipelinedSubpartition(i, this, inFlightLogFactory.buildInFlightLoggerForSubpartition(bufferPool));
 
 				break;
 

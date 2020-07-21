@@ -102,7 +102,7 @@ public class NetworkBufferCalculationTest extends TestLogger {
 			new String[] {},
 			false,
 			networkConfig,
-			QueryableStateConfiguration.disabled(),
+                inFlightLogConfig, QueryableStateConfiguration.disabled(),
 			1,
 			managedMemory,
 			memType,

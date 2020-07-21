@@ -28,6 +28,7 @@ import org.apache.flink.configuration.QueryableStateOptions;
 import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.core.memory.MemoryType;
 import org.apache.flink.runtime.akka.AkkaUtils;
+import org.apache.flink.runtime.inflightlogging.InFlightLogConfig;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.network.netty.NettyConfig;
 import org.apache.flink.runtime.memory.MemoryManager;
@@ -64,6 +65,8 @@ public class TaskManagerServicesConfiguration {
 
 	private final NetworkEnvironmentConfiguration networkConfig;
 
+	private final InFlightLogConfig inFlightLogConfig;
+
 	private final QueryableStateConfiguration queryableStateConfig;
 
 	/**
@@ -84,24 +87,26 @@ public class TaskManagerServicesConfiguration {
 	private final boolean localRecoveryEnabled;
 
 	public TaskManagerServicesConfiguration(
-			InetAddress taskManagerAddress,
-			String[] tmpDirPaths,
-			String[] localRecoveryStateRootDirectories,
-			boolean localRecoveryEnabled,
-			NetworkEnvironmentConfiguration networkConfig,
-			QueryableStateConfiguration queryableStateConfig,
-			int numberOfSlots,
-			long configuredMemory,
-			MemoryType memoryType,
-			boolean preAllocateMemory,
-			float memoryFraction,
-			long timerServiceShutdownTimeout) {
+		InetAddress taskManagerAddress,
+		String[] tmpDirPaths,
+		String[] localRecoveryStateRootDirectories,
+		boolean localRecoveryEnabled,
+		NetworkEnvironmentConfiguration networkConfig,
+		InFlightLogConfig inFlightLogConfig,
+		QueryableStateConfiguration queryableStateConfig,
+		int numberOfSlots,
+		long configuredMemory,
+		MemoryType memoryType,
+		boolean preAllocateMemory,
+		float memoryFraction,
+		long timerServiceShutdownTimeout) {
 
 		this.taskManagerAddress = checkNotNull(taskManagerAddress);
 		this.tmpDirPaths = checkNotNull(tmpDirPaths);
 		this.localRecoveryStateRootDirectories = checkNotNull(localRecoveryStateRootDirectories);
 		this.localRecoveryEnabled = checkNotNull(localRecoveryEnabled);
 		this.networkConfig = checkNotNull(networkConfig);
+		this.inFlightLogConfig = inFlightLogConfig;
 		this.queryableStateConfig = checkNotNull(queryableStateConfig);
 		this.numberOfSlots = checkNotNull(numberOfSlots);
 
@@ -137,6 +142,10 @@ public class TaskManagerServicesConfiguration {
 
 	public NetworkEnvironmentConfiguration getNetworkConfig() {
 		return networkConfig;
+	}
+
+	public InFlightLogConfig getInFlightLogConfig() {
+		return inFlightLogConfig;
 	}
 
 	public QueryableStateConfiguration getQueryableStateConfig() {
@@ -222,6 +231,8 @@ public class TaskManagerServicesConfiguration {
 			remoteAddress,
 			slots);
 
+		final InFlightLogConfig inFlightLogConfig = new InFlightLogConfig(configuration);
+
 		final QueryableStateConfiguration queryableStateConfig =
 				parseQueryableStateConfiguration(configuration);
 
@@ -270,6 +281,7 @@ public class TaskManagerServicesConfiguration {
 			localStateRootDir,
 			localRecoveryMode,
 			networkConfig,
+			inFlightLogConfig,
 			queryableStateConfig,
 			slots,
 			configuredMemory,

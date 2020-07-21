@@ -20,6 +20,8 @@ package org.apache.flink.runtime.taskexecutor;
 
 import org.apache.flink.core.memory.MemoryType;
 import org.apache.flink.runtime.broadcast.BroadcastVariableManager;
+import org.apache.flink.runtime.inflightlogging.InFlightLogFactory;
+import org.apache.flink.runtime.inflightlogging.InFlightLogFactoryImpl;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.network.NetworkEnvironment;
 import org.apache.flink.runtime.memory.MemoryManager;
@@ -45,6 +47,7 @@ public class TaskManagerServicesBuilder {
 	private JobManagerTable jobManagerTable;
 	private JobLeaderService jobLeaderService;
 	private TaskExecutorLocalStateStoresManager taskStateManager;
+	private InFlightLogFactory inFlightLogFactory;
 
 	public TaskManagerServicesBuilder() {
 		taskManagerLocation = new LocalTaskManagerLocation();
@@ -61,6 +64,7 @@ public class TaskManagerServicesBuilder {
 		jobManagerTable = new JobManagerTable();
 		jobLeaderService = new JobLeaderService(taskManagerLocation);
 		taskStateManager = mock(TaskExecutorLocalStateStoresManager.class);
+		inFlightLogFactory = mock(InFlightLogFactory.class);
 	}
 
 	public TaskManagerServicesBuilder setTaskManagerLocation(TaskManagerLocation taskManagerLocation) {
@@ -108,6 +112,11 @@ public class TaskManagerServicesBuilder {
 		return this;
 	}
 
+	public TaskManagerServicesBuilder setInFlightLogFactory(InFlightLogFactory inFlightLogFactory) {
+		this.inFlightLogFactory = inFlightLogFactory;
+		return this;
+	}
+
 	public TaskManagerServices build() {
 		return new TaskManagerServices(
 			taskManagerLocation,
@@ -118,6 +127,7 @@ public class TaskManagerServicesBuilder {
 			taskSlotTable,
 			jobManagerTable,
 			jobLeaderService,
-			taskStateManager);
+			taskStateManager,
+			inFlightLogFactory);
 	}
 }
