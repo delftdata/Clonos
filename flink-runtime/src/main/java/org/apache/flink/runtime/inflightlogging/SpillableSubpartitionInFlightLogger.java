@@ -96,7 +96,7 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 	}
 
 	@Override
-	public InFlightLogIterator<Buffer> getInFlightIterator(long epochID) {
+	public InFlightLogIterator<Buffer> getInFlightIterator(long epochID, int ignoreBuffers) {
 		SortedMap<Long, Epoch> logToReplay;
 		synchronized (subpartitionLock) {
 			logToReplay = slicedLog.tailMap(epochID);
@@ -105,7 +105,7 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 		}
 		BufferPool partitionBufferPool = this.toLog.getParent().getBufferPool();
 
-		return new SpilledReplayIterator(logToReplay, partitionBufferPool, ioManager, subpartitionLock);
+		return new SpilledReplayIterator(logToReplay, partitionBufferPool, ioManager, subpartitionLock, ignoreBuffers);
 	}
 
 
@@ -114,6 +114,9 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 			Epoch epoch = slicedLog.get(epochID);
 			if (epoch != null && !epoch.stable())
 				epoch.notifyFlushCompleted();
+			LOG.debug("Flush completed. Pool availability: {}", poolAvailability());
+			BufferPool pool = this.toLog.getParent().getBufferPool();
+			LOG.debug("Pool {}", pool);
 		}
 	}
 
@@ -291,7 +294,6 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 
 		@Override
 		public void requestSuccessful(Buffer request) {
-			LOG.debug("Flush completed");
 			toNotify.notifyFlushCompleted(epochID);
 		}
 

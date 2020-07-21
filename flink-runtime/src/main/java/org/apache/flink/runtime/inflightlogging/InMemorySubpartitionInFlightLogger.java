@@ -63,10 +63,15 @@ public class InMemorySubpartitionInFlightLogger implements InFlightLog {
 	}
 
 	@Override
-	public synchronized InFlightLogIterator<Buffer> getInFlightIterator(long startEpochID) {
+	public synchronized InFlightLogIterator<Buffer> getInFlightIterator(long startEpochID, int ignoreBuffers) {
 		//The lower network stack recycles buffers, so for each replay, we must increase reference counts
 		increaseReferenceCountsUnsafe(startEpochID);
-		return new ReplayIterator(startEpochID, slicedLog);
+		ReplayIterator replayIterator = new  ReplayIterator(startEpochID, slicedLog);
+
+		for(int i = 0; i < ignoreBuffers; i++)
+			replayIterator.next().recycleBuffer();
+
+		return replayIterator;
 	}
 
 	private void increaseReferenceCountsUnsafe(Long epochID) {
@@ -133,6 +138,12 @@ public class InMemorySubpartitionInFlightLogger implements InFlightLog {
 			Buffer toReturn = currentIterator.next();
 			currentIterator.previous();
 			return toReturn;
+		}
+
+		@Override
+		public void close() {
+			while (this.hasNext())
+				this.next().recycleBuffer();
 		}
 
 		@Override

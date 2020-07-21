@@ -21,12 +21,29 @@ import java.util.ListIterator;
 
 public abstract class InFlightLogIterator<T> implements ListIterator<T> {
 
+	/**
+	 *
+	 * @return the number of buffers still to be replayed
+	 */
 	public abstract int numberRemaining();
 
+	/**
+	 *
+	 * @return the epoch currently being replayed
+	 */
 	public abstract long getEpoch();
 
+	/**
+	 * Returns , but does not remove, the next buffer to be replayed.
+	 * Its reference count is not increased by this.
+	 */
 	public abstract T peekNext();
 
+	/**
+	 * Used to close iterator before it is done replaying or after it is done.
+	 * Must decrement reference counts of remaining buffers
+	 */
+	public abstract void close();
 
 	@Override
 	public T previous() {

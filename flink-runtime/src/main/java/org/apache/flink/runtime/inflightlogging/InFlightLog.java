@@ -40,7 +40,8 @@ public interface InFlightLog extends CheckpointListener {
 	/**
 	 * Creates an Iterator starting at the provided epoch.
 	 * Also increases the reference counts of stored buffers, as they are freed downstream in the network stack.
+	 * Skips the first <code>ignoreBuffers</code> buffers
 	 */
-	public InFlightLogIterator<Buffer> getInFlightIterator(long epochID);
+	public InFlightLogIterator<Buffer> getInFlightIterator(long epochID, int ignoreBuffers);
 
 }

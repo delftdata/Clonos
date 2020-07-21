@@ -38,6 +38,7 @@ import java.io.IOException;
 import java.util.Deque;
 import java.util.LinkedList;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
@@ -85,6 +86,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 	private AtomicBoolean downstreamFailed;
 
+	@GuardedBy("buffers")
 	private InFlightLogIterator<Buffer> inflightReplayIterator;
 
 	@GuardedBy("buffers")
@@ -279,17 +281,18 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 		}
 
-		if (inflightReplayIterator != null) {
-			LOG.info("We are replaying, get inflight logs next buffer");
-			return getReplayedBuffer();
-		} else {
-			return getBufferFromQueuedBufferConsumers();
+		synchronized (buffers) {
+			if (inflightReplayIterator != null) {
+				LOG.info("We are replaying, get inflight logs next buffer");
+				return getReplayedBufferUnsafe();
+			} else {
+				return getBufferFromQueuedBufferConsumersUnsafe();
+			}
 		}
 
 	}
 
-	private BufferAndBacklog getReplayedBuffer() {
-		synchronized (buffers) {
+	private BufferAndBacklog getReplayedBufferUnsafe() {
 			Buffer buffer = inflightReplayIterator.next();
 
 			long epoch = inflightReplayIterator.getEpoch();
@@ -304,7 +307,6 @@ public class PipelinedSubpartition extends ResultSubpartition {
 				getBuffersInBacklog() + (inflightReplayIterator != null ? inflightReplayIterator.numberRemaining() :
 					0),
 				_recoveryNextBufferIsEvent(), epoch);
-		}
 	}
 
 	private boolean _recoveryNextBufferIsEvent() {
@@ -316,8 +318,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 		return isNextAnEvent;
 	}
 
-	private BufferAndBacklog getBufferFromQueuedBufferConsumers() {
-		synchronized (buffers) {
+	private BufferAndBacklog getBufferFromQueuedBufferConsumersUnsafe() {
 			Buffer buffer = null;
 			long checkpointId = 0;
 
@@ -383,7 +384,6 @@ public class PipelinedSubpartition extends ResultSubpartition {
 				, parent, this, buffer, System.identityHashCode(buffer),
 				System.identityHashCode(buffer.getMemorySegment()), getBuffersInBacklog());
 			return result;
-		}
 	}
 
 
@@ -486,21 +486,19 @@ public class PipelinedSubpartition extends ResultSubpartition {
 	}
 
 	public void requestReplay(long checkpointId, int ignoreMessages) {
-		inflightReplayIterator = inFlightLog.getInFlightIterator(checkpointId);
-		if(inflightReplayIterator != null) {
-			LOG.info("Replay has been requested for pipelined subpartition of id {}, index {}, skipping {} buffers, " +
-					"buffers to replay {}. Setting downstreamFailed to false", this.parent.getPartitionId(), this.index,
-				ignoreMessages, inflightReplayIterator.numberRemaining());
-			if (inflightReplayIterator.numberRemaining() < ignoreMessages)
-				throw new RuntimeException("Invalid state: pipelined subpartition can replay " +
-					inflightReplayIterator.numberRemaining() + " messages, but a replay skipping " + ignoreMessages
-					+ " was requested.");
-			for (int i = 0; i < ignoreMessages; i++)
-				inflightReplayIterator.next().recycleBuffer();
-			if (!inflightReplayIterator.hasNext())
-				inflightReplayIterator = null;
+		synchronized (buffers) {
+			if (inflightReplayIterator != null)
+				inflightReplayIterator.close();
+			inflightReplayIterator = inFlightLog.getInFlightIterator(checkpointId, ignoreMessages);
+			if (inflightReplayIterator != null) {
+				LOG.info("Replay has been requested for pipelined subpartition of id {}, index {}, skipping {} buffers, " +
+						"buffers to replay {}. Setting downstreamFailed to false", this.parent.getPartitionId(), this.index,
+					ignoreMessages, inflightReplayIterator.numberRemaining());
+				if (!inflightReplayIterator.hasNext())
+					inflightReplayIterator = null;
+			}
+			downstreamFailed.set(false);
 		}
-		downstreamFailed.set(false);
 	}
 
 	private void maybeNotifyDataAvailable() {
