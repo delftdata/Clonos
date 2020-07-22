@@ -18,9 +18,11 @@
 
 package org.apache.flink.runtime.taskexecutor;
 
+import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.MemorySize;
 import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.core.memory.MemoryType;
+import org.apache.flink.runtime.inflightlogging.InFlightLogConfig;
 import org.apache.flink.runtime.taskmanager.NetworkEnvironmentConfiguration;
 import org.apache.flink.util.TestLogger;
 
@@ -95,14 +97,15 @@ public class NetworkBufferCalculationTest extends TestLogger {
 			TaskManagerOptions.NETWORK_BUFFERS_PER_CHANNEL.defaultValue(),
 			TaskManagerOptions.NETWORK_EXTRA_BUFFERS_PER_GATE.defaultValue(),
 			null);
-
+		final InFlightLogConfig inFlightLogConfig = new InFlightLogConfig(new Configuration());
 		return new TaskManagerServicesConfiguration(
 			InetAddress.getLoopbackAddress(),
 			new String[] {},
 			new String[] {},
 			false,
 			networkConfig,
-                inFlightLogConfig, QueryableStateConfiguration.disabled(),
+			inFlightLogConfig,
+			QueryableStateConfiguration.disabled(),
 			1,
 			managedMemory,
 			memType,

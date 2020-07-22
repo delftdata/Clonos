@@ -52,19 +52,20 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 	private final Predicate<SpillableSubpartitionInFlightLogger> flushPolicy;
 
 	private final Object subpartitionLock = new Object();
-	private final BufferPool partitionBufferPool;
+	private BufferPool partitionBufferPool;
 
 	private float availabilityFillFactor;
 
-	public SpillableSubpartitionInFlightLogger(IOManager ioManager, BufferPool partitionBufferPool,
+	public SpillableSubpartitionInFlightLogger(IOManager ioManager,
 											   Predicate<SpillableSubpartitionInFlightLogger> flushPolicy) {
-		this(ioManager, partitionBufferPool, flushPolicy, 0.5f);
+		this(ioManager, flushPolicy, 0.5f);
 	}
-	public SpillableSubpartitionInFlightLogger(IOManager ioManager, BufferPool partitionBufferPool,
-											   Predicate<SpillableSubpartitionInFlightLogger> flushPolicy, float availabilityFillFactor) {
+
+	public SpillableSubpartitionInFlightLogger(IOManager ioManager,
+											   Predicate<SpillableSubpartitionInFlightLogger> flushPolicy,
+											   float availabilityFillFactor) {
 		this.ioManager = ioManager;
 		this.flushPolicy = flushPolicy;
-		this.partitionBufferPool = partitionBufferPool;
 		this.availabilityFillFactor = availabilityFillFactor;
 
 		slicedLog = new TreeMap<>();
@@ -112,6 +113,11 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 		return new SpilledReplayIterator(logToReplay, partitionBufferPool, ioManager, subpartitionLock, ignoreBuffers);
 	}
 
+	@Override
+	public void registerBufferPool(BufferPool bufferPool) {
+		this.partitionBufferPool = bufferPool;
+	}
+
 
 	private void notifyFlushCompleted(long epochID) {
 		synchronized (subpartitionLock) {
@@ -133,7 +139,6 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 
 
 	public boolean isPoolAvailabilityLow() {
-
 		return (1 - ((float) partitionBufferPool.bestEffortGetNumOfUsedBuffers()) / partitionBufferPool.getNumBuffers()) < availabilityFillFactor;
 	}
 

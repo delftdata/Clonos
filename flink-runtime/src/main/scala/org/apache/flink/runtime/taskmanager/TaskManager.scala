@@ -48,6 +48,7 @@ import org.apache.flink.runtime.executiongraph.{ExecutionAttemptID, PartitionInf
 import org.apache.flink.runtime.filecache.FileCache
 import org.apache.flink.runtime.highavailability.HighAvailabilityServicesUtils.AddressResolution
 import org.apache.flink.runtime.highavailability.{HighAvailabilityServices, HighAvailabilityServicesUtils}
+import org.apache.flink.runtime.inflightlogging.InFlightLogFactory
 import org.apache.flink.runtime.instance.{AkkaActorGateway, HardwareDescription, InstanceID}
 import org.apache.flink.runtime.io.disk.iomanager.IOManager
 import org.apache.flink.runtime.io.network.NetworkEnvironment
@@ -126,6 +127,7 @@ class TaskManager(
     protected val memoryManager: MemoryManager,
     protected val ioManager: IOManager,
     protected val network: NetworkEnvironment,
+    protected val inFlightLogFactory: InFlightLogFactory,
     protected val taskManagerLocalStateStoresManager: TaskExecutorLocalStateStoresManager,
     protected val numberOfSlots: Int,
     protected val highAvailabilityServices: HighAvailabilityServices,
@@ -1235,6 +1237,7 @@ class TaskManager(
         ioManager,
         network,
         bcVarManager,
+        inFlightLogFactory,
         taskStateManager,
         taskManagerConnection,
         inputSplitProvider,

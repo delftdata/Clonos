@@ -20,6 +20,7 @@ package org.apache.flink.runtime.io.network.partition.consumer;
 
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.execution.CancelTaskException;
+import org.apache.flink.runtime.inflightlogging.InMemoryInFlightLogFactory;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.network.TaskEventDispatcher;
 import org.apache.flink.runtime.io.network.buffer.BufferBuilder;
@@ -131,6 +132,7 @@ public class LocalInputChannelTest {
 				partitionManager,
 				partitionConsumableNotifier,
 				ioManager,
+				new InMemoryInFlightLogFactory(),
 				true);
 
 			// Create a buffer pool for this partition

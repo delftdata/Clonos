@@ -35,7 +35,7 @@ import java.util.function.Predicate;
 public class InFlightLogConfig implements Serializable {
 
 
-	public static final ConfigOption<String> IN_FLIGHT_LOG_TYPE  = ConfigOptions
+	public static final ConfigOption<String> IN_FLIGHT_LOG_TYPE = ConfigOptions
 		.key("taskmanager.inflight.type")
 		.defaultValue("spillable")
 		.withDescription("The type of inflight log to use. \"inmemory\" for a fully in memory one, \"spillable\" " +
@@ -46,7 +46,8 @@ public class InFlightLogConfig implements Serializable {
 		.key("taskmanager.inflight.spill.policy")
 		.defaultValue("eager")
 		.withDescription("The policy to use for when to spill the in-flight log. \"eager\" for one that spills on " +
-			"write, \"availability\" for one that spills at a given buffer availability level, \"epoch\" for one that" +
+			"write, \"availability\" for one that spills at a given buffer availability level, \"epoch\" for one " +
+			"that" +
 			" spills on every epoch completion.");
 
 	public static final ConfigOption<Float> AVAILABILITY_POLICY_FILL_FACTOR = ConfigOptions
@@ -57,25 +58,22 @@ public class InFlightLogConfig implements Serializable {
 	private final Configuration config;
 
 
-	private Float availabilityPolicyFillFactor;
-
 	public enum Type {
 		IN_MEMORY, SPILLABLE
 	}
 
 
-	public InFlightLogConfig(Configuration config){
+	public InFlightLogConfig(Configuration config) {
 		this.config = config;
 	}
 
 	public Type getType() {
 		String type = config.getString(IN_FLIGHT_LOG_TYPE);
 
-		switch (type){
+		switch (type) {
 			case "inmemory":
 				return Type.IN_MEMORY;
 			case "spillable":
-				return Type.SPILLABLE;
 			default:
 				return Type.SPILLABLE;
 		}
@@ -85,7 +83,7 @@ public class InFlightLogConfig implements Serializable {
 	public Predicate<SpillableSubpartitionInFlightLogger> getSpillPolicy() {
 		String policy = config.getString(IN_FLIGHT_LOG_SPILL_POLICY);
 
-		switch (policy){
+		switch (policy) {
 			case "eager":
 				return eagerPolicy;
 			case "epoch":
@@ -96,17 +94,24 @@ public class InFlightLogConfig implements Serializable {
 		}
 	}
 
-	public float getAvailabilityPolicyFillFactor(){
-		if(availabilityPolicyFillFactor == null)
-			availabilityPolicyFillFactor = config.getFloat(AVAILABILITY_POLICY_FILL_FACTOR);
-
-		return availabilityPolicyFillFactor;
+	public float getAvailabilityPolicyFillFactor() {
+		return config.getFloat(AVAILABILITY_POLICY_FILL_FACTOR);
 	}
 
 	public static Predicate<SpillableSubpartitionInFlightLogger> eagerPolicy = log -> true;
 
-	public static Predicate<SpillableSubpartitionInFlightLogger> availabilityPolicy = SpillableSubpartitionInFlightLogger::isPoolAvailabilityLow;
+	public static Predicate<SpillableSubpartitionInFlightLogger> availabilityPolicy =
+		SpillableSubpartitionInFlightLogger::isPoolAvailabilityLow;
 
-	public static Predicate<SpillableSubpartitionInFlightLogger> epochPolicy = SpillableSubpartitionInFlightLogger::hasFullUnspilledEpochUnsafe;
+	public static Predicate<SpillableSubpartitionInFlightLogger> epochPolicy =
+		SpillableSubpartitionInFlightLogger::hasFullUnspilledEpochUnsafe;
 
+	@Override
+	public String toString() {
+		return "InFlightLogConfig{"
+			+ "type: " + getType()
+			+ ", policy: " + getSpillPolicy()
+			+ ", fill-factor: " + getAvailabilityPolicyFillFactor()
+			+ "}";
+	}
 }

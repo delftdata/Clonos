@@ -232,6 +232,7 @@ public class TaskManagerServicesConfiguration {
 			slots);
 
 		final InFlightLogConfig inFlightLogConfig = new InFlightLogConfig(configuration);
+		LOG.info("Read InFlightLogConfig! {}", inFlightLogConfig);
 
 		final QueryableStateConfiguration queryableStateConfig =
 				parseQueryableStateConfiguration(configuration);

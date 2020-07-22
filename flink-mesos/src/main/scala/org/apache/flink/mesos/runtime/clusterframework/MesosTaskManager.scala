@@ -20,6 +20,7 @@ package org.apache.flink.mesos.runtime.clusterframework
 
 import org.apache.flink.runtime.clusterframework.types.ResourceID
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices
+import org.apache.flink.runtime.inflightlogging.InMemoryInFlightLogFactory
 import org.apache.flink.runtime.io.disk.iomanager.IOManager
 import org.apache.flink.runtime.io.network.NetworkEnvironment
 import org.apache.flink.runtime.memory.MemoryManager
@@ -49,6 +50,7 @@ class MesosTaskManager(
     memoryManager,
     ioManager,
     network,
+    new InMemoryInFlightLogFactory,
     taskManagerLocalStateStoresManager,
     numberOfSlots,
     highAvailabilityServices,

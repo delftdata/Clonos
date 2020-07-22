@@ -50,6 +50,7 @@ class TestingTaskManager(
     memoryManager,
     ioManager,
     network,
+    null,
     taskManagerStateStore,
     numberOfSlots,
     highAvailabilityServices,

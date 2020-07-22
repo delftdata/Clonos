@@ -48,6 +48,8 @@ import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.JobInformation;
 import org.apache.flink.runtime.executiongraph.TaskInformation;
 import org.apache.flink.runtime.filecache.FileCache;
+import org.apache.flink.runtime.inflightlogging.InFlightLogFactory;
+import org.apache.flink.runtime.inflightlogging.InMemoryInFlightLogFactory;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.network.NetworkEnvironment;
 import org.apache.flink.runtime.io.network.netty.PartitionProducerStateChecker;
@@ -350,7 +352,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		this(jobInformation, taskInformation, executionAttemptID, slotAllocationId,
 			subtaskIndex, attemptNumber, resultPartitionDeploymentDescriptors,
 			inputGateDeploymentDescriptors, targetSlotNumber, memManager,
-			ioManager, networkEnvironment, bcVarManager, taskStateManager,
+			ioManager, networkEnvironment, bcVarManager, new InMemoryInFlightLogFactory(), taskStateManager,
 			taskManagerActions, inputSplitProvider, checkpointResponder,
 			blobService, libraryCache, fileCache, taskManagerConfig,
 			metricGroup, resultPartitionConsumableNotifier,
@@ -387,7 +389,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		this(jobInformation, taskInformation, executionAttemptID, slotAllocationId,
 			subtaskIndex, attemptNumber, resultPartitionDeploymentDescriptors,
 			inputGateDeploymentDescriptors, targetSlotNumber, memManager,
-			ioManager, networkEnvironment, bcVarManager, taskStateManager,
+			ioManager, networkEnvironment, bcVarManager, new InMemoryInFlightLogFactory(), taskStateManager,
 			taskManagerActions, inputSplitProvider, checkpointResponder,
 			blobService, libraryCache, fileCache, taskManagerConfig,
 			metricGroup, resultPartitionConsumableNotifier,
@@ -408,6 +410,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		IOManager ioManager,
 		NetworkEnvironment networkEnvironment,
 		BroadcastVariableManager bcVarManager,
+		InFlightLogFactory inFlightLogFactory,
 		TaskStateManager taskStateManager,
 		TaskManagerActions taskManagerActions,
 		InputSplitProvider inputSplitProvider,
@@ -507,7 +510,9 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 				// For updating consumers of a partition
 				resultPartitionConsumableNotifier,
 				ioManager,
-				desc.sendScheduleOrUpdateConsumersMessage());
+				inFlightLogFactory,
+				desc.sendScheduleOrUpdateConsumersMessage()
+				);
 
 			++counter;
 		}

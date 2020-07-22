@@ -18,6 +18,7 @@
 package org.apache.flink.runtime.inflightlogging;
 
 import org.apache.flink.runtime.io.network.buffer.Buffer;
+import org.apache.flink.runtime.io.network.buffer.BufferPool;
 import org.apache.flink.runtime.state.CheckpointListener;
 
 /**
@@ -33,7 +34,7 @@ public interface InFlightLog extends CheckpointListener {
 	/**
 	 * Appends the provided buffer to the log slice of the provided epochID
 	 */
-	public void log(Buffer buffer, long epochID);
+	void log(Buffer buffer, long epochID);
 
 
 
@@ -42,6 +43,11 @@ public interface InFlightLog extends CheckpointListener {
 	 * Also increases the reference counts of stored buffers, as they are freed downstream in the network stack.
 	 * Skips the first <code>ignoreBuffers</code> buffers
 	 */
-	public InFlightLogIterator<Buffer> getInFlightIterator(long epochID, int ignoreBuffers);
+	InFlightLogIterator<Buffer> getInFlightIterator(long epochID, int ignoreBuffers);
 
+	/**
+	 * Register the partition buffer pool.
+	 * Used for consulting buffer availability to make spill policy decisions
+	 */
+	void registerBufferPool(BufferPool bufferPool);
 }

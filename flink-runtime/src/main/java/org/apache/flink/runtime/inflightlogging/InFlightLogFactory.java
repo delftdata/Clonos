@@ -28,5 +28,5 @@ package org.apache.flink.runtime.inflightlogging;
 import org.apache.flink.runtime.io.network.buffer.BufferPool;
 
 public interface InFlightLogFactory {
-    InFlightLog buildInFlightLoggerForSubpartition(BufferPool bufferPool);
+    InFlightLog build();
 }

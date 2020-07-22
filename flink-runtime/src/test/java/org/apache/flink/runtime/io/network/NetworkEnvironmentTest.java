@@ -20,6 +20,7 @@ package org.apache.flink.runtime.io.network;
 
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.configuration.TaskManagerOptions;
+import org.apache.flink.runtime.inflightlogging.InFlightLogFactory;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.network.buffer.NetworkBufferPool;
 import org.apache.flink.runtime.io.network.partition.ResultPartition;
@@ -317,6 +318,7 @@ public class NetworkEnvironmentTest {
 			mock(ResultPartitionManager.class),
 			mock(ResultPartitionConsumableNotifier.class),
 			mock(IOManager.class),
+			mock(InFlightLogFactory.class),
 			false);
 	}
 

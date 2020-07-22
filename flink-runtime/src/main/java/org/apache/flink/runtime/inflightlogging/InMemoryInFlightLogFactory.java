@@ -25,26 +25,10 @@
 
 package org.apache.flink.runtime.inflightlogging;
 
-import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 
-public class InFlightLogFactoryImpl implements InFlightLogFactory {
-	private final IOManager ioManager;
-	private final InFlightLogConfig config;
-
-	public InFlightLogFactoryImpl(InFlightLogConfig config, IOManager ioManager) {
-		this.config = config;
-		this.ioManager = ioManager;
-	}
-
+public class InMemoryInFlightLogFactory implements InFlightLogFactory{
 	@Override
-	public InFlightLog build(){
-		switch (config.getType()){
-			case SPILLABLE:
-				return new SpillableSubpartitionInFlightLogger(ioManager, config.getSpillPolicy(), config.getAvailabilityPolicyFillFactor());
-			case IN_MEMORY:
-			default:
-				return new InMemorySubpartitionInFlightLogger();
-		}
+	public InFlightLog build() {
+		return new InMemorySubpartitionInFlightLogger();
 	}
-
 }

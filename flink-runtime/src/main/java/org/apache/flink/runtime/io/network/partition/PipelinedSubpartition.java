@@ -22,7 +22,6 @@ import org.apache.flink.runtime.causal.log.job.IJobCausalLog;
 import org.apache.flink.runtime.causal.determinant.BufferBuiltDeterminant;
 import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 import org.apache.flink.runtime.inflightlogging.*;
-import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
@@ -530,7 +529,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 					if (consumer.isFinished()) {
 						if (consumer.getUnreadBytes() > 0 && consumer.getUnreadBytes() < bufferSize) {
-							String msg = "Size of finished buffer (" + consumer.getUnreadBytes() + ") does not match" +
+							String msg = "Size of finished bufferConsumer (" + consumer.getUnreadBytes() + ") does not match" +
 								" " +
 								"size of recovery request to build buffer ( " + bufferSize + " ).";
 							LOG.info("Exception:" + msg);

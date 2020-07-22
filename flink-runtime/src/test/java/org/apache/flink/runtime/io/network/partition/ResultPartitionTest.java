@@ -19,6 +19,8 @@
 package org.apache.flink.runtime.io.network.partition;
 
 import org.apache.flink.api.common.JobID;
+import org.apache.flink.runtime.inflightlogging.InFlightLogFactory;
+import org.apache.flink.runtime.inflightlogging.InMemoryInFlightLogFactory;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.disk.iomanager.IOManagerAsync;
 import org.apache.flink.runtime.io.network.buffer.BufferBuilderTestUtils;
@@ -47,6 +49,8 @@ public class ResultPartitionTest {
 
 	/** Asynchronous I/O manager. */
 	private static final IOManager ioManager = new IOManagerAsync();
+
+	private static final InFlightLogFactory inFlightLogFactory = new InMemoryInFlightLogFactory();
 
 	@AfterClass
 	public static void shutdown() {
@@ -223,6 +227,7 @@ public class ResultPartitionTest {
 			mock(ResultPartitionManager.class),
 			notifier,
 			ioManager,
+			inFlightLogFactory,
 			sendScheduleOrUpdateConsumersMessage);
 	}
 }

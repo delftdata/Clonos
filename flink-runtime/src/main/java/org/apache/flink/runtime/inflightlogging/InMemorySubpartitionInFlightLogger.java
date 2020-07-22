@@ -18,6 +18,7 @@
 package org.apache.flink.runtime.inflightlogging;
 
 import org.apache.flink.runtime.io.network.buffer.Buffer;
+import org.apache.flink.runtime.io.network.buffer.BufferPool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -72,6 +73,11 @@ public class InMemorySubpartitionInFlightLogger implements InFlightLog {
 			replayIterator.next().recycleBuffer();
 
 		return replayIterator;
+	}
+
+	@Override
+	public void registerBufferPool(BufferPool bufferPool) {
+
 	}
 
 	private void increaseReferenceCountsUnsafe(Long epochID) {
