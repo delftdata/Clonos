@@ -58,10 +58,10 @@ public class WaitingConnectionsState extends AbstractState{
 		}
 
 		if(context.vertexGraphInformation.hasDownstream()) {
-			for (RecordWriter recordWriter : context.recordWriters) {
-				Boolean[] array = new Boolean[recordWriter.getResultPartition().getNumberOfSubpartitions()];
+			for (IntermediateResultPartitionID partID : context.subpartitionTable.rowKeySet()) {
+				Boolean[] array = new Boolean[context.subpartitionTable.row(partID).size()];
 				Arrays.fill(array, Boolean.FALSE);
-				outputChannelsReestablishmentStatus.put(recordWriter.getResultPartition().getPartitionId().getPartitionId(), array);
+				outputChannelsReestablishmentStatus.put(partID, array);
 			}
 		}
 

@@ -25,13 +25,16 @@
 
 package org.apache.flink.runtime.causal.recovery;
 
+import com.google.common.collect.HashBasedTable;
+import com.google.common.collect.Table;
 import org.apache.flink.runtime.causal.*;
-import org.apache.flink.runtime.causal.determinant.Determinant;
 import org.apache.flink.runtime.causal.log.job.JobCausalLog;
 import org.apache.flink.runtime.causal.log.vertex.VertexCausalLogDelta;
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
 import org.apache.flink.runtime.io.network.api.DeterminantRequestEvent;
-import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
+import org.apache.flink.runtime.io.network.partition.PipelinedSubpartition;
+import org.apache.flink.runtime.io.network.partition.ResultPartition;
+import org.apache.flink.runtime.io.network.partition.ResultSubpartition;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.io.network.partition.consumer.RemoteInputChannel;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
@@ -43,7 +46,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 
 public class RecoveryManager implements IRecoveryManager {
 
@@ -55,7 +57,7 @@ public class RecoveryManager implements IRecoveryManager {
 
 	final ConcurrentMap<VertexID, UnansweredDeterminantRequest> unansweredDeterminantRequests;
 
-	ConcurrentMap<IntermediateResultPartitionID, ConcurrentMap<Integer, InFlightLogRequestEvent>> unansweredInFlighLogRequests;
+	Table<IntermediateResultPartitionID, Integer, InFlightLogRequestEvent> unansweredInFlighLogRequests;
 
 	final ConcurrentMap<Long, Boolean> incompleteStateRestorations;
 
@@ -63,22 +65,17 @@ public class RecoveryManager implements IRecoveryManager {
 
 	InputGate inputGate;
 
-	//TODO check iff needed, or instead can just keep the pipelined subpartitions
-	List<RecordWriter> recordWriters;
-
-	//TODO check iff needed, or instead can just keep the pipelined subpartitions
-	Map<IntermediateResultPartitionID, RecordWriter> intermediateResultPartitionIDRecordWriterMap;
+	Table<IntermediateResultPartitionID, Integer, PipelinedSubpartition> subpartitionTable;
 
 	EpochProvider epochProvider;
 
 	RecordCountProvider recordCountProvider;
 
-	static final SinkRecoveryStrategy sinkRecoveryStrategy = SinkRecoveryStrategy.KAFKA;
+	static final SinkRecoveryStrategy sinkRecoveryStrategy = SinkRecoveryStrategy.TRANSACTIONAL;
 
 	ProcessingTimeForceable processingTimeForceable;
 	CheckpointForceable checkpointForceable;
 
-	//TODO move to separate and compute from sink jobvertex
 	public static enum SinkRecoveryStrategy {
 		TRANSACTIONAL,
 		KAFKA
@@ -86,7 +83,9 @@ public class RecoveryManager implements IRecoveryManager {
 
 	public AtomicInteger numberOfRecoveringSubpartitions;
 
-	public RecoveryManager(EpochProvider epochProvider, JobCausalLog jobCausalLog, CompletableFuture<Void> readyToReplayFuture, VertexGraphInformation vertexGraphInformation, RecordCountProvider recordCountProvider, CheckpointForceable checkpointForceable) {
+	public RecoveryManager(EpochProvider epochProvider, JobCausalLog jobCausalLog,
+						   CompletableFuture<Void> readyToReplayFuture, VertexGraphInformation vertexGraphInformation,
+						   RecordCountProvider recordCountProvider, CheckpointForceable checkpointForceable) {
 		this.jobCausalLog = jobCausalLog;
 		this.readyToReplayFuture = readyToReplayFuture;
 		this.vertexGraphInformation = vertexGraphInformation;
@@ -99,22 +98,24 @@ public class RecoveryManager implements IRecoveryManager {
 
 		LOG.info("Starting recovery manager in state {}", currentState);
 
-		this.intermediateResultPartitionIDRecordWriterMap = new HashMap<>();
-
 		this.epochProvider = epochProvider;
 		this.recordCountProvider = recordCountProvider;
-		numberOfRecoveringSubpartitions = new AtomicInteger(0);
+		this.numberOfRecoveringSubpartitions = new AtomicInteger(0);
 		this.checkpointForceable = checkpointForceable;
 	}
 
-	public void setRecordWriters(List<RecordWriter> recordWriters) {
-		this.recordWriters = recordWriters;
-		unansweredInFlighLogRequests = new ConcurrentHashMap<>(recordWriters.size());
-		for (RecordWriter recordWriter : recordWriters) {
-			IntermediateResultPartitionID intermediateResultPartitionID = recordWriter.getResultPartition().getPartitionId().getPartitionId();
-			this.intermediateResultPartitionIDRecordWriterMap.put(intermediateResultPartitionID, recordWriter);
+	public void setPartitions(ResultPartition[] partitions) {
+		int maxNumSubpart = Arrays.stream(partitions).mapToInt(ResultPartition::getNumberOfSubpartitions).max().orElse(0);
 
-			unansweredInFlighLogRequests.put(intermediateResultPartitionID, new ConcurrentHashMap<>(recordWriter.getResultPartition().getNumberOfSubpartitions()));
+		this.subpartitionTable = HashBasedTable.create(partitions.length, maxNumSubpart);
+		//todo: unansweredInFlightLogRequests may be unnecessary if we store the request in the subpartition
+		this.unansweredInFlighLogRequests = HashBasedTable.create(partitions.length, maxNumSubpart);
+
+		for (ResultPartition rp : partitions) {
+			IntermediateResultPartitionID partitionID = rp.getPartitionId().getPartitionId();
+			ResultSubpartition[] subpartitions = rp.getResultSubpartitions();
+			for (int i = 0; i < subpartitions.length; i++)
+				this.subpartitionTable.put(partitionID, i, (PipelinedSubpartition) subpartitions[i]);
 		}
 	}
 
@@ -167,12 +168,14 @@ public class RecoveryManager implements IRecoveryManager {
 
 
 	@Override
-	public synchronized void notifyNewInputChannel(RemoteInputChannel inputChannel, int consumedSupartitionIndex, int numberBuffersRemoved) {
+	public synchronized void notifyNewInputChannel(RemoteInputChannel inputChannel, int consumedSupartitionIndex,
+												   int numberBuffersRemoved) {
 		this.currentState.notifyNewInputChannel(inputChannel, consumedSupartitionIndex, numberBuffersRemoved);
 	}
 
 	@Override
-	public synchronized void notifyNewOutputChannel(IntermediateResultPartitionID intermediateResultPartitionID, int index) {
+	public synchronized void notifyNewOutputChannel(IntermediateResultPartitionID intermediateResultPartitionID,
+													int index) {
 		this.currentState.notifyNewOutputChannel(intermediateResultPartitionID, index);
 	}
 
@@ -278,7 +281,9 @@ public class RecoveryManager implements IRecoveryManager {
 			return event;
 		}
 
-		public Object getLock(){return lock;}
+		public Object getLock() {
+			return lock;
+		}
 	}
 
 

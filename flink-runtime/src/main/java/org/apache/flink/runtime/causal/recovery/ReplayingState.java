@@ -25,6 +25,8 @@
 
 package org.apache.flink.runtime.causal.recovery;
 
+import com.google.common.collect.ImmutableSortedMap;
+import com.google.common.collect.Table;
 import org.apache.flink.runtime.causal.determinant.*;
 import org.apache.flink.runtime.causal.log.thread.SubpartitionThreadLogDelta;
 import org.apache.flink.runtime.causal.log.vertex.VertexCausalLogDelta;
@@ -46,7 +48,8 @@ import java.util.*;
  * A downstream failure in this state does not matter, requests simply get added to the queue of unanswered requests.
  * Only when we finish our recovery do we answer those requests.
  * <p>
- * Upstream failures in this state mean that perhaps the upstream will not have sent all buffers. This means we must resend
+ * Upstream failures in this state mean that perhaps the upstream will not have sent all buffers. This means we must
+ * resend
  * replay requests.
  */
 public class ReplayingState extends AbstractState {
@@ -84,29 +87,36 @@ public class ReplayingState extends AbstractState {
 	private void createSubpartitionRecoveryThreads(VertexCausalLogDelta recoveryDeterminants) {
 
 		recoveryThreads = new LinkedList<>();
-		for (Map.Entry<IntermediateResultPartitionID, SortedMap<Integer, SubpartitionThreadLogDelta>> partitionEntry : recoveryDeterminants.getPartitionDeltas().entrySet()) {
-			ResultSubpartition[] subpartitions = context.intermediateResultPartitionIDRecordWriterMap.get(partitionEntry.getKey()).getResultPartition().getResultSubpartitions();
 
-			for (Map.Entry<Integer, SubpartitionThreadLogDelta> subpartitionEntry : partitionEntry.getValue().entrySet()) {
-				LOG.info("Created recovery thread for Partition {} subpartition index {} with buffer {}", partitionEntry.getKey(), subpartitionEntry.getKey(), subpartitionEntry.getValue().getRawDeterminants());
-				PipelinedSubpartition pipelinedSubpartition = (PipelinedSubpartition) subpartitions[subpartitionEntry.getKey()];
-				Thread t = new SubpartitionRecoveryThread(subpartitionEntry.getValue().getRawDeterminants(), pipelinedSubpartition, context, partitionEntry.getKey(), subpartitionEntry.getKey());
+		for (IntermediateResultPartitionID partID : recoveryDeterminants.getPartitionDeltas().keySet())
+			for (Integer subpartID : recoveryDeterminants.getPartitionDeltas().get(partID).keySet()) {
+
+				ByteBuf recoveryBuffer =
+					recoveryDeterminants.getPartitionDeltas().get(partID).get(subpartID).getRawDeterminants();
+				PipelinedSubpartition subpartition = context.subpartitionTable.get(partID, subpartID);
+
+				Thread t = new SubpartitionRecoveryThread(recoveryBuffer, subpartition, context, partID, subpartID);
 				recoveryThreads.add(t);
-			}
-		}
 
+				LOG.info("Created recovery thread for Partition {} subpartition index {} with buffer {}", partID,
+					subpartID, recoveryBuffer);
+			}
 	}
 
+
 	@Override
-	public void notifyNewInputChannel(RemoteInputChannel remoteInputChannel, int consumedSubpartitionIndex, int numberOfBuffersRemoved) {
+	public void notifyNewInputChannel(RemoteInputChannel remoteInputChannel, int consumedSubpartitionIndex,
+									  int numberOfBuffersRemoved) {
 		//we got notified of a new input channel while we were replaying
 		//This means that  we now have to wait for the upstream to finish recovering before we do.
 		//Furthermore, we have to resend the inflight log request, and ask to skip X buffers
 
-		LOG.info("Got notified of new input channel event, while in state " + this.getClass() + " requesting upstream to replay and skip numberOfBuffersRemoved");
+		LOG.info("Got notified of new input channel event, while in state " + this.getClass() + " requesting upstream " +
+			"to replay and skip numberOfBuffersRemoved");
 		IntermediateResultPartitionID id = remoteInputChannel.getPartitionId().getPartitionId();
 		try {
-			remoteInputChannel.sendTaskEvent(new InFlightLogRequestEvent(id, consumedSubpartitionIndex, context.epochProvider.getCurrentEpochID(), numberOfBuffersRemoved));
+			remoteInputChannel.sendTaskEvent(new InFlightLogRequestEvent(id, consumedSubpartitionIndex,
+				context.epochProvider.getCurrentEpochID(), numberOfBuffersRemoved));
 		} catch (IOException | InterruptedException e) {
 			e.printStackTrace();
 		}
@@ -149,15 +159,16 @@ public class ReplayingState extends AbstractState {
 		while (nextDeterminant instanceof AsyncDeterminant) {
 			AsyncDeterminant asyncDeterminant = (AsyncDeterminant) nextDeterminant;
 			int currentRecordCount = context.recordCountProvider.getRecordCount();
-			if(currentRecordCount > asyncDeterminant.getRecordCount())
+			if (currentRecordCount > asyncDeterminant.getRecordCount())
 				throw new RuntimeException("Current record count is beyond the determinants record count. Current: " + currentRecordCount + ", determinant: " + asyncDeterminant.getRecordCount());
 			LOG.info("Current: " + currentRecordCount + ", determinant: " + asyncDeterminant.getRecordCount());
 			if (context.recordCountProvider.getRecordCount() == asyncDeterminant.getRecordCount()) {
-				LOG.info("We are at the same point in the stream, with record count: {}", asyncDeterminant.getRecordCount());
+				LOG.info("We are at the same point in the stream, with record count: {}",
+					asyncDeterminant.getRecordCount());
 				//Prepare next first, because the async event, in being processed, may require determinants
 				prepareNext();
 				asyncDeterminant.process(context);
-			}else
+			} else
 				break;
 		}
 	}
@@ -187,62 +198,65 @@ public class ReplayingState extends AbstractState {
 		return "ReplayingState{}";
 	}
 
-	private static class SubpartitionRecoveryThread extends Thread {
-		private final PipelinedSubpartition pipelinedSubpartition;
-		private final ByteBuf recoveryBuffer;
-		private final DeterminantEncoder determinantEncoder;
-		private final RecoveryManager context;
-		private final IntermediateResultPartitionID partitionID;
-		private final int index;
+private static class SubpartitionRecoveryThread extends Thread {
+	private final PipelinedSubpartition pipelinedSubpartition;
+	private final ByteBuf recoveryBuffer;
+	private final DeterminantEncoder determinantEncoder;
+	private final RecoveryManager context;
+	private final IntermediateResultPartitionID partitionID;
+	private final int index;
 
-		public SubpartitionRecoveryThread(ByteBuf recoveryBuffer, PipelinedSubpartition pipelinedSubpartition, RecoveryManager context, IntermediateResultPartitionID partitionID, int index) {
-			this.recoveryBuffer = recoveryBuffer;
-			this.pipelinedSubpartition = pipelinedSubpartition;
-			this.determinantEncoder = context.jobCausalLog.getDeterminantEncoder();
-			this.context = context;
-			this.partitionID = partitionID;
-			this.index = index;
+	public SubpartitionRecoveryThread(ByteBuf recoveryBuffer, PipelinedSubpartition pipelinedSubpartition,
+									  RecoveryManager context, IntermediateResultPartitionID partitionID, int index) {
+		this.recoveryBuffer = recoveryBuffer;
+		this.pipelinedSubpartition = pipelinedSubpartition;
+		this.determinantEncoder = context.jobCausalLog.getDeterminantEncoder();
+		this.context = context;
+		this.partitionID = partitionID;
+		this.index = index;
 
-		}
-
-		@Override
-		public void run() {
-			context.numberOfRecoveringSubpartitions.incrementAndGet();
-			//1. Netty has been told that there is no data.
-			pipelinedSubpartition.setIsRecoveringSubpartitionInFlightState(true);
-			//2. Rebuild in-fligh log and subpartition state
-			while (recoveryBuffer.isReadable()) {
-
-				Determinant determinant = determinantEncoder.decodeNext(recoveryBuffer);
-
-				if (!(determinant instanceof BufferBuiltDeterminant))
-					throw new RuntimeException("Subpartition has corrupt recovery buffer, expected buffer built, got: " + determinant);
-				BufferBuiltDeterminant bufferBuiltDeterminant = (BufferBuiltDeterminant) determinant;
-
-				LOG.info("Requesting to build and log buffer with {} bytes", bufferBuiltDeterminant.getNumberOfBytes());
-				pipelinedSubpartition.buildAndLogBuffer(bufferBuiltDeterminant.getNumberOfBytes());
-				LOG.info("Finished building and logging one buffer in supartition recovery thread");
-			}
-			LOG.info("Done recovering pipelined subpartition");
-			//Safety check that recovery brought us to the exact same state as pre-failure
-			assert recoveryBuffer.capacity() == context.jobCausalLog.subpartitionLogLength(partitionID, index);
-
-			// If there is a replay request, we have to prepare it, before setting isRecovering to true
-			InFlightLogRequestEvent unansweredRequest = context.unansweredInFlighLogRequests.get(partitionID).remove(index);
-			LOG.info("Checking for unanswered inflight request for this subpartition.");
-			if (unansweredRequest != null) {
-				LOG.info("There is an unanswered replay request for this subpartition.");
-				pipelinedSubpartition.requestReplay(unansweredRequest.getCheckpointId(), unansweredRequest.getNumberOfBuffersToSkip());
-			}
-
-			//3. Tell netty to restart requesting buffers.
-			pipelinedSubpartition.setIsRecoveringSubpartitionInFlightState(false);
-			pipelinedSubpartition.notifyDataAvailable();
-			recoveryBuffer.release();
-			context.numberOfRecoveringSubpartitions.decrementAndGet();
-			LOG.info("Subpartition is free to restart sending buffers.");
-
-		}
 	}
+
+	@Override
+	public void run() {
+		context.numberOfRecoveringSubpartitions.incrementAndGet();
+		//1. Netty has been told that there is no data.
+		pipelinedSubpartition.setIsRecoveringSubpartitionInFlightState(true);
+		//2. Rebuild in-fligh log and subpartition state
+		while (recoveryBuffer.isReadable()) {
+
+			Determinant determinant = determinantEncoder.decodeNext(recoveryBuffer);
+
+			if (!(determinant instanceof BufferBuiltDeterminant))
+				throw new RuntimeException("Subpartition has corrupt recovery buffer, expected buffer built, got: " + determinant);
+			BufferBuiltDeterminant bufferBuiltDeterminant = (BufferBuiltDeterminant) determinant;
+
+			LOG.info("Requesting to build and log buffer with {} bytes", bufferBuiltDeterminant.getNumberOfBytes());
+			pipelinedSubpartition.buildAndLogBuffer(bufferBuiltDeterminant.getNumberOfBytes());
+			LOG.info("Finished building and logging one buffer in supartition recovery thread");
+		}
+		LOG.info("Done recovering pipelined subpartition");
+		//Safety check that recovery brought us to the exact same state as pre-failure
+		assert recoveryBuffer.capacity() == context.jobCausalLog.subpartitionLogLength(partitionID, index);
+
+		// If there is a replay request, we have to prepare it, before setting isRecovering to true
+		InFlightLogRequestEvent unansweredRequest =
+			context.unansweredInFlighLogRequests.remove(partitionID, index);
+		LOG.info("Checking for unanswered inflight request for this subpartition.");
+		if (unansweredRequest != null) {
+			LOG.info("There is an unanswered replay request for this subpartition.");
+			pipelinedSubpartition.requestReplay(unansweredRequest.getCheckpointId(),
+				unansweredRequest.getNumberOfBuffersToSkip());
+		}
+
+		//3. Tell netty to restart requesting buffers.
+		pipelinedSubpartition.setIsRecoveringSubpartitionInFlightState(false);
+		pipelinedSubpartition.notifyDataAvailable();
+		recoveryBuffer.release();
+		context.numberOfRecoveringSubpartitions.decrementAndGet();
+		LOG.info("Subpartition is free to restart sending buffers.");
+
+	}
+}
 
 }

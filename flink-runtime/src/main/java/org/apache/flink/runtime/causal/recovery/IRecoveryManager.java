@@ -31,6 +31,7 @@ import org.apache.flink.runtime.causal.ProcessingTimeForceable;
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
 import org.apache.flink.runtime.io.network.api.DeterminantRequestEvent;
 import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
+import org.apache.flink.runtime.io.network.partition.ResultPartition;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannel;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.io.network.partition.consumer.RemoteInputChannel;
@@ -66,7 +67,7 @@ public interface IRecoveryManager {
 
 	void setInputGate(InputGate inputGate);
 
-	void setRecordWriters(List<RecordWriter> recordWriters);
+	void setPartitions(ResultPartition[] partitions);
 
 	void setProcessingTimeService(ProcessingTimeForceable processingTimeForceable);
 	ProcessingTimeForceable getProcessingTimeForceable();

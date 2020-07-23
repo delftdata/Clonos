@@ -47,13 +47,14 @@ public abstract class AbstractState implements State {
 	protected final RecoveryManager context;
 
 
-	public AbstractState(RecoveryManager context){
+	public AbstractState(RecoveryManager context) {
 		this.context = context;
 	}
 
 
 	@Override
-	public void notifyNewInputChannel(RemoteInputChannel remoteInputChannel, int consumedSubpartitionIndex, int numBuffersRemoved){
+	public void notifyNewInputChannel(RemoteInputChannel remoteInputChannel, int consumedSubpartitionIndex,
+									  int numBuffersRemoved) {
 		//we got notified of a new input channel while we were recovering.
 		//This means that  we now have to wait for the upstream to finish recovering before we do.
 		//Furthermore, if we have already sent an inflight log request for this channel, we now have to send it again.
@@ -61,7 +62,8 @@ public abstract class AbstractState implements State {
 	}
 
 	@Override
-	public void notifyNewOutputChannel(IntermediateResultPartitionID intermediateResultPartitionID, int subpartitionIndex){
+	public void notifyNewOutputChannel(IntermediateResultPartitionID intermediateResultPartitionID,
+									   int subpartitionIndex) {
 		LOG.info("Got notified of unexpected NewOutputChannel event, while in state " + this.getClass());
 
 	}
@@ -70,21 +72,20 @@ public abstract class AbstractState implements State {
 	public void notifyInFlightLogRequestEvent(InFlightLogRequestEvent e) {
 		//we got an inflight log request while still recovering. Since we must finish recovery first before
 		//answering, we store it, and when we enter the running state we immediately process it.
-		context.unansweredInFlighLogRequests.get(e.getIntermediateResultPartitionID()).put(e.getSubpartitionIndex(), e);
+		context.unansweredInFlighLogRequests.put(e.getIntermediateResultPartitionID(), e.getSubpartitionIndex(), e);
 	}
 
 	@Override
 	public void notifyStateRestorationStart(long checkpointId) {
 		LOG.info("Started restoring state of checkpoint {}", checkpointId);
 		this.context.incompleteStateRestorations.put(checkpointId, true);
-		if(checkpointId > context.epochProvider.getCurrentEpochID())
+		if (checkpointId > context.epochProvider.getCurrentEpochID())
 			context.epochProvider.setCurrentEpochID(checkpointId);
 
-		for (RecordWriter recordWriter : context.recordWriters)
-			for(ResultSubpartition rs : recordWriter.getResultPartition().getResultSubpartitions())
-				((PipelinedSubpartition)rs).setStartingEpoch(context.epochProvider.getCurrentEpochID());
+		for (PipelinedSubpartition ps : context.subpartitionTable.values())
+			ps.setStartingEpoch(context.epochProvider.getCurrentEpochID());
 
-			context.epochProvider.setCurrentEpochID(context.epochProvider.getCurrentEpochID());
+		context.epochProvider.setCurrentEpochID(context.epochProvider.getCurrentEpochID());
 	}
 
 	@Override
@@ -96,8 +97,9 @@ public abstract class AbstractState implements State {
 	@Override
 	public void notifyDeterminantResponseEvent(DeterminantResponseEvent e) {
 		LOG.info("Received a DeterminantResponseEvent: {}", e);
-		RecoveryManager.UnansweredDeterminantRequest udr = context.unansweredDeterminantRequests.get(e.getVertexCausalLogDelta().getVertexId());
-		if(udr != null) {
+		RecoveryManager.UnansweredDeterminantRequest udr =
+			context.unansweredDeterminantRequests.get(e.getVertexCausalLogDelta().getVertexId());
+		if (udr != null) {
 			synchronized (udr.getLock()) {
 				udr.incResponsesReceived();
 				udr.getVertexCausalLogDelta().merge(e.getVertexCausalLogDelta());
@@ -117,17 +119,18 @@ public abstract class AbstractState implements State {
 	}
 
 	@Override
-	public void notifyDeterminantRequestEvent(DeterminantRequestEvent e,int channelRequestArrivedFrom) {
+	public void notifyDeterminantRequestEvent(DeterminantRequestEvent e, int channelRequestArrivedFrom) {
 		LOG.info("Received determinant request!");
 		//If we are a sink and doing transactional recovery, just answer with what we have
-		if(!context.vertexGraphInformation.hasDownstream() && RecoveryManager.sinkRecoveryStrategy == RecoveryManager.SinkRecoveryStrategy.TRANSACTIONAL) {
+		if (!context.vertexGraphInformation.hasDownstream() && RecoveryManager.sinkRecoveryStrategy == RecoveryManager.SinkRecoveryStrategy.TRANSACTIONAL) {
 			try {
 				context.inputGate.getInputChannel(channelRequestArrivedFrom).sendTaskEvent(new DeterminantResponseEvent(new VertexCausalLogDelta(e.getFailedVertex())));
 			} catch (IOException | InterruptedException ex) {
 				ex.printStackTrace();
 			}
 		} else {
-			context.unansweredDeterminantRequests.put(e.getFailedVertex(), new RecoveryManager.UnansweredDeterminantRequest(e, channelRequestArrivedFrom));
+			context.unansweredDeterminantRequests.put(e.getFailedVertex(),
+				new RecoveryManager.UnansweredDeterminantRequest(e, channelRequestArrivedFrom));
 			LOG.info("Recurring determinant request");
 			broadcastDeterminantRequest(e);
 		}
@@ -135,11 +138,8 @@ public abstract class AbstractState implements State {
 
 	protected void broadcastDeterminantRequest(DeterminantRequestEvent e) {
 		try (BufferConsumer event = EventSerializer.toBufferConsumer(e)) {
-			for (RecordWriter recordWriter : context.recordWriters) {
-				for (ResultSubpartition rs : recordWriter.getResultPartition().getResultSubpartitions()) {
-					((PipelinedSubpartition) rs).bypassDeterminantRequest(event.copy());
-				}
-			}
+			for (PipelinedSubpartition ps : context.subpartitionTable.values())
+				ps.bypassDeterminantRequest(event.copy());
 		} catch (IOException ex) {
 			ex.printStackTrace();
 		}
@@ -152,7 +152,7 @@ public abstract class AbstractState implements State {
 	}
 
 	@Override
-	public void checkAsyncEvent(){
+	public void checkAsyncEvent() {
 		throw new RuntimeException("Unexpected check for Async event in state" + this.getClass());
 	}
 

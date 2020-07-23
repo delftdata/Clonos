@@ -277,8 +277,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		this.randomService = new CausalRandomService(jobCausalLog, recoveryManager, this);
 
 		this.streamRecordWriters = createStreamRecordWriters(configuration, environment, randomService);
-		List<RecordWriter> recordWriters = streamRecordWriters.stream().map(x -> (RecordWriter) x).collect(Collectors.toList());
-		recoveryManager.setRecordWriters(recordWriters);
+		recoveryManager.setPartitions(environment.getContainingTask().getProducedPartitions());
 
 
 		for(SingleInputGate inputGate : inputGates){
