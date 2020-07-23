@@ -38,6 +38,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.LinkedBlockingDeque;
+import java.util.stream.Collectors;
 
 /**
  * {@link SpilledReplayIterator} is to be used in combination with {@link SpillableSubpartitionInFlightLogger}.
@@ -69,6 +70,7 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 								 BufferPool partitionBufferPool,
 								 IOManager ioManager, Object subpartitionLock, int ignoreBuffers) {
 		LOG.debug("SpilledReplayIterator created");
+		LOG.debug("State of in-flight log: { {} }", logToReplay.entrySet().stream().map(e -> e.getKey() + "->" + e.getValue()).collect(Collectors.joining(",")));
 		this.cursor = new EpochCursor(logToReplay);
 
 		//skip ignoreBuffers buffers
@@ -101,7 +103,6 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 
 	@Override
 	public Buffer next() {
-		LOG.debug("Fetching buffer, cursor: {}", cursor);
 		Buffer buffer = null;
 		try {
 
@@ -116,6 +117,8 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 			Thread.currentThread().interrupt();
 			this.close();
 		}
+
+		LOG.debug("Fetching buffer for cursor: {}, buffer: {}", cursor, buffer);
 		return buffer;
 	}
 
@@ -169,6 +172,7 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 		//The position in the log of the producer
 		private final EpochCursor cursor;
 		private final Object subpartitionLock;
+		private final SortedMap<Long, SpillableSubpartitionInFlightLogger.Epoch> logToReplay;
 
 		private BufferPool bufferPool;
 		private Map<Long, BufferFileReader> epochReaders;
@@ -179,7 +183,7 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 			BufferPool bufferPool,
 			ConcurrentMap<Long, LinkedBlockingDeque<Buffer>> readyDataBuffersPerEpoch,
 			Object subpartitionLock, int ignoreBuffers) {
-
+			this.logToReplay = logToReplay;
 			this.subpartitionLock = subpartitionLock;
 			this.bufferPool = bufferPool;
 			this.cursor = new EpochCursor(logToReplay);
@@ -203,6 +207,7 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 				return;
 			try {
 				synchronized (subpartitionLock) {
+					LOG.debug("State of in-flight log at replayer: { {} }", logToReplay.entrySet().stream().map(e -> e.getKey() + "->" + e.getValue()).collect(Collectors.joining(",")));
 					BufferFileReader reader;
 					while (cursor.hasNext()) {
 						reader = epochReaders.get(cursor.getCurrentEpoch());
@@ -304,7 +309,9 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 		}
 
 		public SpillableSubpartitionInFlightLogger.BufferHandle getCurrentBufferHandle() {
-			return log.get(currentEpoch).getEpochBuffers().get(epochOffset);
+			SpillableSubpartitionInFlightLogger.Epoch epoch = log.get(currentEpoch);
+			List<SpillableSubpartitionInFlightLogger.BufferHandle> handles = epoch.getEpochBuffers();
+			return handles.get(epochOffset);
 		}
 
 		@Override

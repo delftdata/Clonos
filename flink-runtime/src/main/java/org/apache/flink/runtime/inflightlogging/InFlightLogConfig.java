@@ -30,6 +30,8 @@ import org.apache.flink.configuration.ConfigOptions;
 import org.apache.flink.configuration.Configuration;
 
 import java.io.Serializable;
+import java.util.Map;
+import java.util.function.Consumer;
 import java.util.function.Predicate;
 
 public class InFlightLogConfig implements Serializable {
@@ -80,7 +82,7 @@ public class InFlightLogConfig implements Serializable {
 	}
 
 
-	public Predicate<SpillableSubpartitionInFlightLogger> getSpillPolicy() {
+	public Consumer<SpillableSubpartitionInFlightLogger> getSpillPolicy() {
 		String policy = config.getString(IN_FLIGHT_LOG_SPILL_POLICY);
 
 		switch (policy) {
@@ -98,13 +100,21 @@ public class InFlightLogConfig implements Serializable {
 		return config.getFloat(AVAILABILITY_POLICY_FILL_FACTOR);
 	}
 
-	public static Predicate<SpillableSubpartitionInFlightLogger> eagerPolicy = log -> true;
+	public static Consumer<SpillableSubpartitionInFlightLogger> eagerPolicy = log -> log.getSlicedLog().get(log.getSlicedLog().lastKey()).flushAllUnflushed();
 
-	public static Predicate<SpillableSubpartitionInFlightLogger> availabilityPolicy =
-		SpillableSubpartitionInFlightLogger::isPoolAvailabilityLow;
+	public static Consumer<SpillableSubpartitionInFlightLogger> availabilityPolicy = log -> {
+		if (log.isPoolAvailabilityLow())
+			for (SpillableSubpartitionInFlightLogger.Epoch e : log.getSlicedLog().values())
+				e.flushAllUnflushed();
+	};
 
-	public static Predicate<SpillableSubpartitionInFlightLogger> epochPolicy =
-		SpillableSubpartitionInFlightLogger::hasFullUnspilledEpochUnsafe;
+	public static Consumer<SpillableSubpartitionInFlightLogger> epochPolicy = log -> {
+		long lastKey = log.getSlicedLog().lastKey();
+		for(Map.Entry<Long,SpillableSubpartitionInFlightLogger.Epoch> e : log.getSlicedLog().entrySet()){
+			if(e.getKey() < lastKey && e.getValue().hasNeverBeenFlushed())
+				e.getValue().flushAllUnflushed();
+		}
+	};
 
 	@Override
 	public String toString() {

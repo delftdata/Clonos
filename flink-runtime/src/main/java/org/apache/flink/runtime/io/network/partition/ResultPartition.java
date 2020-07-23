@@ -192,7 +192,8 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 	 */
 	public void registerBufferPool(BufferPool bufferPool) {
 		checkArgument(bufferPool.getNumberOfRequiredMemorySegments() >= getNumberOfSubpartitions(),
-			"Bug in result partition setup logic: Buffer pool has not enough guaranteed buffers for this result partition.");
+			"Bug in result partition setup logic: Buffer pool has not enough guaranteed buffers for this result " +
+				"partition.");
 
 		checkState(this.bufferPool == null, "Bug in result partition setup logic: Already registered buffer pool.");
 
@@ -203,7 +204,7 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 		if (!partitionType.hasBackPressure()) {
 			bufferPool.setBufferPoolOwner(this);
 		}
-		if(inFlightLogs != null)
+		if (inFlightLogs != null)
 			for (InFlightLog inFlightLog : inFlightLogs)
 				inFlightLog.registerBufferPool(bufferPool);
 	}
@@ -211,7 +212,6 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 	public JobID getJobId() {
 		return jobId;
 	}
-
 
 
 	public ResultPartitionID getPartitionId() {
@@ -273,7 +273,8 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 	public void addBufferConsumer(BufferConsumer bufferConsumer, int subpartitionIndex) throws IOException {
 		checkNotNull(bufferConsumer);
 
-		LOG.debug("{}: Add buffer consumer {} for subpartition {}.", owningTaskName, bufferConsumer, subpartitionIndex);
+		LOG.debug("{}: Add buffer consumer {} for subpartition {}.", owningTaskName, bufferConsumer,
+			subpartitionIndex);
 
 		ResultSubpartition subpartition;
 		try {
@@ -359,7 +360,8 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 
 
 	public void sendFailConsumerTrigger(int subpartitionIndex, Throwable cause) {
-		LOG.info("Task {} sends fail consumer trigger for result partition {} subpartition {} and release its buffers.", owningTaskName, partitionId, subpartitionIndex);
+		LOG.info("Task {} sends fail consumer trigger for result partition {} subpartition {} and release its buffers" +
+			".", owningTaskName, partitionId, subpartitionIndex);
 		partitionConsumableNotifier.requestFailConsumer(partitionId, subpartitionIndex, cause, taskActions);
 	}
 

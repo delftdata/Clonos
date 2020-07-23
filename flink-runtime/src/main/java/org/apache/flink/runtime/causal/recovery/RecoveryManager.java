@@ -73,7 +73,7 @@ public class RecoveryManager implements IRecoveryManager {
 
 	RecordCountProvider recordCountProvider;
 
-	static final SinkRecoveryStrategy sinkRecoveryStrategy = SinkRecoveryStrategy.TRANSACTIONAL;
+	static final SinkRecoveryStrategy sinkRecoveryStrategy = SinkRecoveryStrategy.KAFKA;
 
 	ProcessingTimeForceable processingTimeForceable;
 	CheckpointForceable checkpointForceable;
@@ -240,8 +240,9 @@ public class RecoveryManager implements IRecoveryManager {
 
 	public static class UnansweredDeterminantRequest {
 		private int numResponsesReceived;
-		int requestingChannel;
-		DeterminantRequestEvent event;
+		private int requestingChannel;
+		private DeterminantRequestEvent event;
+		private final Object lock;
 
 		/**
 		 * The delta we are going to return. Starts empty, but is progressively merged with downstream deltas.
@@ -252,6 +253,8 @@ public class RecoveryManager implements IRecoveryManager {
 			this.numResponsesReceived = 0;
 			this.requestingChannel = requestingChannel;
 			this.event = event;
+			lock = new Object();
+			vertexCausalLogDelta = new VertexCausalLogDelta(event.getFailedVertex());
 		}
 
 		public int getNumResponsesReceived() {
@@ -274,6 +277,8 @@ public class RecoveryManager implements IRecoveryManager {
 		public DeterminantRequestEvent getEvent() {
 			return event;
 		}
+
+		public Object getLock(){return lock;}
 	}
 
 

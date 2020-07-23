@@ -95,10 +95,10 @@ public abstract class AbstractState implements State {
 
 	@Override
 	public void notifyDeterminantResponseEvent(DeterminantResponseEvent e) {
-		LOG.info("Received a DeterminantResponseEvent, but am not recovering: {}", e);
+		LOG.info("Received a DeterminantResponseEvent: {}", e);
 		RecoveryManager.UnansweredDeterminantRequest udr = context.unansweredDeterminantRequests.get(e.getVertexCausalLogDelta().getVertexId());
 		if(udr != null) {
-			synchronized (udr) {
+			synchronized (udr.getLock()) {
 				udr.incResponsesReceived();
 				udr.getVertexCausalLogDelta().merge(e.getVertexCausalLogDelta());
 				if (udr.getNumResponsesReceived() == context.vertexGraphInformation.getNumberOfDirectDownstreamNeighbours()) {
@@ -119,18 +119,18 @@ public abstract class AbstractState implements State {
 	@Override
 	public void notifyDeterminantRequestEvent(DeterminantRequestEvent e,int channelRequestArrivedFrom) {
 		LOG.info("Received determinant request!");
+		//If we are a sink and doing transactional recovery, just answer with what we have
 		if(!context.vertexGraphInformation.hasDownstream() && RecoveryManager.sinkRecoveryStrategy == RecoveryManager.SinkRecoveryStrategy.TRANSACTIONAL) {
 			try {
 				context.inputGate.getInputChannel(channelRequestArrivedFrom).sendTaskEvent(new DeterminantResponseEvent(new VertexCausalLogDelta(e.getFailedVertex())));
 			} catch (IOException | InterruptedException ex) {
 				ex.printStackTrace();
 			}
-			return;
+		} else {
+			context.unansweredDeterminantRequests.put(e.getFailedVertex(), new RecoveryManager.UnansweredDeterminantRequest(e, channelRequestArrivedFrom));
+			LOG.info("Recurring determinant request");
+			broadcastDeterminantRequest(e);
 		}
-
-		context.unansweredDeterminantRequests.put(e.getFailedVertex(), new RecoveryManager.UnansweredDeterminantRequest(e, channelRequestArrivedFrom));
-		LOG.info("Recurring determinant request");
-		broadcastDeterminantRequest(e);
 	}
 
 	protected void broadcastDeterminantRequest(DeterminantRequestEvent e) {

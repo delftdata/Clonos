@@ -90,6 +90,14 @@ public class RunStandbyTaskStrategy extends FailoverStrategy {
 		//       it helps to support better testing
 		final ExecutionVertex vertexToRecover = taskExecution.getVertex();
 
+		//The plan to recover the vertex is the following:
+		// If a standby already exists:
+		// 		Concurrently remove the failed slots and start the standby
+		// else
+		//		Sequentially remove the failed slots, then schedule a new standby and dispatch state to it. Doing this
+		//		avoids scheduling the new standby to the failed TM. Following that, start it.
+		// If an error occurs anywhere in this process, we fallback to the global restart strategy
+
 		LOG.info(getStrategyName() + "failover strategy is triggered for the recovery of task " +
 			vertexToRecover.getTaskNameWithSubtaskIndex() + ".");
 
@@ -109,7 +117,7 @@ public class RunStandbyTaskStrategy extends FailoverStrategy {
 		standbyReady.thenAcceptAsync((Void) -> {
 			LOG.info("Running the standby execution.");
 			vertexToRecover.runStandbyExecution();
-		});
+		}, callbackExecutor);
 
 		//In case of exceptions during the whole execution, trigger full recovery
 		standbyReady.exceptionally((Throwable t) -> {
@@ -119,16 +127,17 @@ public class RunStandbyTaskStrategy extends FailoverStrategy {
 		});
 	}
 
-	private CompletableFuture<Void> composePrepareNewStandby(ExecutionVertex vertexToRecover, CompletableFuture<Void> removeSlotsFuture) {
+	private CompletableFuture<Void> composePrepareNewStandby(ExecutionVertex vertexToRecover,
+															 CompletableFuture<Void> removeSlotsFuture) {
 		return removeSlotsFuture.thenComposeAsync((ignored) -> {
 			//I believe the compose call should then wait for the addStandbyExecution to complete
 			LOG.info("Adding a new standby execution");
 			return vertexToRecover.addStandbyExecution();
-		}).thenApplyAsync((ignored) -> {
+		}, callbackExecutor).thenApplyAsync((ignored) -> {
 			LOG.info("Waiting for standby to be ready");
-			while (vertexToRecover.getStandbyExecutions().get(0).getState() != ExecutionState.STANDBY) ;
+			while (vertexToRecover.getStandbyExecutions().get(0).getState() != ExecutionState.STANDBY);
 			LOG.info("Standby is ready.");
-			LOG.info("Dispatching state.");
+			LOG.info("Dispatching latest state.");
 			try {
 				executionGraph.getCheckpointCoordinator().dispatchLatestCheckpointedStateToStandbyTasks(
 					Collections.singletonMap(vertexToRecover.getJobvertexId(), vertexToRecover.getJobVertex()),
@@ -137,11 +146,10 @@ public class RunStandbyTaskStrategy extends FailoverStrategy {
 				throw new CompletionException(e);
 			}
 			return null;
-		});
+		}, callbackExecutor);
 	}
 
 	private CompletableFuture<Void> asyncRemoveFailedSlots(Execution taskExecution) {
-		Executor exec = executionGraph.getFutureExecutor();
 
 		ResourceID resourceIDOfFailedTM = taskExecution.getAssignedResourceLocation().getResourceID();
 		Exception disconnectionCause = new FlinkException("disconnecting TM preventatively");
@@ -156,7 +164,7 @@ public class RunStandbyTaskStrategy extends FailoverStrategy {
 			resManCon.getResourceManagerGateway().disconnectTaskManager(resourceIDOfFailedTM, disconnectionCause);
 
 			return null;
-		}, exec);
+		}, callbackExecutor);
 	}
 
 	@Override

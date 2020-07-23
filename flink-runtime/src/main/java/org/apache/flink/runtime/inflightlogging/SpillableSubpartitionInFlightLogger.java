@@ -33,6 +33,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.*;
+import java.util.function.Consumer;
 import java.util.function.Predicate;
 
 /**
@@ -49,7 +50,7 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 	private final SortedMap<Long, Epoch> slicedLog;
 	private final IOManager ioManager;
 
-	private final Predicate<SpillableSubpartitionInFlightLogger> flushPolicy;
+	private final Consumer<SpillableSubpartitionInFlightLogger> flushPolicy;
 
 	private final Object subpartitionLock = new Object();
 	private BufferPool partitionBufferPool;
@@ -57,12 +58,12 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 	private float availabilityFillFactor;
 
 	public SpillableSubpartitionInFlightLogger(IOManager ioManager,
-											   Predicate<SpillableSubpartitionInFlightLogger> flushPolicy) {
+											   Consumer<SpillableSubpartitionInFlightLogger> flushPolicy) {
 		this(ioManager, flushPolicy, 0.5f);
 	}
 
 	public SpillableSubpartitionInFlightLogger(IOManager ioManager,
-											   Predicate<SpillableSubpartitionInFlightLogger> flushPolicy,
+											   Consumer<SpillableSubpartitionInFlightLogger> flushPolicy,
 											   float availabilityFillFactor) {
 		this.ioManager = ioManager;
 		this.flushPolicy = flushPolicy;
@@ -74,11 +75,10 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 	@Override
 	public void log(Buffer buffer, long epochID) {
 		synchronized (subpartitionLock) {
-			Epoch epoch = slicedLog.computeIfAbsent(epochID, k -> new Epoch(createNewWriter(k)));
+			Epoch epoch = slicedLog.computeIfAbsent(epochID, k -> new Epoch(createNewWriter(k), k));
 			//If we have fully flushed this epoch and there is a next epoch
 			epoch.append(buffer);
-			if (flushPolicy.test(this))
-				epoch.flushAllUnflushed();
+			flushPolicy.accept(this);
 		}
 		LOG.debug("Logged a new buffer for epoch {}", epochID);
 	}
@@ -118,6 +118,17 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 		this.partitionBufferPool = bufferPool;
 	}
 
+	public SortedMap<Long, Epoch> getSlicedLog() {
+		return slicedLog;
+	}
+
+	public BufferPool getPartitionBufferPool() {
+		return partitionBufferPool;
+	}
+
+	public float getAvailabilityFillFactor() {
+		return availabilityFillFactor;
+	}
 
 	private void notifyFlushCompleted(long epochID) {
 		synchronized (subpartitionLock) {
@@ -171,13 +182,15 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 		private final BufferFileWriter writer;
 		private int nextBufferToFlush;
 		private int nextBufferToCompleteFlushing;
+		private long epochID;
 
 
-		public Epoch(BufferFileWriter writer) {
+		public Epoch(BufferFileWriter writer, long epochID) {
 			this.epochBuffers = new ArrayList<>(50);
 			this.writer = writer;
 			this.nextBufferToFlush = 0;
 			this.nextBufferToCompleteFlushing = 0;
+			this.epochID = epochID;
 		}
 
 		public void append(Buffer buffer) {
@@ -192,9 +205,13 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 			return writer.getChannelID();
 		}
 
+		public long getEpochID(){
+			return epochID;
+		}
+
 		public void flushAllUnflushed() {
 			for (int i = nextBufferToFlush; i < epochBuffers.size(); i++) {
-				LOG.info("Flushing buffer {}", i);
+				LOG.info("Flushing buffer {} of epoch {}. Buffer:{}",nextBufferToFlush, epochID, epochBuffers.get(nextBufferToFlush));
 				flushBuffer(epochBuffers.get(nextBufferToFlush));
 				nextBufferToFlush++;
 			}
@@ -210,7 +227,7 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 		}
 
 		public void notifyFlushCompleted() {
-			LOG.info("Flush completed for buffer {}, recycling", nextBufferToCompleteFlushing);
+			LOG.info("Flush completed for buffer {} of epoch {}, recycling", nextBufferToCompleteFlushing, epochID);
 			BufferHandle handle = epochBuffers.get(nextBufferToCompleteFlushing);
 			handle.markFlushed();
 			handle.getBuffer().recycleBuffer();
@@ -237,6 +254,7 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 		}
 
 		public void removeEpochFile() {
+			LOG.info("Removing epoch file of epoch {}", epochID);
 			//TODO Blocks while open requests. Possibly may need to push this to an executor for performance.
 			try {
 				writer.closeAndDelete();
@@ -258,6 +276,14 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 			return epochBuffers.size();
 		}
 
+		@Override
+		public String toString() {
+			return "Epoch{" +
+				"size=" + epochBuffers.size() +
+				",nextBufferToFlush=" + nextBufferToFlush +
+				", nextBufferToCompleteFlushing=" + nextBufferToCompleteFlushing +
+				'}';
+		}
 	}
 
 	static class BufferHandle {

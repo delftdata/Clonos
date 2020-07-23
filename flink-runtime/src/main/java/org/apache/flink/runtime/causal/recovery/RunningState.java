@@ -56,11 +56,16 @@ public class RunningState extends AbstractState {
 
 	@Override
 	public void notifyInFlightLogRequestEvent(InFlightLogRequestEvent e) {
-		LOG.info("Received an InflightLogRequest {}", e);
-		RecordWriter rw = context.intermediateResultPartitionIDRecordWriterMap.get(e.getIntermediateResultPartitionID());
-		PipelinedSubpartition subpartitionRequested = ((PipelinedSubpartition)rw.getResultPartition().getResultSubpartitions()[e.getSubpartitionIndex()]);
-		LOG.info("intermediateResultPartition to request replay from: {}", e.getIntermediateResultPartitionID());
-		subpartitionRequested.requestReplay(e.getCheckpointId(), e.getNumberOfBuffersToSkip());
+		//Subpartitions might still be recovering
+		if(context.isRecovering())
+			super.notifyInFlightLogRequestEvent(e);
+		else {
+			LOG.info("Received an InflightLogRequest {}", e);
+			RecordWriter rw = context.intermediateResultPartitionIDRecordWriterMap.get(e.getIntermediateResultPartitionID());
+			PipelinedSubpartition subpartitionRequested = ((PipelinedSubpartition) rw.getResultPartition().getResultSubpartitions()[e.getSubpartitionIndex()]);
+			LOG.info("intermediateResultPartition to request replay from: {}", e.getIntermediateResultPartitionID());
+			subpartitionRequested.requestReplay(e.getCheckpointId(), e.getNumberOfBuffersToSkip());
+		}
 	}
 
 

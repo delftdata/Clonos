@@ -223,6 +223,10 @@ public class ReplayingState extends AbstractState {
 				pipelinedSubpartition.buildAndLogBuffer(bufferBuiltDeterminant.getNumberOfBytes());
 				LOG.info("Finished building and logging one buffer in supartition recovery thread");
 			}
+			LOG.info("Done recovering pipelined subpartition");
+			//Safety check that recovery brought us to the exact same state as pre-failure
+			assert recoveryBuffer.capacity() == context.jobCausalLog.subpartitionLogLength(partitionID, index);
+
 			// If there is a replay request, we have to prepare it, before setting isRecovering to true
 			InFlightLogRequestEvent unansweredRequest = context.unansweredInFlighLogRequests.get(partitionID).remove(index);
 			LOG.info("Checking for unanswered inflight request for this subpartition.");
@@ -231,15 +235,13 @@ public class ReplayingState extends AbstractState {
 				pipelinedSubpartition.requestReplay(unansweredRequest.getCheckpointId(), unansweredRequest.getNumberOfBuffersToSkip());
 			}
 
-			//Safety check that recovery brought us to the exact same state as pre-failure
-			assert recoveryBuffer.capacity() == context.jobCausalLog.subpartitionLogLength(partitionID, index);
-
 			//3. Tell netty to restart requesting buffers.
 			pipelinedSubpartition.setIsRecoveringSubpartitionInFlightState(false);
 			pipelinedSubpartition.notifyDataAvailable();
 			recoveryBuffer.release();
 			context.numberOfRecoveringSubpartitions.decrementAndGet();
-			LOG.info("Done recovering pipelined subpartition");
+			LOG.info("Subpartition is free to restart sending buffers.");
+
 		}
 	}
 

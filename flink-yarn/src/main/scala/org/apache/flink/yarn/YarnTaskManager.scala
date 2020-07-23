@@ -28,8 +28,8 @@ import org.apache.flink.runtime.security.SecurityUtils
 import org.apache.flink.runtime.state.TaskExecutorLocalStateStoresManager
 import org.apache.flink.runtime.taskexecutor.TaskManagerConfiguration
 import org.apache.flink.runtime.taskmanager.{TaskManager, TaskManagerLocation}
-
 import grizzled.slf4j.Logger
+import org.apache.flink.runtime.inflightlogging.InMemoryInFlightLogFactory
 
 /** An extension of the TaskManager that listens for additional YARN related
   * messages.
@@ -52,6 +52,7 @@ class YarnTaskManager(
     memoryManager,
     ioManager,
     network,
+    new InMemoryInFlightLogFactory,
     taskManagerLocalStateStoresManager,
     numberOfSlots,
     highAvailabilityServices,
