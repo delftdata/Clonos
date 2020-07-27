@@ -76,7 +76,7 @@ public class RecoveryManager implements IRecoveryManager {
 	ProcessingTimeForceable processingTimeForceable;
 	CheckpointForceable checkpointForceable;
 
-	public static enum SinkRecoveryStrategy {
+	public enum SinkRecoveryStrategy {
 		TRANSACTIONAL,
 		KAFKA
 	}
@@ -85,7 +85,7 @@ public class RecoveryManager implements IRecoveryManager {
 
 	public RecoveryManager(EpochProvider epochProvider, JobCausalLog jobCausalLog,
 						   CompletableFuture<Void> readyToReplayFuture, VertexGraphInformation vertexGraphInformation,
-						   RecordCountProvider recordCountProvider, CheckpointForceable checkpointForceable) {
+						   RecordCountProvider recordCountProvider, CheckpointForceable checkpointForceable, ResultPartition[] partitions) {
 		this.jobCausalLog = jobCausalLog;
 		this.readyToReplayFuture = readyToReplayFuture;
 		this.vertexGraphInformation = vertexGraphInformation;
@@ -102,10 +102,12 @@ public class RecoveryManager implements IRecoveryManager {
 		this.recordCountProvider = recordCountProvider;
 		this.numberOfRecoveringSubpartitions = new AtomicInteger(0);
 		this.checkpointForceable = checkpointForceable;
+		setPartitions(partitions);
 	}
 
-	public void setPartitions(ResultPartition[] partitions) {
-		int maxNumSubpart = Arrays.stream(partitions).mapToInt(ResultPartition::getNumberOfSubpartitions).max().orElse(0);
+	private void setPartitions(ResultPartition[] partitions) {
+		int maxNumSubpart =
+			Arrays.stream(partitions).mapToInt(ResultPartition::getNumberOfSubpartitions).max().orElse(0);
 
 		this.subpartitionTable = HashBasedTable.create(partitions.length, maxNumSubpart);
 		//todo: unansweredInFlightLogRequests may be unnecessary if we store the request in the subpartition
@@ -165,7 +167,6 @@ public class RecoveryManager implements IRecoveryManager {
 	public synchronized void notifyStateRestorationComplete(long checkpointId) {
 		this.currentState.notifyStateRestorationComplete(checkpointId);
 	}
-
 
 	@Override
 	public synchronized void notifyNewInputChannel(RemoteInputChannel inputChannel, int consumedSupartitionIndex,

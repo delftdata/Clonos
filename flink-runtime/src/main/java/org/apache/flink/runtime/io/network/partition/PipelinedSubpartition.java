@@ -268,11 +268,6 @@ public class PipelinedSubpartition extends ResultSubpartition {
 			return null;
 		}
 
-		if (!recoveryManager.isRunning()) {
-			LOG.info("Recovery hasnt finished for this subpartition");
-			return null;
-
-		}
 
 		synchronized (buffers) {
 			if (inflightReplayIterator != null) {

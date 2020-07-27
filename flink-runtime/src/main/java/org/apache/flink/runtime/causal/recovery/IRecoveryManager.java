@@ -67,8 +67,6 @@ public interface IRecoveryManager {
 
 	void setInputGate(InputGate inputGate);
 
-	void setPartitions(ResultPartition[] partitions);
-
 	void setProcessingTimeService(ProcessingTimeForceable processingTimeForceable);
 	ProcessingTimeForceable getProcessingTimeForceable();
 	CheckpointForceable getCheckpointForceable();

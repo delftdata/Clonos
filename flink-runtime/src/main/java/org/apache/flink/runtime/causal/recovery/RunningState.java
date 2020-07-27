@@ -57,17 +57,16 @@ public class RunningState extends AbstractState {
 	@Override
 	public void notifyInFlightLogRequestEvent(InFlightLogRequestEvent e) {
 		//Subpartitions might still be recovering
-		if(context.isRecovering())
+		if (context.isRecovering())
 			super.notifyInFlightLogRequestEvent(e);
 		else {
 			LOG.info("Received an InflightLogRequest {}", e);
-			RecordWriter rw = context.intermediateResultPartitionIDRecordWriterMap.get(e.getIntermediateResultPartitionID());
-			PipelinedSubpartition subpartitionRequested = ((PipelinedSubpartition) rw.getResultPartition().getResultSubpartitions()[e.getSubpartitionIndex()]);
+			PipelinedSubpartition subpartitionRequested =
+				context.subpartitionTable.get(e.getIntermediateResultPartitionID(), e.getSubpartitionIndex());
 			LOG.info("intermediateResultPartition to request replay from: {}", e.getIntermediateResultPartitionID());
 			subpartitionRequested.requestReplay(e.getCheckpointId(), e.getNumberOfBuffersToSkip());
 		}
 	}
-
 
 
 	@Override
@@ -77,7 +76,9 @@ public class RunningState extends AbstractState {
 		VertexID vertex = e.getFailedVertex();
 
 		try {
-			DeterminantResponseEvent responseEvent = new DeterminantResponseEvent(context.jobCausalLog.getDeterminantsOfVertex(vertex, e.getStartEpochID()));
+			DeterminantResponseEvent responseEvent =
+				new DeterminantResponseEvent(context.jobCausalLog.getDeterminantsOfVertex(vertex,
+					e.getStartEpochID()));
 			LOG.info("Responding with: {}", responseEvent);
 
 			context.inputGate.getInputChannel(channelRequestArrivedFrom).sendTaskEvent(responseEvent);

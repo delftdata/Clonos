@@ -228,7 +228,7 @@ public class StreamInputProcessor<IN> {
 					} else {
 						// now we can do the actual processing
 						StreamRecord<IN> record = recordOrMark.asRecord();
-						LOG.info("Record: {}", record);
+						//LOG.info("Record: {}", record);
 						synchronized (lock) {
 							recordCountProvider.incRecordCount();
 							numRecordsIn.inc();
