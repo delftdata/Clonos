@@ -124,11 +124,6 @@ public class JobCausalLog implements IJobCausalLog {
 	}
 
 	@Override
-	public VertexID getVertexId() {
-		return myVertexID;
-	}
-
-	@Override
 	public int mainThreadLogLength() {
 		return this.localCausalLog.mainThreadLogLength();
 	}

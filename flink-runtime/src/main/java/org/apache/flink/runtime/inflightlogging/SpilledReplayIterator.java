@@ -70,7 +70,8 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 								 BufferPool partitionBufferPool,
 								 IOManager ioManager, Object subpartitionLock, int ignoreBuffers) {
 		LOG.debug("SpilledReplayIterator created");
-		LOG.debug("State of in-flight log: { {} }", logToReplay.entrySet().stream().map(e -> e.getKey() + "->" + e.getValue()).collect(Collectors.joining(",")));
+		LOG.debug("State of in-flight log: { {} }",
+			logToReplay.entrySet().stream().map(e -> e.getKey() + "->" + e.getValue()).collect(Collectors.joining(",")));
 		this.cursor = new EpochCursor(logToReplay);
 
 		//skip ignoreBuffers buffers
@@ -207,7 +208,10 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 				return;
 			try {
 				synchronized (subpartitionLock) {
-					LOG.debug("State of in-flight log at replayer: { {} }", logToReplay.entrySet().stream().map(e -> e.getKey() + "->" + e.getValue()).collect(Collectors.joining(",")));
+					if (LOG.isDebugEnabled())
+						LOG.debug("State of in-flight log at replayer: { {} }",
+							logToReplay.entrySet().stream().map(e -> e.getKey() + "->" +
+								e.getValue()).collect(Collectors.joining(",")));
 					BufferFileReader reader;
 					while (cursor.hasNext()) {
 						reader = epochReaders.get(cursor.getCurrentEpoch());
@@ -225,7 +229,7 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 					}
 
 					//close will wait for all requests to complete before closing
-					for(BufferFileReader r : epochReaders.values())
+					for (BufferFileReader r : epochReaders.values())
 						r.close();
 				}
 			} catch (Exception e) {

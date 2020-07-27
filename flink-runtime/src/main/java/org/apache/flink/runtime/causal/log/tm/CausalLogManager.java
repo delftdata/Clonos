@@ -45,13 +45,24 @@ import java.io.IOException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
+/**
+ * The {@link CausalLogManager} manages the CausalLogs of different jobs as {@link JobCausalLog}s.
+ * A {@link JobCausalLog} gets its own BufferPool for storing determinants
+ */
 public class CausalLogManager {
 
 	private static final Logger LOG = LoggerFactory.getLogger(CausalLogManager.class);
 
+	//Stores the causal logs of each job
 	private ConcurrentMap<JobID, JobCausalLog> jobIDToManagerMap;
+
+	// Maps the IDs of the <b>output</b> (i.e. downstream consumer) channels to the causal log they are consuming from
 	private ConcurrentMap<InputChannelID, JobCausalLog> inputChannelIDToManagerMap;
+
+	// The {@link NetworkBufferPool} from which new {@link BufferPool} instances are made
 	private NetworkBufferPool determinantBufferPool;
+
+	// Configuration parameter on how many buffers each job should get for determinant storage
 	private int numDeterminantBuffersPerTask;
 
 	public CausalLogManager(NetworkBufferPool determinantBufferPool, int numDeterminantBuffersPerTask) {
@@ -77,9 +88,10 @@ public class CausalLogManager {
 	public void registerNewDownstreamConsumer(JobID jobID, InputChannelID inputChannelID, IntermediateResultPartitionID intermediateResultPartitionID, int consumedSubpartition) {
 		LOG.debug("Registering a new downstream consumer channel {} for job {}.", inputChannelID, jobID);
 		JobCausalLog c = jobIDToManagerMap.get(jobID);
-		if (c != null)
+		if (c != null) {
 			c.registerDownstreamConsumer(inputChannelID, intermediateResultPartitionID, consumedSubpartition);
-		inputChannelIDToManagerMap.put(inputChannelID, c);
+			inputChannelIDToManagerMap.put(inputChannelID, c);
+		}
 	}
 
 	public CausalLogDelta getNextDeterminantsForDownstream(InputChannelID inputChannelID, long epochID) {
@@ -91,7 +103,6 @@ public class CausalLogManager {
 	}
 
 	public void processCausalLogDelta(JobID jobID, CausalLogDelta causalLogDelta) {
-		long epoch = causalLogDelta.getEpochID();
 		IJobCausalLog jobCausalLog = jobIDToManagerMap.get(jobID);
 		if(jobCausalLog == null)
 			throw new RuntimeException("Unknown Job");

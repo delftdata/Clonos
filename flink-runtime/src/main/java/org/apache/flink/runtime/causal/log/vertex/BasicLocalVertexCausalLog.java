@@ -57,26 +57,30 @@ public class BasicLocalVertexCausalLog implements LocalVertexCausalLog {
 	//SPSC
 	Map<IntermediateResultPartitionID, LocalThreadCausalLog[]> subpartitionLogs;
 
-	int totalSubpartitions;
 
 	Map<InputChannelID, Tuple2<IntermediateResultPartitionID, Integer>> consumerPartitions;
 
 	DeterminantEncoder encoder;
 
-	public BasicLocalVertexCausalLog(VertexGraphInformation vertexGraphInformation, ResultPartitionWriter[] resultPartitionsOfLocalVertex, BufferPool bufferPool, DeterminantEncoder encoder) {
+	public BasicLocalVertexCausalLog(VertexGraphInformation vertexGraphInformation,
+									 ResultPartitionWriter[] resultPartitionsOfLocalVertex, BufferPool bufferPool,
+									 DeterminantEncoder encoder) {
 		this.encoder = encoder;
 
-		totalSubpartitions = vertexGraphInformation.getJobVertex().getProducedDataSets().stream().map(IntermediateDataSet::getConsumers).mapToInt(List::size).sum();
+		int totalSubpartitions =
+			vertexGraphInformation.getJobVertex().getProducedDataSets().stream().map(IntermediateDataSet::getConsumers)
+				.mapToInt(List::size).sum();
 		subpartitionLogs = new ConcurrentHashMap<>(totalSubpartitions);
 
 		this.vertexId = vertexGraphInformation.getThisTasksVertexID();
 		this.mainThreadLog = new NetworkBufferBasedContiguousLocalThreadCausalLog(bufferPool, encoder);
 
 		for (ResultPartitionWriter resultPartition : resultPartitionsOfLocalVertex) {
-			LocalThreadCausalLog[] threadCausalLogs = new LocalThreadCausalLog[resultPartition.getNumberOfSubpartitions()];
-			for (int i = 0; i < resultPartition.getNumberOfSubpartitions(); i++) {
+			LocalThreadCausalLog[] threadCausalLogs =
+				new LocalThreadCausalLog[resultPartition.getNumberOfSubpartitions()];
+			for (int i = 0; i < resultPartition.getNumberOfSubpartitions(); i++)
 				threadCausalLogs[i] = new NetworkBufferBasedContiguousLocalThreadCausalLog(bufferPool, encoder);
-			}
+
 			subpartitionLogs.put(resultPartition.getPartitionId().getPartitionId(), threadCausalLogs);
 		}
 
@@ -90,15 +94,19 @@ public class BasicLocalVertexCausalLog implements LocalVertexCausalLog {
 	}
 
 	@Override
-	public void appendSubpartitionDeterminants(Determinant determinant, long epochID, IntermediateResultPartitionID intermediateResultPartitionID, int subpartitionIndex) {
-		LOG.debug("Appending determinant for epochID {} to intermediateResultPartitionID {} subpartition {}", epochID, intermediateResultPartitionID, subpartitionIndex);
+	public void appendSubpartitionDeterminants(Determinant determinant, long epochID,
+											   IntermediateResultPartitionID intermediateResultPartitionID,
+											   int subpartitionIndex) {
+		LOG.debug("Appending determinant for epochID {} to intermediateResultPartitionID {} subpartition {}", epochID,
+			intermediateResultPartitionID, subpartitionIndex);
 		subpartitionLogs.get(intermediateResultPartitionID)[subpartitionIndex].appendDeterminant(determinant, epochID);
 	}
 
 	@Override
-	public void registerDownstreamConsumer(InputChannelID inputChannelID, IntermediateResultPartitionID intermediateResultPartitionID, int consumedSubpartition) {
+	public void registerDownstreamConsumer(InputChannelID inputChannelID,
+										   IntermediateResultPartitionID intermediateResultPartitionID,
+										   int consumedSubpartition) {
 		LOG.debug("Registering downstream consumer at local vertex level");
-		//mainThreadLog.registerDownstreamConsumer(inputChannelID);
 
 		consumerPartitions.put(inputChannelID, new Tuple2<>(intermediateResultPartitionID, consumedSubpartition));
 		//only register this consumer with his specific subpartition
@@ -112,7 +120,8 @@ public class BasicLocalVertexCausalLog implements LocalVertexCausalLog {
 
 	@Override
 	public VertexCausalLogDelta getDeterminants(long startEpochID) {
-		throw new UnsupportedOperationException("For a local log, you should request determinants providing a consumer id");
+		throw new UnsupportedOperationException("For a local log, you should request determinants providing a consumer" +
+			" id");
 	}
 
 
@@ -123,18 +132,23 @@ public class BasicLocalVertexCausalLog implements LocalVertexCausalLog {
 
 		//Only grab partition updates which causally affect this consumer
 		Tuple2<IntermediateResultPartitionID, Integer> consumerPartition = consumerPartitions.get(consumer);
-		ThreadLogDelta sLogDelta = subpartitionLogs.get(consumerPartition.f0)[consumerPartition.f1].getNextDeterminantsForDownstream(consumer, checkpointID);
-		SubpartitionThreadLogDelta subpartitionLogDelta = new SubpartitionThreadLogDelta(sLogDelta, consumerPartition.f1);
+		ThreadLogDelta sLogDelta =
+			subpartitionLogs.get(consumerPartition.f0)[consumerPartition.f1].getNextDeterminantsForDownstream(consumer
+				, checkpointID);
+		SubpartitionThreadLogDelta subpartitionLogDelta = new SubpartitionThreadLogDelta(sLogDelta,
+			consumerPartition.f1);
 		return new VertexCausalLogDelta(this.vertexId,
 			(mainThreadLogDelta.getDeltaSize() > 0 ? mainThreadLogDelta : null),
-			(subpartitionLogDelta.getDeltaSize() > 0 ? ImmutableSortedMap.of(consumerPartition.f0, ImmutableSortedMap.of(consumerPartition.f1, subpartitionLogDelta)) : Collections.emptySortedMap()));
+			(subpartitionLogDelta.getDeltaSize() > 0 ? ImmutableSortedMap.of(consumerPartition.f0,
+				ImmutableSortedMap.of(consumerPartition.f1, subpartitionLogDelta)) : Collections.emptySortedMap()));
 	}
 
 	@Override
 	public void notifyCheckpointComplete(long checkpointID) {
 		try {
 			mainThreadLog.notifyCheckpointComplete(checkpointID);
-			for (LocalThreadCausalLog localThreadCausalLog : subpartitionLogs.values().stream().flatMap(Arrays::stream).collect(Collectors
+			for (LocalThreadCausalLog localThreadCausalLog :
+				subpartitionLogs.values().stream().flatMap(Arrays::stream).collect(Collectors
 				.toList()))
 				localThreadCausalLog.notifyCheckpointComplete(checkpointID);
 		} catch (Exception e) {
@@ -148,7 +162,8 @@ public class BasicLocalVertexCausalLog implements LocalVertexCausalLog {
 	}
 
 	@Override
-	public int subpartitionLogLength(IntermediateResultPartitionID intermediateResultPartitionID, int subpartitionIndex) {
+	public int subpartitionLogLength(IntermediateResultPartitionID intermediateResultPartitionID,
+									 int subpartitionIndex) {
 		return this.subpartitionLogs.get(intermediateResultPartitionID)[subpartitionIndex].logLength();
 	}
 
@@ -157,7 +172,6 @@ public class BasicLocalVertexCausalLog implements LocalVertexCausalLog {
 		return "BasicLocalVertexCausalLog{" +
 			"vertexId=" + vertexId +
 			", mainThreadLog=" + mainThreadLog +
-			", totalSubpartitions=" + totalSubpartitions +
 			'}';
 	}
 

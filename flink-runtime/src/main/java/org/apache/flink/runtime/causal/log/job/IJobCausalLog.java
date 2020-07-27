@@ -34,9 +34,11 @@ import org.apache.flink.runtime.state.CheckpointListener;
 import java.util.List;
 
 /**
- * A CausalLog contains the determinant logs of all upstream vertexes and itself.
+ * A JobCausalLog contains the determinant logs of all upstream vertexes and itself.
+ * It processes deltas from upstream and sends deltas downstream
  */
 public interface IJobCausalLog extends CheckpointListener {
+
 
 	void registerDownstreamConsumer(InputChannelID inputChannelID, IntermediateResultPartitionID intermediateResultPartitionID, int consumedSubpartition);
 
@@ -55,11 +57,14 @@ public interface IJobCausalLog extends CheckpointListener {
 
 	List<VertexCausalLogDelta> getNextDeterminantsForDownstream(InputChannelID inputChannelID, long checkpointID);
 
+	/**
+	 * The encoding strategy used to encode determinants.
+	 */
 	DeterminantEncoder getDeterminantEncoder();
 
-	VertexID getVertexId();
 
-
+	//================ Safety check metrics==================================================
+	// These methods are used to ensure that after recovery, log length is the exact size it should be
     int mainThreadLogLength();
     int subpartitionLogLength(IntermediateResultPartitionID intermediateResultPartitionID, int subpartitionIndex);
 }

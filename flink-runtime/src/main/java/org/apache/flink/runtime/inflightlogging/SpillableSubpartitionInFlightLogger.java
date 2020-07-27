@@ -34,7 +34,6 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.util.*;
 import java.util.function.Consumer;
-import java.util.function.Predicate;
 
 /**
  * An inflight logger that periodically flushed available buffers according to a policy.
@@ -122,21 +121,11 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 		return slicedLog;
 	}
 
-	public BufferPool getPartitionBufferPool() {
-		return partitionBufferPool;
-	}
-
-	public float getAvailabilityFillFactor() {
-		return availabilityFillFactor;
-	}
-
 	private void notifyFlushCompleted(long epochID) {
 		synchronized (subpartitionLock) {
 			Epoch epoch = slicedLog.get(epochID);
 			if (epoch != null && !epoch.stable())
 				epoch.notifyFlushCompleted();
-			LOG.debug("Flush completed. Pool availability: {}", isPoolAvailabilityLow());
-			LOG.debug("Pool {}", partitionBufferPool);
 		}
 	}
 
@@ -150,7 +139,11 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 
 
 	public boolean isPoolAvailabilityLow() {
-		return (1 - ((float) partitionBufferPool.bestEffortGetNumOfUsedBuffers()) / partitionBufferPool.getNumBuffers()) < availabilityFillFactor;
+		return computePoolAvailability() < availabilityFillFactor;
+	}
+
+	private float computePoolAvailability() {
+		return 1 - ((float) partitionBufferPool.bestEffortGetNumOfUsedBuffers()) / partitionBufferPool.getNumBuffers();
 	}
 
 	private BufferFileWriter createNewWriter(long epochID) {
@@ -162,19 +155,6 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 			throw new RuntimeException("Failed to create BufferFileWriter. Reason: " + e.getMessage());
 		}
 		return writer;
-	}
-
-	public boolean hasFullUnspilledEpochUnsafe() {
-		if (slicedLog.isEmpty())
-			return false;
-
-		for (Map.Entry<Long, Epoch> entry : slicedLog.entrySet()) {
-			if (!entry.getKey().equals(slicedLog.lastKey()))
-				if (entry.getValue().hasNeverBeenFlushed())
-					return true;
-		}
-
-		return false;
 	}
 
 	static class Epoch {
@@ -205,13 +185,14 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 			return writer.getChannelID();
 		}
 
-		public long getEpochID(){
+		public long getEpochID() {
 			return epochID;
 		}
 
 		public void flushAllUnflushed() {
 			for (int i = nextBufferToFlush; i < epochBuffers.size(); i++) {
-				LOG.info("Flushing buffer {} of epoch {}. Buffer:{}",nextBufferToFlush, epochID, epochBuffers.get(nextBufferToFlush));
+				LOG.debug("Flushing buffer {} of epoch {}. Buffer:{}", nextBufferToFlush, epochID,
+					epochBuffers.get(nextBufferToFlush));
 				flushBuffer(epochBuffers.get(nextBufferToFlush));
 				nextBufferToFlush++;
 			}
@@ -227,7 +208,7 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 		}
 
 		public void notifyFlushCompleted() {
-			LOG.info("Flush completed for buffer {} of epoch {}, recycling", nextBufferToCompleteFlushing, epochID);
+			LOG.debug("Flush completed for buffer {} of epoch {}, recycling", nextBufferToCompleteFlushing, epochID);
 			BufferHandle handle = epochBuffers.get(nextBufferToCompleteFlushing);
 			handle.markFlushed();
 			handle.getBuffer().recycleBuffer();
@@ -254,7 +235,7 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 		}
 
 		public void removeEpochFile() {
-			LOG.info("Removing epoch file of epoch {}", epochID);
+			LOG.debug("Removing epoch file of epoch {}", epochID);
 			//TODO Blocks while open requests. Possibly may need to push this to an executor for performance.
 			try {
 				writer.closeAndDelete();
