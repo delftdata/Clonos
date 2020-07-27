@@ -566,13 +566,6 @@ public class PipelinedSubpartition extends ResultSubpartition {
 						flushRequested = false;
 					}
 
-					if (consumer.isFinished()) {
-						buffers.pop().close();
-						checkpointIds.pop();
-					}
-
-					if (buffer.readableBytes() == 0)
-						throw new RuntimeException("Requested to rebuild buffer with 0 bytes.");
 
 					updateStatistics(buffer);
 					inFlightLog.log(buffer, currentEpochID);
