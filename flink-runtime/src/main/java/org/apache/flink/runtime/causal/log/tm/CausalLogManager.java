@@ -38,10 +38,13 @@ import org.apache.flink.runtime.io.network.buffer.NetworkBufferPool;
 import org.apache.flink.runtime.io.network.partition.ResultPartition;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
+import org.apache.flink.shaded.netty4.io.netty.util.internal.ConcurrentSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -55,6 +58,7 @@ public class CausalLogManager {
 
 	//Stores the causal logs of each job
 	private ConcurrentMap<JobID, JobCausalLog> jobIDToManagerMap;
+	private ConcurrentMap<JobID, ConcurrentSet<ConsumerRegistrationRequest>> jobPreregistrationMap;
 
 	// Maps the IDs of the <b>output</b> (i.e. downstream consumer) channels to the causal log they are consuming from
 	private ConcurrentMap<InputChannelID, JobCausalLog> inputChannelIDToManagerMap;
@@ -65,48 +69,99 @@ public class CausalLogManager {
 	// Configuration parameter on how many buffers each job should get for determinant storage
 	private int numDeterminantBuffersPerTask;
 
+	private static final Object registrationLock = new Object();
+
 	public CausalLogManager(NetworkBufferPool determinantBufferPool, int numDeterminantBuffersPerTask) {
 		this.determinantBufferPool = determinantBufferPool;
 		this.numDeterminantBuffersPerTask = numDeterminantBuffersPerTask;
 		this.jobIDToManagerMap = new ConcurrentHashMap<>();
 		this.inputChannelIDToManagerMap = new ConcurrentHashMap<>();
+		this.jobPreregistrationMap = new ConcurrentHashMap<>();
 	}
 
-	public JobCausalLog registerNewJob(JobID jobID, VertexGraphInformation vertexGraphInformation, ResultPartitionWriter[] resultPartitionsOfLocalVertex, Object lock) {
+	public JobCausalLog registerNewJob(JobID jobID, VertexGraphInformation vertexGraphInformation,
+									   ResultPartitionWriter[] resultPartitionsOfLocalVertex, Object lock) {
 		LOG.debug("Registering a new Job {}.", jobID);
-		BufferPool taskDeterminantBufferPool = null;
-		try {
-			taskDeterminantBufferPool = determinantBufferPool.createBufferPool(numDeterminantBuffersPerTask, numDeterminantBuffersPerTask);
-		} catch (IOException e) {
-			throw new RuntimeException("Could not register determinant buffer pool!: \n" + e.getMessage());
-		}
-		JobCausalLog jobCausalLog = new JobCausalLog(vertexGraphInformation, resultPartitionsOfLocalVertex, taskDeterminantBufferPool, lock);
-		jobIDToManagerMap.put(jobID, jobCausalLog);
+		synchronized (registrationLock) {
+			BufferPool taskDeterminantBufferPool = null;
+			try {
+				taskDeterminantBufferPool = determinantBufferPool.createBufferPool(numDeterminantBuffersPerTask,
+					numDeterminantBuffersPerTask);
+			} catch (IOException e) {
+				throw new RuntimeException("Could not register determinant buffer pool!: \n" + e.getMessage());
+			}
+			JobCausalLog jobCausalLog = new JobCausalLog(vertexGraphInformation, resultPartitionsOfLocalVertex,
+				taskDeterminantBufferPool, lock);
+			jobIDToManagerMap.put(jobID, jobCausalLog);
+			if(jobPreregistrationMap.containsKey(jobID)) {
+				for (ConsumerRegistrationRequest req : jobPreregistrationMap.get(jobID))
+					jobCausalLog.registerDownstreamConsumer(req.inputChannelID, req.intermediateResultPartitionID,
+						req.consumedPartition);
+
+				jobPreregistrationMap.get(jobID).clear();
+			}
+
 		return jobCausalLog;
+		}
 	}
 
-	public void registerNewDownstreamConsumer(JobID jobID, InputChannelID inputChannelID, IntermediateResultPartitionID intermediateResultPartitionID, int consumedSubpartition) {
+	public void registerNewDownstreamConsumer(JobID jobID, InputChannelID inputChannelID,
+											  IntermediateResultPartitionID intermediateResultPartitionID,
+											  int consumedSubpartition) {
 		LOG.debug("Registering a new downstream consumer channel {} for job {}.", inputChannelID, jobID);
-		JobCausalLog c = jobIDToManagerMap.get(jobID);
-		if (c != null) {
-			c.registerDownstreamConsumer(inputChannelID, intermediateResultPartitionID, consumedSubpartition);
-			inputChannelIDToManagerMap.put(inputChannelID, c);
+		synchronized (registrationLock) {
+			JobCausalLog c = jobIDToManagerMap.get(jobID);
+			if (c == null)
+				jobPreregistrationMap.computeIfAbsent(jobID, k -> new ConcurrentSet<>()).add(new ConsumerRegistrationRequest(inputChannelID, intermediateResultPartitionID, consumedSubpartition));
+			else {
+				c.registerDownstreamConsumer(inputChannelID, intermediateResultPartitionID, consumedSubpartition);
+				inputChannelIDToManagerMap.put(inputChannelID, c);
+			}
 		}
 	}
 
 	public CausalLogDelta getNextDeterminantsForDownstream(InputChannelID inputChannelID, long epochID) {
-		return new CausalLogDelta(epochID, inputChannelIDToManagerMap.get(inputChannelID).getNextDeterminantsForDownstream(inputChannelID, epochID).toArray(new VertexCausalLogDelta[]{}));
+		return new CausalLogDelta(epochID,
+			inputChannelIDToManagerMap.get(inputChannelID).getNextDeterminantsForDownstream(inputChannelID, epochID).toArray(new VertexCausalLogDelta[]{}));
 	}
 
 	public void unregisterDownstreamConsumer(InputChannelID toCancel) {
-		inputChannelIDToManagerMap.remove(toCancel).unregisterDownstreamConsumer(toCancel);
+		synchronized (registrationLock) {
+			inputChannelIDToManagerMap.remove(toCancel).unregisterDownstreamConsumer(toCancel);
+		}
 	}
 
 	public void processCausalLogDelta(JobID jobID, CausalLogDelta causalLogDelta) {
 		IJobCausalLog jobCausalLog = jobIDToManagerMap.get(jobID);
-		if(jobCausalLog == null)
+		if (jobCausalLog == null)
 			throw new RuntimeException("Unknown Job");
-		for(VertexCausalLogDelta vertexCausalLogDelta : causalLogDelta.getVertexCausalLogDeltas())
+		for (VertexCausalLogDelta vertexCausalLogDelta : causalLogDelta.getVertexCausalLogDeltas())
 			jobCausalLog.processUpstreamVertexCausalLogDelta(vertexCausalLogDelta, causalLogDelta.getEpochID());
+	}
+
+	private static class ConsumerRegistrationRequest {
+		private final InputChannelID inputChannelID;
+		private final IntermediateResultPartitionID intermediateResultPartitionID;
+		private final int consumedPartition;
+
+		public ConsumerRegistrationRequest(InputChannelID inputChannelID,
+										   IntermediateResultPartitionID intermediateResultPartitionID,
+										   int consumedPartition) {
+			this.inputChannelID = inputChannelID;
+			this.intermediateResultPartitionID = intermediateResultPartitionID;
+			this.consumedPartition = consumedPartition;
+		}
+
+		public InputChannelID getInputChannelID() {
+			return inputChannelID;
+		}
+
+		public IntermediateResultPartitionID getIntermediateResultPartitionID() {
+			return intermediateResultPartitionID;
+		}
+
+		public int getConsumedPartition() {
+			return consumedPartition;
+		}
 	}
 }
