@@ -26,23 +26,35 @@
 package org.apache.flink.runtime.inflightlogging;
 
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
+import org.apache.flink.runtime.io.network.buffer.BufferPool;
+import org.apache.flink.runtime.io.network.buffer.NetworkBufferPool;
+
+import java.io.IOException;
 
 public class InFlightLogFactoryImpl implements InFlightLogFactory {
 	private final IOManager ioManager;
 	private final InFlightLogConfig config;
+	private final NetworkBufferPool networkBufferPool;
 
-	public InFlightLogFactoryImpl(InFlightLogConfig config, IOManager ioManager) {
+	public InFlightLogFactoryImpl(InFlightLogConfig config, IOManager ioManager, NetworkBufferPool networkBufferPool) {
 		this.config = config;
 		this.ioManager = ioManager;
+		this.networkBufferPool = networkBufferPool;
 	}
 
 	@Override
 	public InFlightLog build() {
 		switch (config.getType()) {
 			case SPILLABLE:
+				BufferPool recoveryBufferPool = null;
+				try {
+					recoveryBufferPool = networkBufferPool.createBufferPool(config.getNumberOfRecoveryBuffers(), config.getNumberOfRecoveryBuffers());
+				} catch (IOException e) {
+					throw new RuntimeException(e);
+				}
 				return new SpillableSubpartitionInFlightLogger(ioManager, config.getSpillPolicy(),
 					config.getPolicyIsSynchronous(), config.getAvailabilityPolicyFillFactor(),
-					config.getInFlightLogSleepTime());
+					config.getInFlightLogSleepTime(), recoveryBufferPool);
 			case IN_MEMORY:
 			default:
 				return new InMemorySubpartitionInFlightLogger();

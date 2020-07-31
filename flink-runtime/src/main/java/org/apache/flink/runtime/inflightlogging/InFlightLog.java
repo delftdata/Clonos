@@ -45,9 +45,4 @@ public interface InFlightLog extends CheckpointListener {
 	 */
 	InFlightLogIterator<Buffer> getInFlightIterator(long epochID, int ignoreBuffers);
 
-	/**
-	 * Register the partition buffer pool.
-	 * Used for consulting buffer availability to make spill policy decisions
-	 */
-	void registerBufferPool(BufferPool bufferPool);
 }

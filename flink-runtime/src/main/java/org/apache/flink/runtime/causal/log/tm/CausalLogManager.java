@@ -106,7 +106,6 @@ public class CausalLogManager {
 		LOG.info("Registering a new downstream consumer channel {} for job {}.", inputChannelID, jobID);
 
 		JobCausalLog c;
-		LOG.info("A1");
 		synchronized (jobIDToManagerMap) {
 			c = jobIDToManagerMap.get(jobID);
 			while (c == null) {
@@ -114,19 +113,16 @@ public class CausalLogManager {
 				c = jobIDToManagerMap.get(jobID);
 			}
 		}
-		LOG.info("A2");
 
 		c.registerDownstreamConsumer(inputChannelID, intermediateResultPartitionID, consumedSubpartition);
 		synchronized (inputChannelIDToManagerMap) {
 			inputChannelIDToManagerMap.put(inputChannelID, c);
 			inputChannelIDToManagerMap.notifyAll();
 		}
-		LOG.info("A3");
 	}
 
 	public CausalLogDelta getNextDeterminantsForDownstream(InputChannelID inputChannelID, long epochID) {
 		JobCausalLog log;
-		LOG.info("B1");
 		synchronized (inputChannelIDToManagerMap) {
 			log = inputChannelIDToManagerMap.get(inputChannelID);
 			while (log == null) {
@@ -136,7 +132,6 @@ public class CausalLogManager {
 				log = inputChannelIDToManagerMap.get(inputChannelID);
 			}
 		}
-		LOG.info("B2");
 
 		return new CausalLogDelta(epochID,
 			log.getNextDeterminantsForDownstream(inputChannelID, epochID).toArray(new VertexCausalLogDelta[]{}));
@@ -144,7 +139,6 @@ public class CausalLogManager {
 
 	public void unregisterDownstreamConsumer(InputChannelID toCancel) {
 		JobCausalLog log;
-		LOG.info("C1");
 		synchronized (inputChannelIDToManagerMap) {
 			removedConsumers.put(toCancel, Boolean.TRUE);
 			log = inputChannelIDToManagerMap.remove(toCancel);
@@ -153,13 +147,11 @@ public class CausalLogManager {
 				log = inputChannelIDToManagerMap.remove(toCancel);
 			}
 		}
-		LOG.info("C2");
 		log.unregisterDownstreamConsumer(toCancel);
 	}
 
 	public void processCausalLogDelta(JobID jobID, CausalLogDelta causalLogDelta) {
 		JobCausalLog jobCausalLog ;
-		LOG.info("D1");
 		synchronized (jobIDToManagerMap) {
 			jobCausalLog = jobIDToManagerMap.get(jobID);
 			while (jobCausalLog == null) {
@@ -167,20 +159,16 @@ public class CausalLogManager {
 				jobCausalLog = jobIDToManagerMap.get(jobID);
 			}
 		}
-		LOG.info("D2");
 
 		for (VertexCausalLogDelta vertexCausalLogDelta : causalLogDelta.getVertexCausalLogDeltas())
 			jobCausalLog.processUpstreamVertexCausalLogDelta(vertexCausalLogDelta, causalLogDelta.getEpochID());
-		LOG.info("D3");
 	}
 
 	private static void waitUninterruptedly(Object o) {
-		LOG.info("Waitarino");
 		try {
 			o.wait(10);
 		} catch (InterruptedException e) {
 			e.printStackTrace();
 		}
-		LOG.info("Leave Waitarino");
 	}
 }

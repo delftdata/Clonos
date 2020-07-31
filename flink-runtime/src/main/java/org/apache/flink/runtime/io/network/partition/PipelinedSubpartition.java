@@ -113,7 +113,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 	}
 
 	public void setIsRecoveringSubpartitionInFlightState(boolean isRecoveringSubpartitionInFlightState) {
-		LOG.info("Set isRecoveringSubpartitionInFlightState to {}", isRecoveringSubpartitionInFlightState);
+		LOG.debug("Set isRecoveringSubpartitionInFlightState to {}", isRecoveringSubpartitionInFlightState);
 		this.isRecoveringSubpartitionInFlightState.set(isRecoveringSubpartitionInFlightState);
 	}
 
@@ -129,13 +129,17 @@ public class PipelinedSubpartition extends ResultSubpartition {
 		this.causalLoggingManager = causalLoggingManager;
 	}
 
+	public InFlightLog getInFlightLog(){
+		return inFlightLog;
+	}
+
 	public void notifyCheckpointBarrier(long checkpointId) {
-		LOG.info("PipelinedSubpartition notified of checkpoint {} barrier", checkpointId);
+		LOG.debug("PipelinedSubpartition notified of checkpoint {} barrier", checkpointId);
 		this.nextCheckpointId = checkpointId;
 	}
 
 	public void notifyCheckpointComplete(long checkpointId) throws Exception {
-		LOG.info("PipelinedSubpartition notified of checkpoint {} completion", checkpointId);
+		LOG.debug("PipelinedSubpartition notified of checkpoint {} completion", checkpointId);
 		this.inFlightLog.notifyCheckpointComplete(checkpointId);
 	}
 
@@ -158,9 +162,9 @@ public class PipelinedSubpartition extends ResultSubpartition {
 	}
 
 	public void bypassDeterminantRequest(BufferConsumer bufferConsumer) {
-		LOG.info("Trying to acquire lock to add determinantRequest");
+		LOG.debug("Trying to acquire lock to add determinantRequest");
 		synchronized (buffers) {
-			LOG.info("Acquired lock to Add determinantRequest buffer consumer");
+			LOG.debug("Acquired lock to Add determinantRequest buffer consumer");
 			determinantRequests.add(bufferConsumer);
 			flushRequested = true;
 			notifyDataAvailable();
@@ -170,7 +174,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 	@Override
 	public void finish() throws IOException {
 		add(EventSerializer.toBufferConsumer(EndOfPartitionEvent.INSTANCE), true);
-		LOG.info("Finished {}.", this);
+		LOG.debug("Finished {}.", this);
 	}
 
 	private boolean add(BufferConsumer bufferConsumer, boolean finish) {
@@ -182,7 +186,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 				return false;
 			}
 
-			LOG.info("adding buffer consumer");
+			LOG.debug("adding buffer consumer");
 			// Add the bufferConsumer and update the stats
 			buffers.add(bufferConsumer);
 			updateStatistics(bufferConsumer);
@@ -196,10 +200,11 @@ public class PipelinedSubpartition extends ResultSubpartition {
 				isFinished = true;
 				flush();
 			} else {
-				if (recoveryManager.isRunning() && !isRecoveringSubpartitionInFlightState.get())
+				if (!isRecoveringSubpartitionInFlightState.get())
 					maybeNotifyDataAvailable();
 			}
 		}
+		LOG.debug("Done adding buffer consumer");
 
 		return true;
 	}
@@ -229,7 +234,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 			isReleased = true;
 		}
 
-		LOG.info("Released {}.", this);
+		LOG.debug("Released {}.", this);
 
 		if (view != null) {
 			view.releaseAllResources();
@@ -237,7 +242,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 	}
 
 	public void sendFailConsumerTrigger(Throwable cause) {
-		LOG.info("Sending fail consumer trigger. Setting downstream failed to true");
+		LOG.debug("Sending fail consumer trigger. Setting downstream failed to true");
 		downstreamFailed.set(true);
 		parent.sendFailConsumerTrigger(index, cause);
 	}
@@ -245,10 +250,10 @@ public class PipelinedSubpartition extends ResultSubpartition {
 	@Nullable
 	BufferAndBacklog pollBuffer() {
 
-		LOG.info("Call to pollBuffer");
+		LOG.debug("Call to pollBuffer");
 
 		if (downstreamFailed.get()) {
-			LOG.info("Polling for next buffer, but downstream is still failed.");
+			LOG.debug("Polling for next buffer, but downstream is still failed.");
 			return null;
 		}
 
@@ -256,7 +261,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 		synchronized (buffers) {
 			LOG.debug("Obtained buffers lock to check for determinant requests");
 			if (!determinantRequests.isEmpty()) {
-				LOG.info("We have a determinant request to send");
+				LOG.debug("We have a determinant request to send");
 				BufferConsumer consumer = determinantRequests.poll();
 				Buffer buffer = consumer.build();
 				consumer.close();
@@ -265,17 +270,17 @@ public class PipelinedSubpartition extends ResultSubpartition {
 		}
 
 		if (isRecoveringSubpartitionInFlightState.get()) {
-			LOG.info("We are still recovering this subpartition, cannot return a buffer yet.");
+			LOG.debug("We are still recovering this subpartition, cannot return a buffer yet.");
 			return null;
 		}
 
 
 		synchronized (buffers) {
 			if (inflightReplayIterator != null) {
-				LOG.info("We are replaying, get inflight logs next buffer");
+				LOG.debug("We are replaying, get inflight logs next buffer");
 				return getReplayedBufferUnsafe();
 			} else {
-				LOG.info("We are not replaying, get buffer from consumers");
+				LOG.debug("We are not replaying, get buffer from consumers");
 				return getBufferFromQueuedBufferConsumersUnsafe();
 			}
 		}
@@ -290,7 +295,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 		if (!inflightReplayIterator.hasNext()) {
 			inflightReplayIterator = null;
-			LOG.info("Finished replaying inflight log!");
+			LOG.debug("Finished replaying inflight log!");
 		}
 
 		return new BufferAndBacklog(buffer,
@@ -318,7 +323,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 		}
 
 		if (buffers.isEmpty())
-			LOG.info("Call to getBufferFromQueued, but no buffer consumers to close");
+			LOG.debug("Call to getBufferFromQueued, but no buffer consumers to close");
 		while (!buffers.isEmpty()) {
 			BufferConsumer bufferConsumer = buffers.peek();
 			checkpointId = checkpointIds.peek();
@@ -407,13 +412,13 @@ public class PipelinedSubpartition extends ResultSubpartition {
 			checkState(!isReleased);
 
 			if (readView == null) {
-				LOG.info("Creating read view for {} (index: {}) of partition {}.", this, index,
+				LOG.debug("Creating read view for {} (index: {}) of partition {}.", this, index,
 					parent.getPartitionId());
 
 				readView = new PipelinedSubpartitionView(this, availabilityListener);
 			} else {
 				readView.setAvailabilityListener(availabilityListener);
-				LOG.info("(Re)using read view {} for {} (index: {}) of partition {}.", readView, this, index,
+				LOG.debug("(Re)using read view {} for {} (index: {}) of partition {}.", readView, this, index,
 					parent.getPartitionId());
 			}
 
@@ -476,12 +481,14 @@ public class PipelinedSubpartition extends ResultSubpartition {
 	}
 
 	public void requestReplay(long checkpointId, int ignoreMessages) {
+		LOG.debug("Replay requested");
 		synchronized (buffers) {
+			LOG.debug("Replay requested acquired lock");
 			if (inflightReplayIterator != null)
 				inflightReplayIterator.close();
 			inflightReplayIterator = inFlightLog.getInFlightIterator(checkpointId, ignoreMessages);
 			if (inflightReplayIterator != null) {
-				LOG.info("Replay has been requested for pipelined subpartition of id {}, index {}, skipping {} " +
+				LOG.debug("Replay has been requested for pipelined subpartition of id {}, index {}, skipping {} " +
 						"buffers, " +
 						"buffers to replay {}. Setting downstreamFailed to false", this.parent.getPartitionId(),
 					this.index,
@@ -518,7 +525,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 	}
 
 	public void buildAndLogBuffer(int bufferSize) {
-		LOG.info("building buffer and discarding result");
+		LOG.debug("building buffer and discarding result");
 		while (true) {
 			synchronized (buffers) {
 
@@ -535,7 +542,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 								" written: " + consumer.getWrittenBytes() + ") does not match" +
 								" " +
 								"size of recovery request to build buffer ( " + bufferSize + " ).";
-							LOG.info("Exception:" + msg);
+							LOG.debug("Exception:" + msg);
 							throw new RuntimeException(msg);
 						}
 					} else {
@@ -546,7 +553,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 				}
 				//If there is enough data in consumer for building the correct buffer
 				if (consumer.getUnreadBytes() >= bufferSize) {
-					LOG.info("There are enough bytes to build the requested buffer!");
+					LOG.debug("There are enough bytes to build the requested buffer!");
 					long checkpointId = checkpointIds.peek();
 
 					//This assumes that the input buffers which are before this close in the determinant log have

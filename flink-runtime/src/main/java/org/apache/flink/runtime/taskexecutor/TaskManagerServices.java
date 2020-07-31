@@ -248,7 +248,7 @@ public class TaskManagerServices {
 		// start the I/O manager, it will create some temp directories.
 		final IOManager ioManager = new IOManagerAsync(taskManagerServicesConfiguration.getTmpDirPaths());
 
-		final InFlightLogFactory inFlightLogFactory = new InFlightLogFactoryImpl(taskManagerServicesConfiguration.getInFlightLogConfig(), ioManager);
+		final InFlightLogFactory inFlightLogFactory = new InFlightLogFactoryImpl(taskManagerServicesConfiguration.getInFlightLogConfig(), ioManager, network.getNetworkBufferPool());
 
 		final BroadcastVariableManager broadcastVariableManager = new BroadcastVariableManager();
 

@@ -22,6 +22,7 @@ import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.executiongraph.IntermediateResultPartition;
 import org.apache.flink.runtime.inflightlogging.InFlightLog;
 import org.apache.flink.runtime.inflightlogging.InFlightLogFactory;
+import org.apache.flink.runtime.inflightlogging.SpillableSubpartitionInFlightLogger;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
@@ -99,7 +100,6 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 	 * The subpartitions of this partition. At least one.
 	 */
 	private final ResultSubpartition[] subpartitions;
-	private final InFlightLog[] inFlightLogs;
 
 	private final ResultPartitionManager partitionManager;
 
@@ -158,16 +158,13 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 				for (int i = 0; i < subpartitions.length; i++) {
 					subpartitions[i] = new SpillableSubpartition(i, this, ioManager);
 				}
-				inFlightLogs = null;
 
 				break;
 
 			case PIPELINED:
 			case PIPELINED_BOUNDED:
-				inFlightLogs = new InFlightLog[subpartitions.length];
 				for (int i = 0; i < subpartitions.length; i++) {
-					inFlightLogs[i] = inFlightLogFactory.build();
-					subpartitions[i] = new PipelinedSubpartition(i, this, inFlightLogs[i]);
+					subpartitions[i] = new PipelinedSubpartition(i, this, inFlightLogFactory.build());
 				}
 
 				break;
@@ -204,9 +201,11 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 		if (!partitionType.hasBackPressure()) {
 			bufferPool.setBufferPoolOwner(this);
 		}
-		if (inFlightLogs != null)
-			for (InFlightLog inFlightLog : inFlightLogs)
-				inFlightLog.registerBufferPool(bufferPool);
+
+		for(ResultSubpartition s : subpartitions){
+			if(s instanceof PipelinedSubpartition && ((PipelinedSubpartition) s).getInFlightLog() instanceof SpillableSubpartitionInFlightLogger)
+				((SpillableSubpartitionInFlightLogger) ((PipelinedSubpartition) s).getInFlightLog()).registerSubpartitionBufferPool(bufferPool);
+		}
 	}
 
 	public JobID getJobId() {
