@@ -49,61 +49,75 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 	private final SortedMap<Long, Epoch> slicedLog;
 	private final IOManager ioManager;
 
-	private final Consumer<SpillableSubpartitionInFlightLogger> flushPolicy;
-
 	private final Object subpartitionLock = new Object();
+	private final Consumer<SpillableSubpartitionInFlightLogger> flushPolicy;
+	private final boolean policyIsSynchronous;
 	private BufferPool partitionBufferPool;
 
 	private float availabilityFillFactor;
 
-	public SpillableSubpartitionInFlightLogger(IOManager ioManager,
-											   Consumer<SpillableSubpartitionInFlightLogger> flushPolicy) {
-		this(ioManager, flushPolicy, 0.5f);
-	}
+	private Thread flusherThread;
 
 	public SpillableSubpartitionInFlightLogger(IOManager ioManager,
-											   Consumer<SpillableSubpartitionInFlightLogger> flushPolicy,
-											   float availabilityFillFactor) {
+											   Consumer<SpillableSubpartitionInFlightLogger> flushPolicy, boolean policyIsSynchronous,
+											   float availabilityFillFactor, long flusherSleepTime) {
 		this.ioManager = ioManager;
-		this.flushPolicy = flushPolicy;
 		this.availabilityFillFactor = availabilityFillFactor;
+		this.flushPolicy = flushPolicy;
+		this.policyIsSynchronous = policyIsSynchronous;
 
-		slicedLog = new TreeMap<>();
+		this.slicedLog = new TreeMap<>();
+
+		if(!policyIsSynchronous) {
+			this.flusherThread = new Thread(new FlushRunnable(this, flushPolicy, subpartitionLock,
+				flusherSleepTime));
+			this.flusherThread.start();
+		}
 	}
+
 
 	@Override
 	public void log(Buffer buffer, long epochID) {
+		LOG.info("Log a new buffer");
 		synchronized (subpartitionLock) {
+			LOG.info("Log a new buffer acquired lock");
 			Epoch epoch = slicedLog.computeIfAbsent(epochID, k -> new Epoch(createNewWriter(k), k));
-			//If we have fully flushed this epoch and there is a next epoch
 			epoch.append(buffer);
-			flushPolicy.accept(this);
+			if(policyIsSynchronous)
+				flushPolicy.accept(this);
 		}
-		LOG.debug("Logged a new buffer for epoch {}", epochID);
+		if(buffer.asByteBuf().refCnt() == 3)
+			LOG.info("Buffer refcnt 3!! isBuffer? {} ",buffer.isBuffer());
+		LOG.info("Logged a new buffer for epoch {} with refcnt {} and size {}", epochID, buffer.asByteBuf().refCnt(), buffer.getSize());
 	}
 
 	@Override
 	public void notifyCheckpointComplete(long checkpointID) throws Exception {
-		LOG.debug("Got notified of checkpoint {} completion", checkpointID);
+		LOG.info("Got notified of checkpoint {} completion", checkpointID);
 		List<Long> toRemove = new LinkedList<>();
+		List<Epoch> epochsRemoved = new LinkedList<>();
 
 		synchronized (subpartitionLock) {
+			LOG.info("Got notified of checkpoint {} completion acquired lock", checkpointID);
 			//keys are in ascending order
-			for (long epochID : slicedLog.keySet()) {
-				if (epochID < checkpointID) {
+			for (long epochID : slicedLog.keySet())
+				if (epochID < checkpointID)
 					toRemove.add(epochID);
-					LOG.debug("Removing epoch {}", epochID);
-				}
-			}
+
 			for (long epochID : toRemove)
-				slicedLog.remove(epochID).removeEpochFile();
+				epochsRemoved.add(slicedLog.remove(epochID));
 		}
+
+		for (Epoch epoch : epochsRemoved)
+			epoch.removeEpochFile();
 	}
 
 	@Override
 	public InFlightLogIterator<Buffer> getInFlightIterator(long epochID, int ignoreBuffers) {
 		SortedMap<Long, Epoch> logToReplay;
+		LOG.info("Request for inFlightLog iterator");
 		synchronized (subpartitionLock) {
+			LOG.info("Request for inFlightLog iterator acquired lock");
 			logToReplay = slicedLog.tailMap(epochID);
 			if (logToReplay.size() == 0)
 				return null;
@@ -122,11 +136,14 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 	}
 
 	private void notifyFlushCompleted(long epochID) {
+		LOG.info("Notify flush completed");
 		synchronized (subpartitionLock) {
+			LOG.info("Notify flush completed acquired lock");
 			Epoch epoch = slicedLog.get(epochID);
 			if (epoch != null && !epoch.stable())
 				epoch.notifyFlushCompleted();
 		}
+		LOG.info("Notify flush completed released lock and was able to recycle");
 	}
 
 	private void notifyFlushFailed(long epochID) {
@@ -139,10 +156,17 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 
 
 	public boolean isPoolAvailabilityLow() {
-		return computePoolAvailability() < availabilityFillFactor;
+		synchronized (subpartitionLock) {
+			float availability = computePoolAvailability();
+			LOG.info("Is pool availability low? {} < {} ? Pool: {} ", availability, availabilityFillFactor,
+				partitionBufferPool);
+			return availability < availabilityFillFactor;
+		}
 	}
 
 	private float computePoolAvailability() {
+		if(partitionBufferPool == null)
+			return 1;
 		return 1 - ((float) partitionBufferPool.bestEffortGetNumOfUsedBuffers()) / partitionBufferPool.getNumBuffers();
 	}
 
@@ -157,8 +181,12 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 		return writer;
 	}
 
+	public Object getLock() {
+		return subpartitionLock;
+	}
+
 	static class Epoch {
-		private final List<BufferHandle> epochBuffers;
+		private final List<Buffer> epochBuffers;
 		private final BufferFileWriter writer;
 		private int nextBufferToFlush;
 		private int nextBufferToCompleteFlushing;
@@ -166,7 +194,7 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 
 
 		public Epoch(BufferFileWriter writer, long epochID) {
-			this.epochBuffers = new ArrayList<>(50);
+			this.epochBuffers = new ArrayList<>(500);
 			this.writer = writer;
 			this.nextBufferToFlush = 0;
 			this.nextBufferToCompleteFlushing = 0;
@@ -174,10 +202,10 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 		}
 
 		public void append(Buffer buffer) {
-			this.epochBuffers.add(new BufferHandle(buffer.retainBuffer()));
+			this.epochBuffers.add(buffer.retainBuffer());
 		}
 
-		public List<BufferHandle> getEpochBuffers() {
+		public List<Buffer> getEpochBuffers() {
 			return epochBuffers;
 		}
 
@@ -190,44 +218,50 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 		}
 
 		public void flushAllUnflushed() {
-			for (int i = nextBufferToFlush; i < epochBuffers.size(); i++) {
-				LOG.debug("Flushing buffer {} of epoch {}. Buffer:{}", nextBufferToFlush, epochID,
-					epochBuffers.get(nextBufferToFlush));
-				flushBuffer(epochBuffers.get(nextBufferToFlush));
-				nextBufferToFlush++;
-			}
-		}
+			if (writer.isClosed())
+				return;
 
-		public void flushBuffer(BufferHandle bufferHandle) {
 			try {
-				if (!writer.isClosed())
-					writer.writeBlock(bufferHandle.getBuffer());
+				for (; nextBufferToFlush < epochBuffers.size(); nextBufferToFlush++) {
+					LOG.info("Flushing buffer {} of epoch {}. Buffer:{}", nextBufferToFlush, epochID,
+						epochBuffers.get(nextBufferToFlush));
+					writer.writeBlock(epochBuffers.get(nextBufferToFlush));
+				}
 			} catch (IOException e) {
-				throw new RuntimeException("Writer could not write buffer. Cause:" + e.getMessage());
+				LOG.info("Attempt to write returned exception due to writer being closed. If writer is closed," +
+					"that means epoch is stable, no need to write.");
 			}
 		}
 
 		public void notifyFlushCompleted() {
-			LOG.debug("Flush completed for buffer {} of epoch {}, recycling", nextBufferToCompleteFlushing, epochID);
-			BufferHandle handle = epochBuffers.get(nextBufferToCompleteFlushing);
-			handle.markFlushed();
-			handle.getBuffer().recycleBuffer();
+			LOG.info("Notify flush completed");
+			Buffer buffer = epochBuffers.get(nextBufferToCompleteFlushing);
+
+			buffer.recycleBuffer();
 			nextBufferToCompleteFlushing++;
+			LOG.info("Flush completed for buffer {} of epoch {}, recycling buffer with {} references", nextBufferToCompleteFlushing, epochID, buffer.asByteBuf().refCnt());
 		}
 
 		public void notifyFlushFailed() {
-			//Must clear request queue, otherwise buffers are stored in wrong order
-			writer.clearRequestQueue();
-			//Resubmit requests in order
-			if (!writer.isClosed())
-				for (int i = nextBufferToCompleteFlushing; i < nextBufferToFlush; i++) {
-					try {
-						writer.writeBlock(epochBuffers.get(i).getBuffer());
-					} catch (IOException e) {
-						throw new RuntimeException("Writer could not write buffer. Cause:" + e.getMessage());
-					}
-				}
+			//Do nothing and keep in memory
+			LOG.info("Flush failed for buffer {} of epoch {}, keeping in memory", nextBufferToCompleteFlushing,
+				epochID);
+			nextBufferToCompleteFlushing++;
 
+			//synchronized (writer) {
+			//	if (!writer.isClosed()) {
+			//		//Must clear request queue, otherwise buffers are stored in wrong order
+			//		writer.clearRequestQueue();
+			//		//Resubmit requests in order
+			//		for (int i = nextBufferToCompleteFlushing; i < nextBufferToFlush; i++) {
+			//			try {
+			//				writer.writeBlock(epochBuffers.get(i).getBuffer());
+			//			} catch (IOException e) {
+			//				throw new RuntimeException("Writer could not write buffer. Cause:" + e.getMessage());
+			//			}
+			//		}
+			//	}
+			//}
 		}
 
 		public boolean stable() {
@@ -235,13 +269,19 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 		}
 
 		public void removeEpochFile() {
-			LOG.debug("Removing epoch file of epoch {}", epochID);
-			//TODO Blocks while open requests. Possibly may need to push this to an executor for performance.
+			LOG.info("Removing epoch file of epoch {}", epochID);
 			try {
+				writer.clearRequestQueue();
 				writer.closeAndDelete();
-				for (int i = nextBufferToFlush; i < epochBuffers.size(); i++) {
-					LOG.debug("Released buffer {}/{} manually", i, epochBuffers.size());
-					epochBuffers.get(i).getBuffer().recycleBuffer(); // release the buffers left over
+				int counter = 0;
+				for (Buffer buffer : epochBuffers) {
+					if (buffer.asByteBuf().refCnt() != 0) {
+						LOG.info("Released buffer {}/{} manually, refcnt {}", counter, epochBuffers.size(), buffer.asByteBuf().refCnt());
+						buffer.recycleBuffer(); // release the buffers left over
+					}else {
+						LOG.info("Buffer {}/{} already on disk, no need to relase", counter, epochBuffers.size());
+					}
+					counter++;
 				}
 			} catch (IOException e) {
 				throw new RuntimeException("Could not close and delete epoch. Cause: " + e.getMessage());
@@ -267,35 +307,6 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 		}
 	}
 
-	static class BufferHandle {
-		private Buffer buffer;
-		private boolean flushed;
-		private boolean availableInMemory;
-
-		public BufferHandle(Buffer buffer) {
-			this.buffer = buffer;
-			this.availableInMemory = true;
-			this.flushed = false;
-		}
-
-		public Buffer getBuffer() {
-			return buffer;
-		}
-
-		public boolean isFlushed() {
-			return flushed;
-		}
-
-		public boolean isAvailableInMemory() {
-			return availableInMemory;
-		}
-
-		public void markFlushed() {
-			this.flushed = true;
-			this.availableInMemory = false;
-		}
-	}
-
 	private static class FlushCompletedCallback implements RequestDoneCallback<Buffer> {
 
 		private final SpillableSubpartitionInFlightLogger toNotify;
@@ -313,10 +324,44 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 
 		@Override
 		public void requestFailed(Buffer buffer, IOException e) {
-			LOG.debug("Flush failed. Retrying. Cause: {}", e.getMessage());
+			LOG.info("Flush failed. Retrying. Cause: {}", e.getMessage());
 			toNotify.notifyFlushFailed(epochID);
 		}
 	}
 
+	private static class FlushRunnable implements Runnable {
 
+		private final SpillableSubpartitionInFlightLogger inFlightLogger;
+		private final Consumer<SpillableSubpartitionInFlightLogger> flushPolicy;
+		private final Object flushLock;
+		private final long flusherSleep;
+		private boolean running;
+
+		public FlushRunnable(SpillableSubpartitionInFlightLogger inFlightLogger,
+							 Consumer<SpillableSubpartitionInFlightLogger> flushPolicy, Object flushLock,
+							 long flusherSleep) {
+			this.inFlightLogger = inFlightLogger;
+			this.flushPolicy = flushPolicy;
+			this.flushLock = flushLock;
+			this.flusherSleep = flusherSleep;
+			this.running = true;
+		}
+
+		@Override
+		public void run() {
+			while (running) {
+				try {
+					LOG.info("Test flush policy");
+					synchronized (flushLock) {
+						flushPolicy.accept(inFlightLogger);
+					}
+
+					LOG.info("Sleeping flusher");
+					Thread.sleep(flusherSleep);
+				} catch (InterruptedException e) {
+					this.running = false;
+				}
+			}
+		}
+	}
 }

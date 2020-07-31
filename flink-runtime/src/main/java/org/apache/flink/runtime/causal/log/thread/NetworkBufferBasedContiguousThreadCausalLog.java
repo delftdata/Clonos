@@ -174,7 +174,7 @@ public class NetworkBufferBasedContiguousThreadCausalLog implements ThreadCausal
 
 	@Override
 	public void notifyCheckpointComplete(long checkpointId) throws Exception {
-		LOG.debug("Notify checkpoint complete for id {}", checkpointId);
+		LOG.info("Notify checkpoint complete for id {}", checkpointId);
 		writeLock.lock();
 		try {
 			EpochStartOffset followingEpoch = epochStartOffsets.computeIfAbsent(checkpointId, epochID -> new EpochStartOffset(epochID, writerIndex.get()));
@@ -189,7 +189,7 @@ public class NetworkBufferBasedContiguousThreadCausalLog implements ThreadCausal
 
 			for (EpochStartOffset epochStartOffset : epochStartOffsets.values())
 				epochStartOffset.setOffset(epochStartOffset.getOffset() - move);
-			LOG.debug("Offsets moved by {} bytes", move);
+			LOG.info("Offsets moved by {} bytes", move);
 			writerIndex.set(writerIndex.get() - move);
 			earliestEpoch = checkpointId;
 		} finally {
@@ -215,6 +215,7 @@ public class NetworkBufferBasedContiguousThreadCausalLog implements ThreadCausal
 
 
 	protected void addComponent() {
+		LOG.info("Adding component, composite size: {}", buf.capacity());
 		Buffer buffer = null;
 
 		try {
@@ -226,6 +227,7 @@ public class NetworkBufferBasedContiguousThreadCausalLog implements ThreadCausal
 		//The writer index movement tricks netty into adding to the composite capacity.
 		byteBuf.writerIndex(byteBuf.capacity());
 		buf.addComponent(byteBuf);
+		LOG.info("Done adding component");
 	}
 
 	protected static class EpochStartOffset {

@@ -182,6 +182,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 				return false;
 			}
 
+			LOG.info("adding buffer consumer");
 			// Add the bufferConsumer and update the stats
 			buffers.add(bufferConsumer);
 			updateStatistics(bufferConsumer);
@@ -244,7 +245,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 	@Nullable
 	BufferAndBacklog pollBuffer() {
 
-		LOG.debug("Call to pollBuffer");
+		LOG.info("Call to pollBuffer");
 
 		if (downstreamFailed.get()) {
 			LOG.info("Polling for next buffer, but downstream is still failed.");
@@ -274,6 +275,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 				LOG.info("We are replaying, get inflight logs next buffer");
 				return getReplayedBufferUnsafe();
 			} else {
+				LOG.info("We are not replaying, get buffer from consumers");
 				return getBufferFromQueuedBufferConsumersUnsafe();
 			}
 		}
@@ -281,9 +283,10 @@ public class PipelinedSubpartition extends ResultSubpartition {
 	}
 
 	private BufferAndBacklog getReplayedBufferUnsafe() {
-		Buffer buffer = inflightReplayIterator.next();
 
 		long epoch = inflightReplayIterator.getEpoch();
+		Buffer buffer = inflightReplayIterator.next();
+
 
 		if (!inflightReplayIterator.hasNext()) {
 			inflightReplayIterator = null;
@@ -320,9 +323,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 			BufferConsumer bufferConsumer = buffers.peek();
 			checkpointId = checkpointIds.peek();
 
-
 			buffer = bufferConsumer.build();
-
 
 			checkState(bufferConsumer.isFinished() || buffers.size() == 1,
 				"When there are multiple buffers, an unfinished bufferConsumer can not be at the head of the " +
@@ -359,7 +360,6 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 		updateStatistics(buffer);
 		inFlightLog.log(buffer, currentEpochID);
-		LOG.debug("Creating BufferAndBacklog with epochID {}", currentEpochID);
 		BufferAndBacklog result = new BufferAndBacklog(buffer, isAvailableUnsafe(), getBuffersInBacklog(),
 			_nextBufferIsEvent(), currentEpochID);
 		//We do this after the determinant and sending the BufferAndBacklog because a checkpoint x belongs to
@@ -369,9 +369,10 @@ public class PipelinedSubpartition extends ResultSubpartition {
 		// Do not report last remaining buffer on buffers as available to read (assuming it's unfinished).
 		// It will be reported for reading either on flush or when the number of buffers in the queue
 		// will be 2 or more.
-		LOG.info("{}:{}: Polled buffer {} (hash: {}, memorySegment hash: {}). Buffers available for dispatch: {}."
-			, parent, this, buffer, System.identityHashCode(buffer),
-			System.identityHashCode(buffer.getMemorySegment()), getBuffersInBacklog());
+		if (LOG.isDebugEnabled())
+			LOG.debug("{}:{}: Polled buffer {} (hash: {}, memorySegment hash: {}). Buffers available for dispatch: {}."
+				, parent, this, buffer, System.identityHashCode(buffer),
+				System.identityHashCode(buffer.getMemorySegment()), getBuffersInBacklog());
 		return result;
 	}
 
@@ -529,7 +530,8 @@ public class PipelinedSubpartition extends ResultSubpartition {
 				if (consumer.isFinished()) {
 					if (consumer.getUnreadBytes() > 0) {
 						if (consumer.getUnreadBytes() < bufferSize) {
-							String msg = "Size of finished bufferConsumer ( unread: " + consumer.getUnreadBytes() + "," +
+							String msg = "Size of finished bufferConsumer ( unread: " + consumer.getUnreadBytes() +
+								"," +
 								" written: " + consumer.getWrittenBytes() + ") does not match" +
 								" " +
 								"size of recovery request to build buffer ( " + bufferSize + " ).";

@@ -85,9 +85,9 @@ public class CausalBufferHandler implements CheckpointBarrierHandler {
 		LOG.debug("Call to getNextNonBlocked");
 		BufferOrEvent toReturn = null;
 		if (recoveryManager.isReplaying()) {
-			LOG.debug("We are replaying! Fetching a determinant from the CausalLogManager");
+			LOG.info("We are replaying! Fetching a determinant from the CausalLogManager");
 			byte nextChannel = recoveryManager.replayNextChannel();
-			LOG.debug("Determinant says next channel is {}!", nextChannel);
+			LOG.info("Determinant says next channel is {}!", nextChannel);
 			while (true) {
 				if (!bufferedBuffersPerChannel[nextChannel].isEmpty()) {
 					toReturn = bufferedBuffersPerChannel[nextChannel].poll();
@@ -131,7 +131,7 @@ public class CausalBufferHandler implements CheckpointBarrierHandler {
 				break;
 			}
 		}
-		LOG.debug("Returning buffer from channel {} : {}", toReturn.getChannelIndex(), toReturn);
+		LOG.info("Returning buffer from channel {}", toReturn.getChannelIndex());
 		synchronized (lock) {
 			causalLoggingManager.appendDeterminant(reuseOrderDeterminant.replace((byte) toReturn.getChannelIndex()),
 				epochProvider.getCurrentEpochID());

@@ -135,6 +135,7 @@ public class InMemorySubpartitionInFlightLogger implements InFlightLog {
 			advanceToNextNonEmptyIteratorIfNeeded();
 			Buffer toReturn = currentIterator.next();
 			numberOfBuffersLeft--;
+			advanceToNextNonEmptyIteratorIfNeeded();
 			return toReturn;
 		}
 
@@ -143,6 +144,7 @@ public class InMemorySubpartitionInFlightLogger implements InFlightLog {
 			advanceToNextNonEmptyIteratorIfNeeded();
 			Buffer toReturn = currentIterator.next();
 			currentIterator.previous();
+			advanceToNextNonEmptyIteratorIfNeeded();
 			return toReturn;
 		}
 

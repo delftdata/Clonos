@@ -69,8 +69,8 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 	public SpilledReplayIterator(SortedMap<Long, SpillableSubpartitionInFlightLogger.Epoch> logToReplay,
 								 BufferPool partitionBufferPool,
 								 IOManager ioManager, Object subpartitionLock, int ignoreBuffers) {
-		LOG.debug("SpilledReplayIterator created");
-		LOG.debug("State of in-flight log: { {} }",
+		LOG.info("SpilledReplayIterator created");
+		LOG.info("State of in-flight log: { {} }",
 			logToReplay.entrySet().stream().map(e -> e.getKey() + "->" + e.getValue()).collect(Collectors.joining(",")));
 		this.cursor = new EpochCursor(logToReplay);
 
@@ -107,10 +107,9 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 		Buffer buffer = null;
 		try {
 
-			SpillableSubpartitionInFlightLogger.BufferHandle bufferHandle = cursor.getCurrentBufferHandle();
-			buffer = bufferHandle.getBuffer();
-			if (!bufferHandle.isAvailableInMemory())//Producer will increase refCnt if flush not complete when
-				// processed
+			buffer = cursor.getCurrentBuffer();
+
+			if (buffer.asByteBuf().refCnt() == 0)
 				buffer = readyBuffersPerEpoch.get(cursor.getCurrentEpoch()).take();
 
 			cursor.next();
@@ -119,7 +118,7 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 			this.close();
 		}
 
-		LOG.debug("Fetching buffer for cursor: {}, buffer: {}", cursor, buffer);
+		LOG.info("Fetching buffer for cursor: {}, buffer: {}", cursor, buffer);
 		return buffer;
 	}
 
@@ -127,10 +126,9 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 	public Buffer peekNext() {
 		Buffer buffer = null;
 		try {
-			LOG.debug("Call to peek. Cursor {}", cursor);
-			SpillableSubpartitionInFlightLogger.BufferHandle bufferHandle = cursor.getCurrentBufferHandle();
-			buffer = bufferHandle.getBuffer();
-			if (!bufferHandle.isAvailableInMemory()) {//Producer will increase refCnt if flush not complete when
+			LOG.info("Call to peek. Cursor {}", cursor);
+			buffer = cursor.getCurrentBuffer();
+			if (buffer.asByteBuf().refCnt() == 0) {//Producer will increase refCnt if flush not complete when
 				// processed
 				buffer = readyBuffersPerEpoch.get(cursor.getCurrentEpoch()).take();
 				//After peeking push it back
@@ -149,10 +147,8 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 		//buffers we will need
 		try {
 			while (cursor.hasNext()) {
-				SpillableSubpartitionInFlightLogger.BufferHandle bufferHandle = cursor.getCurrentBufferHandle();
-				Buffer buffer = bufferHandle.getBuffer();
-				if (!bufferHandle.isAvailableInMemory())//Producer will increase refCnt if flush not complete when
-					// processed
+				Buffer buffer = cursor.getCurrentBuffer();
+				if (buffer.asByteBuf().refCnt() == 0)
 					buffer = readyBuffersPerEpoch.get(cursor.getCurrentEpoch()).take();
 				buffer.recycleBuffer();
 				cursor.next();
@@ -171,7 +167,7 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 
 	private static class ProducerRunnable implements Runnable {
 		//The position in the log of the producer
-		private final EpochCursor cursor;
+		private final EpochCursor producerCursor;
 		private final Object subpartitionLock;
 		private final SortedMap<Long, SpillableSubpartitionInFlightLogger.Epoch> logToReplay;
 
@@ -187,9 +183,9 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 			this.logToReplay = logToReplay;
 			this.subpartitionLock = subpartitionLock;
 			this.bufferPool = bufferPool;
-			this.cursor = new EpochCursor(logToReplay);
+			this.producerCursor = new EpochCursor(logToReplay);
 			for (int i = 0; i < ignoreBuffers; i++)
-				cursor.next();
+				producerCursor.next();
 			this.epochReaders = new HashMap<>(logToReplay.keySet().size());
 			for (Map.Entry<Long, SpillableSubpartitionInFlightLogger.Epoch> entry : logToReplay.entrySet()) {
 				try {
@@ -203,35 +199,39 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 
 		@Override
 		public void run() {
-			LOG.debug("Replay Producer thread starting");
-			if (cursor.getRemaining() == 0)
-				return;
+			LOG.info("Replay Producer thread starting");
 			try {
-				synchronized (subpartitionLock) {
-					if (LOG.isDebugEnabled())
-						LOG.debug("State of in-flight log at replayer: { {} }",
-							logToReplay.entrySet().stream().map(e -> e.getKey() + "->" +
-								e.getValue()).collect(Collectors.joining(",")));
-					BufferFileReader reader;
-					while (cursor.hasNext()) {
-						reader = epochReaders.get(cursor.getCurrentEpoch());
-						SpillableSubpartitionInFlightLogger.BufferHandle storedBuffer =
-							cursor.getCurrentBufferHandle();
-						if (storedBuffer.isAvailableInMemory()) {
-							LOG.debug("Buffer for cursor {}, is in memory", cursor);
-							storedBuffer.getBuffer().retainBuffer();
-						} else {
-							LOG.debug("Buffer for cursor {}, is on disk", cursor);
-							reader.readInto(bufferPool.requestBufferBlocking());
+				while (producerCursor.hasNext()) {
+					synchronized (subpartitionLock) {
+						if (LOG.isDebugEnabled())
+							LOG.info("State of in-flight log at replayer: { {} }",
+								logToReplay.entrySet().stream().map(e -> e.getKey() + "->" +
+									e.getValue()).collect(Collectors.joining(",")));
+						BufferFileReader reader;
+						while (producerCursor.hasNext()) {
+							reader = epochReaders.get(producerCursor.getCurrentEpoch());
+							Buffer buffer = producerCursor.getCurrentBuffer();
+							if (buffer.asByteBuf().refCnt() != 0) {
+								LOG.info("Buffer for cursor {}, is in memory", producerCursor);
+								buffer.retainBuffer();
+							} else {
+								LOG.info("Buffer for cursor {}, is on disk. Buffer pool state: {}", producerCursor,
+									bufferPool);
+								Buffer bufferToReadInto = bufferPool.requestBuffer();
+								if (bufferToReadInto == null) //no buffer available, release lock and try again
+									break;
+								reader.readInto(bufferToReadInto);
+							}
+
+							producerCursor.next();
 						}
-
-						cursor.next();
 					}
-
-					//close will wait for all requests to complete before closing
-					for (BufferFileReader r : epochReaders.values())
-						r.close();
+					Thread.sleep(5);
 				}
+
+				//close will wait for all requests to complete before closing
+				for (BufferFileReader r : epochReaders.values())
+					r.close();
 			} catch (Exception e) {
 				logAndThrowAsRuntimeException(e);
 			}
@@ -259,7 +259,7 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 		@Override
 		public void requestFailed(Buffer buffer, IOException e) {
 			String msg = "Read of buffer failed during replay with error: " + e.getMessage();
-			LOG.debug("Error: " + msg);
+			LOG.info("Error: " + msg);
 			logAndThrowAsRuntimeException(e);
 		}
 	}
@@ -312,10 +312,10 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 			return remaining;
 		}
 
-		public SpillableSubpartitionInFlightLogger.BufferHandle getCurrentBufferHandle() {
+		public Buffer getCurrentBuffer() {
 			SpillableSubpartitionInFlightLogger.Epoch epoch = log.get(currentEpoch);
-			List<SpillableSubpartitionInFlightLogger.BufferHandle> handles = epoch.getEpochBuffers();
-			return handles.get(epochOffset);
+			List<Buffer> buffers = epoch.getEpochBuffers();
+			return buffers.get(epochOffset);
 		}
 
 		@Override

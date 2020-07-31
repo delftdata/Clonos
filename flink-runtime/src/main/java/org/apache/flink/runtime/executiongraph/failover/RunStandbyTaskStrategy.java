@@ -135,7 +135,12 @@ public class RunStandbyTaskStrategy extends FailoverStrategy {
 			return vertexToRecover.addStandbyExecution();
 		}, callbackExecutor).thenApplyAsync((ignored) -> {
 			LOG.info("Waiting for standby to be ready");
-			while (vertexToRecover.getStandbyExecutions().get(0).getState() != ExecutionState.STANDBY);
+			Execution standby;
+			while (true) {
+				standby = vertexToRecover.getStandbyExecutions().get(0);
+				if (standby.getState() == ExecutionState.STANDBY)
+					break;
+			}
 			LOG.info("Standby is ready.");
 			LOG.info("Dispatching latest state.");
 			try {

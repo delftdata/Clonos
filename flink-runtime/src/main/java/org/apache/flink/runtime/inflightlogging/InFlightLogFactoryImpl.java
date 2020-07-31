@@ -37,10 +37,12 @@ public class InFlightLogFactoryImpl implements InFlightLogFactory {
 	}
 
 	@Override
-	public InFlightLog build(){
-		switch (config.getType()){
+	public InFlightLog build() {
+		switch (config.getType()) {
 			case SPILLABLE:
-				return new SpillableSubpartitionInFlightLogger(ioManager, config.getSpillPolicy(), config.getAvailabilityPolicyFillFactor());
+				return new SpillableSubpartitionInFlightLogger(ioManager, config.getSpillPolicy(),
+					config.getPolicyIsSynchronous(), config.getAvailabilityPolicyFillFactor(),
+					config.getInFlightLogSleepTime());
 			case IN_MEMORY:
 			default:
 				return new InMemorySubpartitionInFlightLogger();

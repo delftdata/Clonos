@@ -170,7 +170,7 @@ public class RecordWriter<T extends IOReadableWritable> implements CheckpointLis
 	}
 
 	public void broadcastEvent(AbstractEvent event) throws IOException, InterruptedException {
-		LOG.debug("{}: RecordWriter broadcast event {}.", targetPartition.getTaskName(), event);
+		LOG.info("{}: RecordWriter broadcast event {}.", targetPartition.getTaskName(), event);
 
 		try (BufferConsumer eventBufferConsumer = EventSerializer.toBufferConsumer(event)) {
 			for (int targetChannel = 0; targetChannel < numChannels; targetChannel++) {
@@ -189,7 +189,7 @@ public class RecordWriter<T extends IOReadableWritable> implements CheckpointLis
 
 
 	public void emitEvent(AbstractEvent event, int targetChannel) throws IOException, InterruptedException {
-		LOG.debug("{}: RecordWriter replay {}.", targetPartition.getTaskName(), event);
+		LOG.info("{}: RecordWriter emit event {}.", targetPartition.getTaskName(), event);
 
 		try (BufferConsumer eventBufferConsumer = EventSerializer.toBufferConsumer(event)) {
 			RecordSerializer<T> serializer = serializers[targetChannel];

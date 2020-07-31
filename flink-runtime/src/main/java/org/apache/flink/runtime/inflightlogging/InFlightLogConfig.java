@@ -52,12 +52,32 @@ public class InFlightLogConfig implements Serializable {
 			"that" +
 			" spills on every epoch completion.");
 
+	public static final ConfigOption<Long> IN_FLIGHT_LOG_SPILL_SLEEP = ConfigOptions
+		.key("taskmanager.inflight.spill.sleep")
+		.defaultValue(50L)
+		.withDescription("How long to sleep between tests of the policy");
+
 	public static final ConfigOption<Float> AVAILABILITY_POLICY_FILL_FACTOR = ConfigOptions
 		.key("taskmanager.inflight.spill.availability-trigger")
 		.defaultValue(0.3f)
 		.withDescription("The availability level at and under which a flush of the inflight log is triggered.");
 
+
 	private final Configuration config;
+
+	public boolean getPolicyIsSynchronous() {
+		String policy = config.getString(IN_FLIGHT_LOG_SPILL_POLICY);
+
+		switch (policy) {
+			case "eager":
+				return true;
+			case "epoch":
+			case "availability":
+			default:
+				return false;
+		}
+
+	}
 
 
 	public enum Type {
@@ -100,7 +120,14 @@ public class InFlightLogConfig implements Serializable {
 		return config.getFloat(AVAILABILITY_POLICY_FILL_FACTOR);
 	}
 
-	public static Consumer<SpillableSubpartitionInFlightLogger> eagerPolicy = log -> log.getSlicedLog().get(log.getSlicedLog().lastKey()).flushAllUnflushed();
+	public long getInFlightLogSleepTime() {
+		return config.getLong(IN_FLIGHT_LOG_SPILL_SLEEP);
+	}
+
+	public static Consumer<SpillableSubpartitionInFlightLogger> eagerPolicy = log -> {
+		if (log.getSlicedLog().size() != 0)
+			log.getSlicedLog().get(log.getSlicedLog().lastKey()).flushAllUnflushed();
+	};
 
 	public static Consumer<SpillableSubpartitionInFlightLogger> availabilityPolicy = log -> {
 		if (log.isPoolAvailabilityLow())
@@ -109,10 +136,12 @@ public class InFlightLogConfig implements Serializable {
 	};
 
 	public static Consumer<SpillableSubpartitionInFlightLogger> epochPolicy = log -> {
-		long lastKey = log.getSlicedLog().lastKey();
-		for(Map.Entry<Long,SpillableSubpartitionInFlightLogger.Epoch> e : log.getSlicedLog().entrySet()){
-			if(e.getKey() < lastKey && e.getValue().hasNeverBeenFlushed())
-				e.getValue().flushAllUnflushed();
+		if(log.getSlicedLog().size() != 0) {
+			long lastKey = log.getSlicedLog().lastKey();
+			for (Map.Entry<Long, SpillableSubpartitionInFlightLogger.Epoch> e : log.getSlicedLog().entrySet()) {
+				if (e.getKey() < lastKey && e.getValue().hasNeverBeenFlushed())
+					e.getValue().flushAllUnflushed();
+			}
 		}
 	};
 
