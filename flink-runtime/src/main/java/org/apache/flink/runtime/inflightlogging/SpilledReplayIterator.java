@@ -38,6 +38,9 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 /**
@@ -64,19 +67,29 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 	private ConcurrentMap<Long, LinkedBlockingDeque<Buffer>> readyBuffersPerEpoch;
 
 	//The cursor indicating the consumers position in the log
-	private EpochCursor cursor;
+	private EpochCursor consumerCursor;
+
+	private EpochCursor producerCursor;
+
+	//Used to signal back to flusher thread that we are done replaying and that it may resume flushing
+	private final AtomicBoolean isReplaying;
 
 	public SpilledReplayIterator(SortedMap<Long, SpillableSubpartitionInFlightLogger.Epoch> logToReplay,
 								 BufferPool recoveryBufferPool,
-								 IOManager ioManager, Object subpartitionLock, int ignoreBuffers) {
+								 IOManager ioManager, Object subpartitionLock, int ignoreBuffers,
+								 AtomicBoolean isReplaying) {
 		LOG.debug("SpilledReplayIterator created");
 		LOG.debug("State of in-flight log: { {} }",
 			logToReplay.entrySet().stream().map(e -> e.getKey() + "->" + e.getValue()).collect(Collectors.joining(",")));
-		this.cursor = new EpochCursor(logToReplay);
+		this.consumerCursor = new EpochCursor(logToReplay);
+		this.producerCursor = new EpochCursor(logToReplay);
+		this.isReplaying = isReplaying;
 
 		//skip ignoreBuffers buffers
-		for (int i = 0; i < ignoreBuffers; i++)
-			cursor.next();
+		for (int i = 0; i < ignoreBuffers; i++) {
+			consumerCursor.next();
+			producerCursor.next();
+		}
 
 
 		readyBuffersPerEpoch = new ConcurrentHashMap<>(logToReplay.keySet().size());
@@ -88,51 +101,56 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 
 		//Start the producer
 		Thread producer = new Thread(new ProducerRunnable(ioManager, logToReplay, recoveryBufferPool,
-			readyBuffersPerEpoch, subpartitionLock, ignoreBuffers));
+			readyBuffersPerEpoch, subpartitionLock, producerCursor));
 		producer.start();
 	}
 
 	@Override
 	public int numberRemaining() {
-		return cursor.getRemaining();
+		return consumerCursor.getRemaining();
 	}
 
 	@Override
 	public long getEpoch() {
-		return cursor.getCurrentEpoch();
+		return consumerCursor.getCurrentEpoch();
 	}
 
 	@Override
 	public Buffer next() {
 		Buffer buffer = null;
+		while (!consumerCursor.behind(producerCursor));
 		try {
 
-			buffer = cursor.getCurrentBuffer();
+			buffer = consumerCursor.getCurrentBuffer();
 
 			if (buffer.asByteBuf().refCnt() == 0)
-				buffer = readyBuffersPerEpoch.get(cursor.getCurrentEpoch()).take();
+				buffer = readyBuffersPerEpoch.get(consumerCursor.getCurrentEpoch()).take();
 
-			cursor.next();
+			consumerCursor.next();
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
 			this.close();
 		}
 
-		LOG.debug("Fetching buffer for cursor: {}, buffer: {}", cursor, buffer);
+		if (!consumerCursor.hasNext())
+			isReplaying.set(false);
+
+		LOG.debug("Fetching buffer for cursor: {}, buffer: {}", consumerCursor, buffer);
 		return buffer;
 	}
 
 	@Override
 	public Buffer peekNext() {
 		Buffer buffer = null;
+		while (!consumerCursor.behind(producerCursor));
 		try {
-			LOG.debug("Call to peek. Cursor {}", cursor);
-			buffer = cursor.getCurrentBuffer();
+			LOG.debug("Call to peek. Cursor {}", consumerCursor);
+			buffer = consumerCursor.getCurrentBuffer();
 			if (buffer.asByteBuf().refCnt() == 0) {//Producer will increase refCnt if flush not complete when
 				// processed
-				buffer = readyBuffersPerEpoch.get(cursor.getCurrentEpoch()).take();
+				buffer = readyBuffersPerEpoch.get(consumerCursor.getCurrentEpoch()).take();
 				//After peeking push it back
-				readyBuffersPerEpoch.get(cursor.getCurrentEpoch()).putFirst(buffer);
+				readyBuffersPerEpoch.get(consumerCursor.getCurrentEpoch()).putFirst(buffer);
 			}
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
@@ -146,12 +164,13 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 		//Note, there may be a better way to do this if a new iterator is going to be built. We could avoid recycling
 		//buffers we will need
 		try {
-			while (cursor.hasNext()) {
-				Buffer buffer = cursor.getCurrentBuffer();
+			while (consumerCursor.hasNext()) {
+				while (!consumerCursor.behind(producerCursor));
+				Buffer buffer = consumerCursor.getCurrentBuffer();
 				if (buffer.asByteBuf().refCnt() == 0)
-					buffer = readyBuffersPerEpoch.get(cursor.getCurrentEpoch()).take();
+					buffer = readyBuffersPerEpoch.get(consumerCursor.getCurrentEpoch()).take();
 				buffer.recycleBuffer();
-				cursor.next();
+				consumerCursor.next();
 			}
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
@@ -161,7 +180,7 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 
 	@Override
 	public boolean hasNext() {
-		return cursor.hasNext();
+		return consumerCursor.hasNext();
 	}
 
 
@@ -179,13 +198,12 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 			SortedMap<Long, SpillableSubpartitionInFlightLogger.Epoch> logToReplay,
 			BufferPool recoveryBufferPool,
 			ConcurrentMap<Long, LinkedBlockingDeque<Buffer>> readyDataBuffersPerEpoch,
-			Object subpartitionLock, int ignoreBuffers) {
+			Object subpartitionLock, EpochCursor producerCursor) {
 			this.logToReplay = logToReplay;
 			this.subpartitionLock = subpartitionLock;
 			this.recoveryBufferPool = recoveryBufferPool;
-			this.producerCursor = new EpochCursor(logToReplay);
-			for (int i = 0; i < ignoreBuffers; i++)
-				producerCursor.next();
+			this.producerCursor = producerCursor;
+
 			this.epochReaders = new HashMap<>(logToReplay.keySet().size());
 			for (Map.Entry<Long, SpillableSubpartitionInFlightLogger.Epoch> entry : logToReplay.entrySet()) {
 				try {
@@ -263,15 +281,15 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 	private static class EpochCursor {
 
 		private final SortedMap<Long, SpillableSubpartitionInFlightLogger.Epoch> log;
-		private long currentEpoch;
-		private int epochOffset; //The next buffer the reader will request
+		private AtomicLong currentEpoch;
+		private AtomicInteger epochOffset; //The next buffer the reader will request
 
 		private long lastEpoch;
 		private int remaining;
 
 		public EpochCursor(SortedMap<Long, SpillableSubpartitionInFlightLogger.Epoch> log) {
-			this.currentEpoch = log.firstKey();
-			this.epochOffset = 0;
+			this.currentEpoch = new AtomicLong(log.firstKey());
+			this.epochOffset = new AtomicInteger(0);
 			this.lastEpoch = log.lastKey();
 			this.remaining =
 				log.values().stream().mapToInt(SpillableSubpartitionInFlightLogger.Epoch::getEpochSize).sum();
@@ -279,12 +297,12 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 		}
 
 		public void next() {
-			epochOffset++;
+			epochOffset.incrementAndGet();
 			remaining--;
-			if (reachedEndOfEpoch(epochOffset, currentEpoch))
-				if (currentEpoch != lastEpoch) {
-					currentEpoch++;
-					epochOffset = 0;
+			if (reachedEndOfEpoch(epochOffset.get(), currentEpoch.get()))
+				if (currentEpoch.get() != lastEpoch) {
+					currentEpoch.incrementAndGet();
+					epochOffset.set(0);
 				}
 		}
 
@@ -297,11 +315,11 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 		}
 
 		public long getCurrentEpoch() {
-			return currentEpoch;
+			return currentEpoch.get();
 		}
 
 		public int getEpochOffset() {
-			return epochOffset;
+			return epochOffset.get();
 		}
 
 		public int getRemaining() {
@@ -309,9 +327,14 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 		}
 
 		public Buffer getCurrentBuffer() {
-			SpillableSubpartitionInFlightLogger.Epoch epoch = log.get(currentEpoch);
+			SpillableSubpartitionInFlightLogger.Epoch epoch = log.get(currentEpoch.get());
 			List<Buffer> buffers = epoch.getEpochBuffers();
-			return buffers.get(epochOffset);
+			return buffers.get(epochOffset.get());
+		}
+
+		public boolean behind(EpochCursor other) {
+			return this.getCurrentEpoch() < other.getCurrentEpoch() ||
+				(this.getCurrentEpoch() == other.getCurrentEpoch() && this.getEpochOffset() < other.getEpochOffset());
 		}
 
 		@Override

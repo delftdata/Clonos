@@ -33,6 +33,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 /**
@@ -52,12 +53,13 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 	private final Object subpartitionLock = new Object();
 	private final Consumer<SpillableSubpartitionInFlightLogger> flushPolicy;
 	private final boolean policyIsSynchronous;
-	private BufferPool recoveryBufferPool;
+	private final BufferPool recoveryBufferPool;
 	private BufferPool subpartitionBufferPool;
 
-	private float availabilityFillFactor;
+	private final float availabilityFillFactor;
 
-	private Thread flusherThread;
+	private final Thread flusherThread;
+	private final AtomicBoolean isReplaying;
 
 	public SpillableSubpartitionInFlightLogger(IOManager ioManager,
 											   Consumer<SpillableSubpartitionInFlightLogger> flushPolicy, boolean policyIsSynchronous,
@@ -70,11 +72,14 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 		this.recoveryBufferPool = recoveryBufferPool;
 
 		this.slicedLog = new TreeMap<>();
+		this.isReplaying = new AtomicBoolean(false);
 
 		if(!policyIsSynchronous) {
 			this.flusherThread = new Thread(new FlushRunnable(this, flushPolicy, subpartitionLock,
-				flusherSleepTime));
+				flusherSleepTime, isReplaying));
 			this.flusherThread.start();
+		}else {
+			this.flusherThread = null;
 		}
 	}
 
@@ -84,7 +89,7 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 		synchronized (subpartitionLock) {
 			Epoch epoch = slicedLog.computeIfAbsent(epochID, k -> new Epoch(createNewWriter(k), k));
 			epoch.append(buffer);
-			if(policyIsSynchronous)
+			if(policyIsSynchronous && !isReplaying.get())
 				flushPolicy.accept(this);
 		}
 		LOG.debug("Logged a new buffer for epoch {} with refcnt {} and size {}", epochID, buffer.asByteBuf().refCnt(), buffer.getSize());
@@ -113,13 +118,14 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 	@Override
 	public InFlightLogIterator<Buffer> getInFlightIterator(long epochID, int ignoreBuffers) {
 		SortedMap<Long, Epoch> logToReplay;
+		this.isReplaying.set(true);
 		synchronized (subpartitionLock) {
 			logToReplay = slicedLog.tailMap(epochID);
 			if (logToReplay.size() == 0)
 				return null;
 		}
 
-		return new SpilledReplayIterator(logToReplay, recoveryBufferPool, ioManager, subpartitionLock, ignoreBuffers);
+		return new SpilledReplayIterator(logToReplay, recoveryBufferPool, ioManager, subpartitionLock, ignoreBuffers, isReplaying);
 	}
 
 	public SortedMap<Long, Epoch> getSlicedLog() {
@@ -320,15 +326,17 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 		private final Object flushLock;
 		private final long flusherSleep;
 		private boolean running;
+		private final AtomicBoolean isReplaying;
 
 		public FlushRunnable(SpillableSubpartitionInFlightLogger inFlightLogger,
 							 Consumer<SpillableSubpartitionInFlightLogger> flushPolicy, Object flushLock,
-							 long flusherSleep) {
+							 long flusherSleep, AtomicBoolean isReplaying) {
 			this.inFlightLogger = inFlightLogger;
 			this.flushPolicy = flushPolicy;
 			this.flushLock = flushLock;
 			this.flusherSleep = flusherSleep;
 			this.running = true;
+			this.isReplaying = isReplaying;
 		}
 
 		@Override
@@ -337,7 +345,8 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 				try {
 					LOG.debug("Test flush policy");
 					synchronized (flushLock) {
-						flushPolicy.accept(inFlightLogger);
+						if(!isReplaying.get())
+							flushPolicy.accept(inFlightLogger);
 					}
 
 					Thread.sleep(flusherSleep);

@@ -135,7 +135,8 @@ public class InFlightLogConfig implements Serializable {
 
 	public static Consumer<SpillableSubpartitionInFlightLogger> eagerPolicy = log -> {
 		if (log.getSlicedLog().size() != 0)
-			log.getSlicedLog().get(log.getSlicedLog().lastKey()).flushAllUnflushed();
+			for (SpillableSubpartitionInFlightLogger.Epoch e : log.getSlicedLog().values())
+				e.flushAllUnflushed();
 	};
 
 	public static Consumer<SpillableSubpartitionInFlightLogger> availabilityPolicy = log -> {
