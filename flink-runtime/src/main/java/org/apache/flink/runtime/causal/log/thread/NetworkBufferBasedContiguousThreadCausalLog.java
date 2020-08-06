@@ -74,7 +74,7 @@ public class NetworkBufferBasedContiguousThreadCausalLog implements ThreadCausal
 	protected long earliestEpoch;
 
 	public NetworkBufferBasedContiguousThreadCausalLog(BufferPool bufferPool) {
-		buf = Unpooled.compositeBuffer();
+		buf = Unpooled.compositeBuffer(Integer.MAX_VALUE);
 		this.bufferPool = bufferPool;
 
 		addComponent();
@@ -227,7 +227,6 @@ public class NetworkBufferBasedContiguousThreadCausalLog implements ThreadCausal
 		//The writer index movement tricks netty into adding to the composite capacity.
 		byteBuf.writerIndex(byteBuf.capacity());
 		buf.addComponent(byteBuf);
-		LOG.debug("Done adding component");
 	}
 
 	protected static class EpochStartOffset {
