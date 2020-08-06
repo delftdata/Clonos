@@ -240,6 +240,12 @@ public class StreamInputProcessor<IN> {
 				}
 			}
 
+			//Note this ensures that if the first thing that happens in an epoch is a window triggering, then we
+			// recover correctly.
+			//This short circuits on isRecovering if it is false, hopefully achieving higher performance when running
+			if (isRecovering && (isRecovering = recoveryManager.isReplaying()))
+				recoveryManager.checkAsyncEvent();
+
 			final BufferOrEvent bufferOrEvent;
 			bufferOrEvent = barrierHandler.getNextNonBlocked();
 			if (bufferOrEvent != null) {
