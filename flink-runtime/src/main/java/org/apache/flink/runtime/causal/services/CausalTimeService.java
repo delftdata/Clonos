@@ -25,6 +25,7 @@
 
 package org.apache.flink.runtime.causal.services;
 
+import org.apache.flink.api.common.services.TimeService;
 import org.apache.flink.runtime.causal.EpochProvider;
 import org.apache.flink.runtime.causal.log.job.IJobCausalLog;
 import org.apache.flink.runtime.causal.determinant.TimestampDeterminant;

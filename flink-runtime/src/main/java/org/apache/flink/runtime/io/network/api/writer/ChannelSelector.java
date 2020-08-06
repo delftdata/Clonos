@@ -20,7 +20,7 @@ package org.apache.flink.runtime.io.network.api.writer;
 
 import org.apache.flink.core.io.IOReadableWritable;
 import org.apache.flink.runtime.causal.CheckpointBarrierListener;
-import org.apache.flink.runtime.causal.services.RandomService;
+import org.apache.flink.api.common.services.RandomService;
 
 /**
  * The {@link ChannelSelector} determines to which logical channels a record

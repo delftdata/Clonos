@@ -19,7 +19,7 @@
 package org.apache.flink.runtime.io.network.api.writer;
 
 import org.apache.flink.core.io.IOReadableWritable;
-import org.apache.flink.runtime.causal.services.RandomService;
+import org.apache.flink.api.common.services.RandomService;
 
 /**
  * This is the default implementation of the {@link ChannelSelector} interface. It represents a simple round-robin

@@ -37,9 +37,6 @@ import org.apache.flink.api.common.state.StateDescriptor;
 import org.apache.flink.api.common.state.ValueState;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
 import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
-import org.apache.flink.runtime.causal.recovery.RecoveryManager;
-import org.apache.flink.runtime.causal.services.RandomService;
-import org.apache.flink.runtime.causal.services.TimeService;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.jobgraph.tasks.InputSplitProvider;
 import org.apache.flink.streaming.api.CheckpointingMode;
@@ -67,8 +64,6 @@ public class StreamingRuntimeContext extends AbstractRuntimeUDFContext {
 
 	private final String operatorUniqueID;
 
-	private final RandomService randomService;
-	private final TimeService timeService;
 
 	private final IRecoveryManager recoveryManager;
 
@@ -79,14 +74,11 @@ public class StreamingRuntimeContext extends AbstractRuntimeUDFContext {
 				operator.getExecutionConfig(),
 				accumulators,
 				env.getDistributedCacheEntries(),
-				operator.getMetricGroup());
-
+				operator.getMetricGroup(),operator.getContainingTask().getTimeService(),operator.getContainingTask().getRandomService());
 		this.operator = operator;
 		this.taskEnvironment = env;
 		this.streamConfig = new StreamConfig(env.getTaskConfiguration());
 		this.operatorUniqueID = operator.getOperatorID().toString();
-		this.timeService = this.operator.getContainingTask().getTimeService();
-		this.randomService = operator.getContainingTask().getRandomService();
 		this.recoveryManager = operator.getContainingTask().getRecoveryManager();
 	}
 
@@ -117,14 +109,11 @@ public class StreamingRuntimeContext extends AbstractRuntimeUDFContext {
 		return operatorUniqueID;
 	}
 
-	public TimeService getTimeService(){
-		return timeService;
-	}
-
-	public RandomService getRandomService(){
-		return randomService;
-	}
-
+	/**
+	 * Returns the task's recovery manager.
+	 * Certain special functions may need to use the recovery manager.
+	 * One example is the Kafka consumer, who needs it to ensure that watermarks are emitted at the correct points.
+	 */
 	public IRecoveryManager getRecoveryManager(){
 		return recoveryManager;
 	}

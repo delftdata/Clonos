@@ -21,7 +21,7 @@ package org.apache.flink.runtime.operators.shipping;
 import org.apache.flink.api.common.distributions.DataDistribution;
 import org.apache.flink.api.common.functions.Partitioner;
 import org.apache.flink.api.common.typeutils.TypeComparator;
-import org.apache.flink.runtime.causal.services.RandomService;
+import org.apache.flink.api.common.services.RandomService;
 import org.apache.flink.runtime.io.network.api.writer.ChannelSelector;
 import org.apache.flink.runtime.plugable.SerializationDelegate;
 import org.apache.flink.util.MathUtils;

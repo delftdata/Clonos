@@ -23,12 +23,25 @@
  *
  */
 
-package org.apache.flink.runtime.causal.services;
+package org.apache.flink.api.common.services;
 
-public interface RandomService {
+import org.apache.flink.util.XORShiftRandom;
 
-	int nextInt();
+import java.util.Random;
 
-	int nextInt(int maxExclusive);
+public class SimpleRandomService implements RandomService {
 
+
+	protected final Random rng = new XORShiftRandom();
+
+
+	@Override
+	public int nextInt() {
+		return rng.nextInt();
+	}
+
+	@Override
+	public int nextInt(int maxExclusive) {
+		return rng.nextInt(maxExclusive);
+	}
 }

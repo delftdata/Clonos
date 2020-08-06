@@ -27,6 +27,8 @@ import org.apache.flink.api.common.accumulators.Histogram;
 import org.apache.flink.api.common.accumulators.IntCounter;
 import org.apache.flink.api.common.accumulators.LongCounter;
 import org.apache.flink.api.common.cache.DistributedCache;
+import org.apache.flink.api.common.services.RandomService;
+import org.apache.flink.api.common.services.TimeService;
 import org.apache.flink.api.common.state.AggregatingState;
 import org.apache.flink.api.common.state.AggregatingStateDescriptor;
 import org.apache.flink.api.common.state.FoldingState;
@@ -486,5 +488,11 @@ public interface RuntimeContext {
 	 */
 	@PublicEvolving
 	<UK, UV> MapState<UK, UV> getMapState(MapStateDescriptor<UK, UV> stateProperties);
+
+	@PublicEvolving
+	TimeService getTimeService();
+
+	@PublicEvolving
+	RandomService getRandomService();
 
 }

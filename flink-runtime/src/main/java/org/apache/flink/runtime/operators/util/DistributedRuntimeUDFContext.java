@@ -33,6 +33,8 @@ import org.apache.flink.core.fs.Path;
 import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.runtime.broadcast.BroadcastVariableMaterialization;
 import org.apache.flink.runtime.broadcast.InitializationTypeConflictException;
+import org.apache.flink.api.common.services.SimpleRandomService;
+import org.apache.flink.api.common.services.SimpleTimeService;
 import org.apache.flink.util.Preconditions;
 
 /**
@@ -44,7 +46,7 @@ public class DistributedRuntimeUDFContext extends AbstractRuntimeUDFContext {
 	
 	public DistributedRuntimeUDFContext(TaskInfo taskInfo, ClassLoader userCodeClassLoader, ExecutionConfig executionConfig,
 											Map<String, Future<Path>> cpTasks, Map<String, Accumulator<?,?>> accumulators, MetricGroup metrics) {
-		super(taskInfo, userCodeClassLoader, executionConfig, accumulators, cpTasks, metrics);
+		super(taskInfo, userCodeClassLoader, executionConfig, accumulators, cpTasks, metrics, new SimpleTimeService(), new SimpleRandomService());
 	}
 
 	@Override

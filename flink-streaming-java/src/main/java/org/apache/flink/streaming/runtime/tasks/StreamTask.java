@@ -31,8 +31,8 @@ import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 import org.apache.flink.runtime.causal.recovery.RecoveryManager;
 import org.apache.flink.runtime.causal.services.CausalRandomService;
 import org.apache.flink.runtime.causal.services.CausalTimeService;
-import org.apache.flink.runtime.causal.services.RandomService;
-import org.apache.flink.runtime.causal.services.TimeService;
+import org.apache.flink.api.common.services.RandomService;
+import org.apache.flink.api.common.services.TimeService;
 import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
@@ -43,7 +43,6 @@ import org.apache.flink.runtime.event.InFlightLogRequestEventListener;
 import org.apache.flink.runtime.execution.CancelTaskException;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.io.network.api.CancelCheckpointMarker;
-import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 import org.apache.flink.runtime.io.network.partition.PipelinedSubpartition;
 import org.apache.flink.runtime.io.network.partition.ResultPartition;
@@ -80,7 +79,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.stream.Collectors;
 
 /**
  * Base class for all streaming tasks. A task is the unit of local processing that is deployed

@@ -30,6 +30,10 @@ import org.apache.flink.api.common.accumulators.Histogram;
 import org.apache.flink.api.common.accumulators.IntCounter;
 import org.apache.flink.api.common.accumulators.LongCounter;
 import org.apache.flink.api.common.cache.DistributedCache;
+import org.apache.flink.api.common.services.RandomService;
+import org.apache.flink.api.common.services.SimpleRandomService;
+import org.apache.flink.api.common.services.SimpleTimeService;
+import org.apache.flink.api.common.services.TimeService;
 import org.apache.flink.api.common.functions.RuntimeContext;
 import org.apache.flink.api.common.state.AggregatingState;
 import org.apache.flink.api.common.state.AggregatingStateDescriptor;
@@ -71,18 +75,34 @@ public abstract class AbstractRuntimeUDFContext implements RuntimeContext {
 
 	private final MetricGroup metrics;
 
+	private final RandomService randomService;
+	private final TimeService timeService;
+
+
 	public AbstractRuntimeUDFContext(TaskInfo taskInfo,
-										ClassLoader userCodeClassLoader,
-										ExecutionConfig executionConfig,
-										Map<String, Accumulator<?, ?>> accumulators,
-										Map<String, Future<Path>> cpTasks,
-										MetricGroup metrics) {
+									 ClassLoader userCodeClassLoader,
+									 ExecutionConfig executionConfig,
+									 Map<String, Accumulator<?, ?>> accumulators,
+									 Map<String, Future<Path>> cpTasks,
+									 MetricGroup metrics) {
+		this(taskInfo, userCodeClassLoader, executionConfig, accumulators, cpTasks, metrics, new SimpleTimeService(),
+			new SimpleRandomService());
+	}
+
+	public AbstractRuntimeUDFContext(TaskInfo taskInfo,
+									 ClassLoader userCodeClassLoader,
+									 ExecutionConfig executionConfig,
+									 Map<String, Accumulator<?, ?>> accumulators,
+									 Map<String, Future<Path>> cpTasks,
+									 MetricGroup metrics, TimeService timeService, RandomService randomService) {
 		this.taskInfo = checkNotNull(taskInfo);
 		this.userCodeClassLoader = userCodeClassLoader;
 		this.executionConfig = executionConfig;
 		this.distributedCache = new DistributedCache(checkNotNull(cpTasks));
 		this.accumulators = checkNotNull(accumulators);
 		this.metrics = metrics;
+		this.randomService = randomService;
+		this.timeService = timeService;
 	}
 
 	@Override
@@ -149,7 +169,7 @@ public abstract class AbstractRuntimeUDFContext implements RuntimeContext {
 	public <V, A extends Serializable> void addAccumulator(String name, Accumulator<V, A> accumulator) {
 		if (accumulators.containsKey(name)) {
 			throw new UnsupportedOperationException("The accumulator '" + name
-					+ "' already exists and cannot be added.");
+				+ "' already exists and cannot be added.");
 		}
 		accumulators.put(name, accumulator);
 	}
@@ -175,11 +195,21 @@ public abstract class AbstractRuntimeUDFContext implements RuntimeContext {
 		return this.distributedCache;
 	}
 
+	@Override
+	public TimeService getTimeService() {
+		return timeService;
+	}
+
+	@Override
+	public RandomService getRandomService() {
+		return randomService;
+	}
+
 	// --------------------------------------------------------------------------------------------
 
 	@SuppressWarnings("unchecked")
 	private <V, A extends Serializable> Accumulator<V, A> getAccumulator(String name,
-			Class<? extends Accumulator<V, A>> accumulatorClass) {
+																		 Class<? extends Accumulator<V, A>> accumulatorClass) {
 
 		Accumulator<?, ?> accumulator = accumulators.get(name);
 
@@ -189,8 +219,7 @@ public abstract class AbstractRuntimeUDFContext implements RuntimeContext {
 			// Create new accumulator
 			try {
 				accumulator = accumulatorClass.newInstance();
-			}
-			catch (Exception e) {
+			} catch (Exception e) {
 				throw new RuntimeException("Cannot create accumulator " + accumulatorClass.getName());
 			}
 			accumulators.put(name, accumulator);
@@ -202,28 +231,28 @@ public abstract class AbstractRuntimeUDFContext implements RuntimeContext {
 	@PublicEvolving
 	public <T> ValueState<T> getState(ValueStateDescriptor<T> stateProperties) {
 		throw new UnsupportedOperationException(
-				"This state is only accessible by functions executed on a KeyedStream");
+			"This state is only accessible by functions executed on a KeyedStream");
 	}
 
 	@Override
 	@PublicEvolving
 	public <T> ListState<T> getListState(ListStateDescriptor<T> stateProperties) {
 		throw new UnsupportedOperationException(
-				"This state is only accessible by functions executed on a KeyedStream");
+			"This state is only accessible by functions executed on a KeyedStream");
 	}
 
 	@Override
 	@PublicEvolving
 	public <T> ReducingState<T> getReducingState(ReducingStateDescriptor<T> stateProperties) {
 		throw new UnsupportedOperationException(
-				"This state is only accessible by functions executed on a KeyedStream");
+			"This state is only accessible by functions executed on a KeyedStream");
 	}
 
 	@Override
 	@PublicEvolving
 	public <IN, ACC, OUT> AggregatingState<IN, OUT> getAggregatingState(AggregatingStateDescriptor<IN, ACC, OUT> stateProperties) {
 		throw new UnsupportedOperationException(
-				"This state is only accessible by functions executed on a KeyedStream");
+			"This state is only accessible by functions executed on a KeyedStream");
 	}
 
 	@Override
@@ -231,14 +260,14 @@ public abstract class AbstractRuntimeUDFContext implements RuntimeContext {
 	@Deprecated
 	public <T, ACC> FoldingState<T, ACC> getFoldingState(FoldingStateDescriptor<T, ACC> stateProperties) {
 		throw new UnsupportedOperationException(
-				"This state is only accessible by functions executed on a KeyedStream");
+			"This state is only accessible by functions executed on a KeyedStream");
 	}
 
 	@Override
 	@PublicEvolving
 	public <UK, UV> MapState<UK, UV> getMapState(MapStateDescriptor<UK, UV> stateProperties) {
 		throw new UnsupportedOperationException(
-				"This state is only accessible by functions executed on a KeyedStream");
+			"This state is only accessible by functions executed on a KeyedStream");
 	}
 
 	@Internal

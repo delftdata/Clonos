@@ -27,6 +27,8 @@ import org.apache.flink.api.common.accumulators.IntCounter;
 import org.apache.flink.api.common.accumulators.LongCounter;
 import org.apache.flink.api.common.aggregators.Aggregator;
 import org.apache.flink.api.common.cache.DistributedCache;
+import org.apache.flink.api.common.services.RandomService;
+import org.apache.flink.api.common.services.TimeService;
 import org.apache.flink.api.common.functions.AbstractRichFunction;
 import org.apache.flink.api.common.functions.BroadcastVariableInitializer;
 import org.apache.flink.api.common.functions.IterationRuntimeContext;
@@ -186,6 +188,16 @@ public abstract class RichAsyncFunction<IN, OUT> extends AbstractRichFunction im
 		@Override
 		public <UK, UV> MapState<UK, UV> getMapState(MapStateDescriptor<UK, UV> stateProperties) {
 			throw new UnsupportedOperationException("State is not supported in rich async functions.");
+		}
+
+		@Override
+		public TimeService getTimeService() {
+			return runtimeContext.getTimeService();
+		}
+
+		@Override
+		public RandomService getRandomService() {
+			return runtimeContext.getRandomService();
 		}
 
 		@Override

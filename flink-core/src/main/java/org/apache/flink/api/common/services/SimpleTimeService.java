@@ -23,8 +23,11 @@
  *
  */
 
-package org.apache.flink.runtime.causal.services;
+package org.apache.flink.api.common.services;
 
-public interface TimeService {
-    long currentTimeMillis();
+public class SimpleTimeService implements TimeService {
+	@Override
+	public long currentTimeMillis() {
+		return System.currentTimeMillis();
+	}
 }

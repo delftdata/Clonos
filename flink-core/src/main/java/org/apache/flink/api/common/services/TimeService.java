@@ -23,25 +23,18 @@
  *
  */
 
-package org.apache.flink.runtime.causal.services;
+package org.apache.flink.api.common.services;
 
-import org.apache.flink.util.XORShiftRandom;
+import org.apache.flink.api.common.functions.RuntimeContext;
 
-import java.util.Random;
-
-public class SimpleRandomService implements RandomService {
-
-
-	protected final Random rng = new XORShiftRandom();
-
-
-	@Override
-	public int nextInt() {
-		return rng.nextInt();
-	}
-
-	@Override
-	public int nextInt(int maxExclusive) {
-		return rng.nextInt(maxExclusive);
-	}
+/**
+ * A service that is exposed in the {@link RuntimeContext}, so that UDFs may safely utilize the current time in their
+ * functions, in such a way that after local recovery, the state of the task is consistent with the state before failure
+ */
+public interface TimeService {
+	/**
+	 * During normal operation, returns the current system time.
+	 * During causal recovery, if the implementation is causal, returns the same timestamp as before.
+	 */
+    long currentTimeMillis();
 }

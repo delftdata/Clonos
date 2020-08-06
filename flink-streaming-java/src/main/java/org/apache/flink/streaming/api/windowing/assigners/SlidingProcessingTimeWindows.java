@@ -71,6 +71,7 @@ public class SlidingProcessingTimeWindows extends WindowAssigner<Object, TimeWin
 			start -= slide) {
 			windows.add(new TimeWindow(start, start + size));
 		}
+
 		return windows;
 	}
 

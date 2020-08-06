@@ -18,11 +18,9 @@
 package org.apache.flink.streaming.runtime.partitioner;
 
 import org.apache.flink.annotation.Internal;
-import org.apache.flink.runtime.causal.services.RandomService;
+import org.apache.flink.api.common.services.RandomService;
 import org.apache.flink.runtime.plugable.SerializationDelegate;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
-
-import java.util.Random;
 
 /**
  * Partitioner that distributes the data equally by selecting one output channel

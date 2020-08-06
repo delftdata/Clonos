@@ -26,7 +26,7 @@ import org.apache.flink.runtime.causal.determinant.ProcessingTimeCallbackID;
 import org.apache.flink.runtime.causal.determinant.TimerTriggerDeterminant;
 import org.apache.flink.runtime.causal.log.job.JobCausalLog;
 import org.apache.flink.runtime.causal.recovery.RecoveryManager;
-import org.apache.flink.runtime.causal.services.TimeService;
+import org.apache.flink.api.common.services.TimeService;
 import org.apache.flink.util.Preconditions;
 
 import org.slf4j.Logger;
@@ -37,7 +37,6 @@ import javax.annotation.Nonnull;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Timer;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
