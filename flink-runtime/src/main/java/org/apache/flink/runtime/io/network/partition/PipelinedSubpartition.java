@@ -481,9 +481,9 @@ public class PipelinedSubpartition extends ResultSubpartition {
 	}
 
 	public void requestReplay(long checkpointId, int ignoreMessages) {
-		LOG.debug("Replay requested");
+		LOG.info("Replay requested");
 		synchronized (buffers) {
-			LOG.debug("Replay requested acquired lock");
+			LOG.info("Replay requested acquired lock");
 			if (inflightReplayIterator != null)
 				inflightReplayIterator.close();
 			inflightReplayIterator = inFlightLog.getInFlightIterator(checkpointId, ignoreMessages);

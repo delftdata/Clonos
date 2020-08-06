@@ -60,8 +60,9 @@ public class CausalTimeService implements TimeService {
 		else
 			toReturn = System.currentTimeMillis();
 
-		LOG.debug("We are running, returning a fresh timestamp and recording it.");
+		LOG.debug("Appending time determinant");
 		causalLoggingManager.appendDeterminant(reuseTimestampDeterminant.replace(toReturn), epochProvider.getCurrentEpochID());
+		LOG.debug("We are running, returning a fresh timestamp and recording it.");
 		return toReturn;
 	}
 }

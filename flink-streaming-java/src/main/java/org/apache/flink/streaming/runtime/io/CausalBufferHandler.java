@@ -131,7 +131,7 @@ public class CausalBufferHandler implements CheckpointBarrierHandler {
 				break;
 			}
 		}
-		LOG.info("Returning buffer from channel {}", toReturn.getChannelIndex());
+		LOG.debug("Returning buffer from channel {}", toReturn.getChannelIndex());
 		synchronized (lock) {
 			causalLoggingManager.appendDeterminant(reuseOrderDeterminant.replace((byte) toReturn.getChannelIndex()),
 				epochProvider.getCurrentEpochID());
