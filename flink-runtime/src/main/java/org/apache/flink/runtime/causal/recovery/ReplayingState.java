@@ -81,6 +81,8 @@ public class ReplayingState extends AbstractState {
 
 	public void executeEnter() {
 		prepareNext();
+		if (nextDeterminant == null)
+			finishReplaying();
 		context.readyToReplayFuture.complete(null);//allow task to start running
 	}
 
@@ -131,6 +133,8 @@ public class ReplayingState extends AbstractState {
 			throw new RuntimeException("Unexpected Determinant type: Expected RNG, but got: " + nextDeterminant);
 		RNGDeterminant toReturn = (RNGDeterminant) nextDeterminant;
 		prepareNext();
+		if (nextDeterminant == null)
+			finishReplaying();
 		return toReturn.getNumber();
 	}
 
@@ -141,6 +145,8 @@ public class ReplayingState extends AbstractState {
 
 		OrderDeterminant toReturn = (OrderDeterminant) nextDeterminant;
 		prepareNext();
+		if (nextDeterminant == null)
+			finishReplaying();
 		return toReturn.getChannel();
 	}
 
@@ -151,6 +157,8 @@ public class ReplayingState extends AbstractState {
 
 		TimestampDeterminant toReturn = (TimestampDeterminant) nextDeterminant;
 		prepareNext();
+		if (nextDeterminant == null)
+			finishReplaying();
 		return toReturn.getTimestamp();
 	}
 
@@ -161,13 +169,16 @@ public class ReplayingState extends AbstractState {
 			int currentRecordCount = context.recordCountProvider.getRecordCount();
 			if (currentRecordCount > asyncDeterminant.getRecordCount())
 				throw new RuntimeException("Current record count is beyond the determinants record count. Current: " + currentRecordCount + ", determinant: " + asyncDeterminant.getRecordCount());
-			LOG.info("Current: " + currentRecordCount + ", determinant: " + asyncDeterminant.getRecordCount());
+			LOG.debug("Current: " + currentRecordCount + ", determinant: " + asyncDeterminant.getRecordCount());
 			if (context.recordCountProvider.getRecordCount() == asyncDeterminant.getRecordCount()) {
-				LOG.info("We are at the same point in the stream, with record count: {}",
+				LOG.debug("We are at the same point in the stream, with record count: {}",
 					asyncDeterminant.getRecordCount());
 				//Prepare next first, because the async event, in being processed, may require determinants
 				prepareNext();
 				asyncDeterminant.process(context);
+				if (nextDeterminant == null)
+					finishReplaying();
+
 			} else
 				break;
 		}
@@ -175,15 +186,13 @@ public class ReplayingState extends AbstractState {
 
 	private void prepareNext() {
 		nextDeterminant = null;
-		if (mainThreadRecoveryBuffer == null || !mainThreadRecoveryBuffer.isReadable())
-			finishReplaying();
-		else
+		if (mainThreadRecoveryBuffer != null && mainThreadRecoveryBuffer.isReadable())
 			nextDeterminant = determinantEncoder.decodeNext(mainThreadRecoveryBuffer);
 	}
 
 	private void finishReplaying() {
 
-		//Safety check that recovery brought us to the exact same state as pre-failure
+		//Safety check that recovery brought us to the exact same causal log state as pre-failure
 		assert mainThreadRecoveryBuffer.capacity() == context.jobCausalLog.mainThreadLogLength();
 
 		if (mainThreadRecoveryBuffer != null)
@@ -231,9 +240,8 @@ private static class SubpartitionRecoveryThread extends Thread {
 				throw new RuntimeException("Subpartition has corrupt recovery buffer, expected buffer built, got: " + determinant);
 			BufferBuiltDeterminant bufferBuiltDeterminant = (BufferBuiltDeterminant) determinant;
 
-			LOG.info("Requesting to build and log buffer with {} bytes", bufferBuiltDeterminant.getNumberOfBytes());
+			LOG.debug("Requesting to build and log buffer with {} bytes", bufferBuiltDeterminant.getNumberOfBytes());
 			pipelinedSubpartition.buildAndLogBuffer(bufferBuiltDeterminant.getNumberOfBytes());
-			LOG.info("Finished building and logging one buffer in supartition recovery thread");
 		}
 		LOG.info("Done recovering pipelined subpartition");
 		//Safety check that recovery brought us to the exact same state as pre-failure

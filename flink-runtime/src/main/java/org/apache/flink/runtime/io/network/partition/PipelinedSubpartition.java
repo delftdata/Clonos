@@ -156,7 +156,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 				return;
 			}
 			flushRequested = !buffers.isEmpty();
-			if (recoveryManager.isRunning() && !isRecoveringSubpartitionInFlightState.get())
+			if (!isRecoveringSubpartitionInFlightState.get())
 				notifyDataAvailable();
 		}
 	}
@@ -274,16 +274,17 @@ public class PipelinedSubpartition extends ResultSubpartition {
 			return null;
 		}
 
-
+		BufferAndBacklog buf;
 		synchronized (buffers) {
 			if (inflightReplayIterator != null) {
 				LOG.debug("We are replaying, get inflight logs next buffer");
-				return getReplayedBufferUnsafe();
+				buf = getReplayedBufferUnsafe();
 			} else {
 				LOG.debug("We are not replaying, get buffer from consumers");
-				return getBufferFromQueuedBufferConsumersUnsafe();
+				buf =  getBufferFromQueuedBufferConsumersUnsafe();
 			}
 		}
+		return buf;
 
 	}
 
@@ -295,7 +296,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 		if (!inflightReplayIterator.hasNext()) {
 			inflightReplayIterator = null;
-			LOG.debug("Finished replaying inflight log!");
+			LOG.info("Finished replaying inflight log!");
 		}
 
 		return new BufferAndBacklog(buffer,
@@ -483,12 +484,11 @@ public class PipelinedSubpartition extends ResultSubpartition {
 	public void requestReplay(long checkpointId, int ignoreMessages) {
 		LOG.info("Replay requested");
 		synchronized (buffers) {
-			LOG.info("Replay requested acquired lock");
 			if (inflightReplayIterator != null)
 				inflightReplayIterator.close();
 			inflightReplayIterator = inFlightLog.getInFlightIterator(checkpointId, ignoreMessages);
 			if (inflightReplayIterator != null) {
-				LOG.debug("Replay has been requested for pipelined subpartition of id {}, index {}, skipping {} " +
+				LOG.info("Replay has been requested for pipelined subpartition of id {}, index {}, skipping {} " +
 						"buffers, " +
 						"buffers to replay {}. Setting downstreamFailed to false", this.parent.getPartitionId(),
 					this.index,

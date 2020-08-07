@@ -161,7 +161,7 @@ public class SystemProcessingTimeService extends ProcessingTimeService implement
 	}
 
 	private ScheduledFuture<?> registerTimerRecovering(TriggerTask toRegister, long delay) {
-		LOG.info("We are recovering, differing one-shot timer registration!");
+		LOG.debug("We are recovering, differing one-shot timer registration!");
 		long submissionTime = getCurrentProcessingTime();
 		ProcessingTimeCallbackID id = toRegister.getTarget().getID();
 		preregisteredTimerTasks.put(id, new PreregisteredTimer(toRegister, delay, submissionTime));
@@ -169,7 +169,7 @@ public class SystemProcessingTimeService extends ProcessingTimeService implement
 	}
 
 	private ScheduledFuture<?> registerTimerRunning(TriggerTask toRegister, long delay) {
-		LOG.info("We are running, directly registering one-shot timer!");
+		LOG.debug("We are running, directly registering one-shot timer!");
 		// we directly try to register the timer and only react to the status on exception
 		// that way we save unnecessary volatile accesses for each timer
 		try {
@@ -203,7 +203,7 @@ public class SystemProcessingTimeService extends ProcessingTimeService implement
 	}
 
 	private ScheduledFuture<?> registerAtFixedRateRecovering(long initialDelay, long period, RepeatedTriggerTask toRegister) {
-		LOG.info("We are recovering, differing fixed rate timer registration!");
+		LOG.debug("We are recovering, differing fixed rate timer registration!");
 		long submissionTime = getCurrentProcessingTime();
 		ProcessingTimeCallbackID id = toRegister.getTarget().getID();
 		preregisteredTimerTasks.put(id, new PreregisteredTimer(toRegister, initialDelay, submissionTime));
@@ -212,7 +212,7 @@ public class SystemProcessingTimeService extends ProcessingTimeService implement
 	}
 
 	private ScheduledFuture<?> registerAtFixedRateRunning(long initialDelay, long period, RepeatedTriggerTask toRegister) {
-		LOG.info("We are running, directly registering fixed rate timer!");
+		LOG.debug("We are running, directly registering fixed rate timer!");
 		// we directly try to register the timer and only react to the status on exception
 		// that way we save unnecessary volatile accesses for each timer
 		try {
@@ -323,7 +323,7 @@ public class SystemProcessingTimeService extends ProcessingTimeService implement
 
 	@Override
 	public void forceExecution(ProcessingTimeCallbackID id, long timestamp) {
-		LOG.info("Forcing execution of task with callback id {} for timestamp {}", id, timestamp);
+		LOG.debug("Forcing execution of task with callback id {} for timestamp {}", id, timestamp);
 		PreregisteredTimer timerTask = preregisteredTimerTasks.get(id);
 		if (timerTask == null)
 			throw new RuntimeException("Timer not found during recovery");
@@ -345,7 +345,7 @@ public class SystemProcessingTimeService extends ProcessingTimeService implement
 	public void concludeReplay() {
 		LOG.info("Concluded replay, moving preregistered timers to main registry");
 		for (PreregisteredTimer preregisteredTimer : preregisteredTimerTasks.values()) {
-			LOG.info("Preregistered timer: {}", preregisteredTimer);
+			LOG.debug("Preregistered timer: {}", preregisteredTimer);
 			if (preregisteredTimer.task instanceof TriggerTask)
 				registerTimerRunning((TriggerTask) preregisteredTimer.task, preregisteredTimer.delay);
 			else if (preregisteredTimer.task instanceof RepeatedTriggerTask)//register using period as delay, since it has been executed a few times already
