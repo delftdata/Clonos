@@ -29,20 +29,30 @@ import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 public class VertexGraphInformation {
 
-	private final VertexID thisTasksVertexID;
 	private final List<VertexID> upstreamVertexes;
 	private final List<VertexID> downstreamVertexes;
 	private final int numberOfDirectDownstreamNeighbours;
 	private final List<JobVertex> sortedJobVertexes;
+	private final boolean hasUpstream;
+	private final boolean hasDownstream;
+
+	private final VertexID thisTasksVertexID;
 	private final int subtaskIndex;
 	private final JobVertexID jobVertexID;
 	private final JobVertex jobVertex;
 
-	private final List<JobVertex> directlyUpstreamJobVertexes;
-	private final List<JobVertex> nonDirectlyUpstreamJobVertexes;
+
+	/**
+	 * Encodes the distance from this vertex to all other vertexes.
+	 * Not being present represents disconnected components.
+	 * Negative distance means upstream, positive distance represents downstream.
+	 */
+	private final Map<VertexID, Integer> distancesToVertex;
 
 	public VertexGraphInformation(List<JobVertex> sortedJobVertexes, JobVertexID jobVertexID, int subtaskIndex) {
 
@@ -51,12 +61,15 @@ public class VertexGraphInformation {
 		this.subtaskIndex = subtaskIndex;
 		this.jobVertex = CausalGraphUtils.fromSortedList(sortedJobVertexes, jobVertexID);
 		this.thisTasksVertexID = CausalGraphUtils.computeVertexId(sortedJobVertexes, jobVertexID, subtaskIndex);
-		this.upstreamVertexes = CausalGraphUtils.getUpstreamVertexIds(sortedJobVertexes, jobVertexID);
-		this.downstreamVertexes = CausalGraphUtils.getDownstreamVertexIds(sortedJobVertexes, jobVertexID);
-		this.numberOfDirectDownstreamNeighbours = CausalGraphUtils.getNumberOfDirectDownstreamNeighbours(sortedJobVertexes, jobVertexID);
 
-		this.directlyUpstreamJobVertexes = CausalGraphUtils.computeDirectlyUpstreamJobVertexes(sortedJobVertexes, jobVertexID);
-		this.nonDirectlyUpstreamJobVertexes = CausalGraphUtils.computeNonDirectlyUpstreamJobVertexes(sortedJobVertexes, jobVertexID);
+		this.distancesToVertex = CausalGraphUtils.computeDistances(sortedJobVertexes, jobVertexID, subtaskIndex);
+
+		this.upstreamVertexes = _getUpstreamVertexes();
+		this.downstreamVertexes = _getDownstreamVertexes();
+		this.numberOfDirectDownstreamNeighbours = _getNumberOfDirectDownstreamNeighbours();
+		this.hasDownstream = _hasDownstream();
+		this.hasUpstream = _hasUpstream();
+
 	}
 
 	public VertexID getThisTasksVertexID() {
@@ -64,25 +77,43 @@ public class VertexGraphInformation {
 	}
 
 	public List<VertexID> getUpstreamVertexes() {
-		return upstreamVertexes;
+		return this.upstreamVertexes;
+	}
+	public List<VertexID> _getUpstreamVertexes() {
+		return distancesToVertex.entrySet().stream().filter(e -> e.getValue() < 0).map(Map.Entry::getKey).collect(Collectors.toList());
 	}
 
 	public List<VertexID> getDownstreamVertexes() {
-		return downstreamVertexes;
+		return this.downstreamVertexes;
+	}
+	public List<VertexID> _getDownstreamVertexes() {
+		return distancesToVertex.entrySet().stream().filter(e -> e.getValue() > 0).map(Map.Entry::getKey).collect(Collectors.toList());
 	}
 
 	public int getNumberOfDirectDownstreamNeighbours() {
-		return numberOfDirectDownstreamNeighbours;
+		return this.numberOfDirectDownstreamNeighbours;
+	}
+	public int _getNumberOfDirectDownstreamNeighbours() {
+		return (int) distancesToVertex.values().stream().filter(v -> v == 1).count();
 	}
 
 	public boolean hasUpstream(){
-		return !this.upstreamVertexes.isEmpty();
+		return this.hasUpstream;
+	}
+	public boolean _hasUpstream(){
+		return distancesToVertex.values().stream().anyMatch(v -> v < 0);
 	}
 
 	public boolean hasDownstream(){
-		return !this.downstreamVertexes.isEmpty();
+		return this.hasDownstream;
+	}
+	public boolean _hasDownstream(){
+		return distancesToVertex.values().stream().anyMatch(v -> v > 0);
 	}
 
+	public int getDistanceTo(VertexID vertexID){
+		return distancesToVertex.get(vertexID);
+	}
 
 	public List<JobVertex> getSortedJobVertexes() {
 		return sortedJobVertexes;
@@ -100,12 +131,7 @@ public class VertexGraphInformation {
 		return jobVertex;
 	}
 
-
-	public List<JobVertex> getDirectlyUpstreamJobVertexes() {
-		return directlyUpstreamJobVertexes;
-	}
-
-	public List<JobVertex> getNonDirectlyUpstreamJobVertexes() {
-		return nonDirectlyUpstreamJobVertexes;
+	public Map<VertexID, Integer> getDistances() {
+		return distancesToVertex;
 	}
 }

@@ -401,7 +401,7 @@ public abstract class NettyMessage {
 
 				causalLogDelta.writeHeaderTo(headerBuf);
 
-				CompositeByteBuf composityBuf = allocator.compositeDirectBuffer();
+				CompositeByteBuf composityBuf = allocator.compositeDirectBuffer(Integer.MAX_VALUE);
 				composityBuf.addComponent(true,headerBuf);
 				composityBuf.addComponent(true,buffer);
 				causalLogDelta.writeBodyTo(composityBuf);

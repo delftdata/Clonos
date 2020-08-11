@@ -29,14 +29,11 @@ import org.apache.flink.runtime.causal.DeterminantResponseEvent;
 import org.apache.flink.runtime.causal.VertexID;
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
 import org.apache.flink.runtime.io.network.api.DeterminantRequestEvent;
-import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
 import org.apache.flink.runtime.io.network.partition.PipelinedSubpartition;
-import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.Arrays;
 
 /**
  * We either start in this state, or transition to it after the full recovery.
@@ -77,8 +74,7 @@ public class RunningState extends AbstractState {
 
 		try {
 			DeterminantResponseEvent responseEvent =
-				new DeterminantResponseEvent(context.jobCausalLog.getDeterminantsOfVertex(vertex,
-					e.getStartEpochID()));
+				context.jobCausalLog.respondToDeterminantRequest(vertex, e.getStartEpochID());
 			LOG.info("Responding with: {}", responseEvent);
 
 			context.inputGate.getInputChannel(channelRequestArrivedFrom).sendTaskEvent(responseEvent);

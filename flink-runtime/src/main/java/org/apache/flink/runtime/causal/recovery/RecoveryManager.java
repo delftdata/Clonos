@@ -150,6 +150,10 @@ public class RecoveryManager implements IRecoveryManager {
 
 	@Override
 	public synchronized void notifyDeterminantResponseEvent(DeterminantResponseEvent e) {
+		//TODO future work, allow for different handlers to handle DeterminantResponseEvents
+		// whose determinants are not found
+		// For now, these are just merged, providing at least once guarantees in the case of multiple failures with low
+		// determinant sharing depth
 		this.currentState.notifyDeterminantResponseEvent(e);
 	}
 

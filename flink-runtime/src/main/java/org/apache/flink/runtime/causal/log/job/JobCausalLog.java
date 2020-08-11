@@ -24,6 +24,7 @@
  */
 package org.apache.flink.runtime.causal.log.job;
 
+import org.apache.flink.runtime.causal.DeterminantResponseEvent;
 import org.apache.flink.runtime.causal.VertexGraphInformation;
 import org.apache.flink.runtime.causal.VertexID;
 import org.apache.flink.runtime.causal.determinant.*;
@@ -48,28 +49,37 @@ public class JobCausalLog implements IJobCausalLog {
 
 	private static final Logger LOG = LoggerFactory.getLogger(JobCausalLog.class);
 
-	VertexID myVertexID;
+	private final VertexID myVertexID;
 
-	ConcurrentMap<VertexID, UpstreamVertexCausalLog> upstreamDeterminantLogs;
+	private final ConcurrentMap<VertexID, UpstreamVertexCausalLog> upstreamDeterminantLogs;
 
-	LocalVertexCausalLog localCausalLog;
+	private final LocalVertexCausalLog localCausalLog;
 
-	ConcurrentSet<InputChannelID> registeredConsumers;
+	private final ConcurrentSet<InputChannelID> registeredConsumers;
 
-	BufferPool bufferPool;
+	private final BufferPool bufferPool;
 
-	Object lock;
+	private final Object lock;
 
-	DeterminantEncoder encoder;
+	private final DeterminantEncoder encoder;
 
-	public JobCausalLog(VertexGraphInformation vertexGraphInformation, ResultPartitionWriter[] resultPartitionsOfLocalVertex, BufferPool bufferPool, Object lock) {
+	private final Map<VertexID, Integer> distancesToVertex;
+
+	private final int determinantSharingDepth;
+
+	public JobCausalLog(VertexGraphInformation vertexGraphInformation, int determinantSharingDepth,
+						ResultPartitionWriter[] resultPartitionsOfLocalVertex, BufferPool bufferPool, Object lock) {
 		this.myVertexID = vertexGraphInformation.getThisTasksVertexID();
+		this.distancesToVertex = vertexGraphInformation.getDistances();
 		this.bufferPool = bufferPool;
+		this.determinantSharingDepth = determinantSharingDepth;
 
 		this.encoder = new SimpleDeterminantEncoder();
 
-		LOG.info("Creating new CausalLoggingManager for id {}, with upstreams {} ", myVertexID, String.join(", ", vertexGraphInformation.getUpstreamVertexes().stream().map(Object::toString).collect(Collectors.toList())));
-		localCausalLog = new BasicLocalVertexCausalLog(vertexGraphInformation,resultPartitionsOfLocalVertex, bufferPool, encoder);
+		LOG.info("Creating new CausalLoggingManager for id {}, with upstreams {} ", myVertexID, String.join(", ",
+			vertexGraphInformation.getUpstreamVertexes().stream().map(Object::toString).collect(Collectors.toList())));
+		localCausalLog = new BasicLocalVertexCausalLog(vertexGraphInformation, resultPartitionsOfLocalVertex,
+			bufferPool, encoder);
 
 		//Defer initializing the determinant logs to avoid having to perform reachability analysis
 		this.upstreamDeterminantLogs = new ConcurrentHashMap<>();
@@ -79,13 +89,14 @@ public class JobCausalLog implements IJobCausalLog {
 	}
 
 
-
 	@Override
-	public void registerDownstreamConsumer(InputChannelID inputChannelID, IntermediateResultPartitionID consumedResultPartitionID, int consumedSubpartition) {
+	public void registerDownstreamConsumer(InputChannelID inputChannelID,
+										   IntermediateResultPartitionID consumedResultPartitionID,
+										   int consumedSubpartition) {
 		LOG.debug("Registering new input channel at Job level");
-		for(VertexCausalLog causalLog : upstreamDeterminantLogs.values())
-			causalLog.registerDownstreamConsumer(inputChannelID,consumedResultPartitionID , consumedSubpartition);
-		localCausalLog.registerDownstreamConsumer(inputChannelID, consumedResultPartitionID , consumedSubpartition);
+		for (VertexCausalLog causalLog : upstreamDeterminantLogs.values())
+			causalLog.registerDownstreamConsumer(inputChannelID, consumedResultPartitionID, consumedSubpartition);
+		localCausalLog.registerDownstreamConsumer(inputChannelID, consumedResultPartitionID, consumedSubpartition);
 		registeredConsumers.add(inputChannelID);
 	}
 
@@ -100,8 +111,11 @@ public class JobCausalLog implements IJobCausalLog {
 	}
 
 	@Override
-	public void appendSubpartitionDeterminant(Determinant determinant, long epochID, IntermediateResultPartitionID intermediateResultPartitionID, int subpartitionIndex) {
-		LOG.debug("Appending determinant {} for epochID {} to intermediateDataSetID {} subpartition {}", determinant, epochID, intermediateResultPartitionID, subpartitionIndex);
+	public void appendSubpartitionDeterminant(Determinant determinant, long epochID,
+											  IntermediateResultPartitionID intermediateResultPartitionID,
+											  int subpartitionIndex) {
+		LOG.debug("Appending determinant {} for epochID {} to intermediateDataSetID {} subpartition {}", determinant,
+			epochID, intermediateResultPartitionID, subpartitionIndex);
 		localCausalLog.appendSubpartitionDeterminants(
 			determinant,
 			epochID,
@@ -129,7 +143,8 @@ public class JobCausalLog implements IJobCausalLog {
 	}
 
 	@Override
-	public int subpartitionLogLength(IntermediateResultPartitionID intermediateResultPartitionID, int subpartitionIndex) {
+	public int subpartitionLogLength(IntermediateResultPartitionID intermediateResultPartitionID,
+									 int subpartitionIndex) {
 		return this.localCausalLog.subpartitionLogLength(intermediateResultPartitionID, subpartitionIndex);
 	}
 
@@ -137,29 +152,41 @@ public class JobCausalLog implements IJobCausalLog {
 	public void unregisterDownstreamConsumer(InputChannelID toCancel) {
 		this.registeredConsumers.remove(toCancel);
 		localCausalLog.unregisterDownstreamConsumer(toCancel);
-		for(UpstreamVertexCausalLog upstreamVertexCausalLog : upstreamDeterminantLogs.values())
+		for (UpstreamVertexCausalLog upstreamVertexCausalLog : upstreamDeterminantLogs.values())
 			upstreamVertexCausalLog.unregisterDownstreamConsumer(toCancel);
 	}
 
 	@Override
-	public VertexCausalLogDelta getDeterminantsOfVertex(VertexID vertexId, long startEpochID) {
+	public DeterminantResponseEvent respondToDeterminantRequest(VertexID vertexId, long startEpochID) {
 		LOG.debug("Got request for determinants of vertexID {}", vertexId);
-		return upstreamDeterminantLogs.computeIfAbsent(vertexId, k -> new BasicUpstreamVertexCausalLog(vertexId, bufferPool)).getDeterminants(startEpochID);
+		if (determinantSharingDepth != -1 && Math.abs(distancesToVertex.get(vertexId)) > determinantSharingDepth)
+			return new DeterminantResponseEvent(false, vertexId);
+		else {
+			VertexCausalLog log = upstreamDeterminantLogs.computeIfAbsent(vertexId,
+				k -> new BasicUpstreamVertexCausalLog(vertexId, bufferPool));
+			return new DeterminantResponseEvent(log.getDeterminants(startEpochID));
+		}
 	}
 
 	@Override
-	public List<VertexCausalLogDelta> getNextDeterminantsForDownstream(InputChannelID inputChannelID, long epochID){
+	public List<VertexCausalLogDelta> getNextDeterminantsForDownstream(InputChannelID inputChannelID, long epochID) {
 		LOG.debug("Getting deltas to send to downstream channel {} for epochID {}", inputChannelID, epochID);
 		List<VertexCausalLogDelta> results = new LinkedList<>();
 		for (VertexID key : this.upstreamDeterminantLogs.keySet()) {
-			UpstreamVertexCausalLog upstreamVertexCausalLog = upstreamDeterminantLogs.get(key);
-			VertexCausalLogDelta causalLogDelta = upstreamVertexCausalLog.getNextDeterminantsForDownstream(inputChannelID, epochID);
-			if (causalLogDelta.hasUpdates())
-				results.add(causalLogDelta);
+			if (determinantSharingDepth == -1 || Math.abs(distancesToVertex.get(key)) + 1 <= determinantSharingDepth) {
+				UpstreamVertexCausalLog upstreamVertexCausalLog = upstreamDeterminantLogs.get(key);
+				VertexCausalLogDelta causalLogDelta =
+					upstreamVertexCausalLog.getNextDeterminantsForDownstream(inputChannelID, epochID);
+				if (causalLogDelta.hasUpdates())
+					results.add(causalLogDelta);
+			}
 		}
-		VertexCausalLogDelta vertexCausalLogDelta = localCausalLog.getNextDeterminantsForDownstream(inputChannelID, epochID);
-		if(vertexCausalLogDelta.hasUpdates())
-			results.add(vertexCausalLogDelta);
+		if (determinantSharingDepth != 0) {
+			VertexCausalLogDelta vertexCausalLogDelta = localCausalLog.getNextDeterminantsForDownstream(inputChannelID
+				, epochID);
+			if (vertexCausalLogDelta.hasUpdates())
+				results.add(vertexCausalLogDelta);
+		}
 		return results;
 	}
 

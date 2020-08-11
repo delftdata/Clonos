@@ -286,7 +286,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		SingleInputGate[] inputGates = environment.getContainingTask().getAllInputGates();
 
 		this.jobCausalLog = environment.getCausalLogManager().registerNewJob(this.getEnvironment().getJobID(),
-			vertexGraphInformation, getEnvironment().getAllWriters(), getCheckpointLock());
+			vertexGraphInformation, getExecutionConfig().getDeterminantSharingDepth(), getEnvironment().getAllWriters(), getCheckpointLock());
 
 		this.recoveryManager = new RecoveryManager(this, jobCausalLog, readyToReplayFuture, vertexGraphInformation,
 			recordCountProvider, this, environment.getContainingTask().getProducedPartitions());

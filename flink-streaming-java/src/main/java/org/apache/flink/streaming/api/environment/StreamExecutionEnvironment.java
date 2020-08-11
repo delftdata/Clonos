@@ -164,6 +164,26 @@ public abstract class StreamExecutionEnvironment {
 	}
 
 	/**
+	 * Sets the depth up to which a vertex should share its determinants.
+	 * Has implications on the fault tolerance of the system.
+	 * Higher values provide more safety, lower values provide more performance
+	 * @param depth the depth to set
+	 */
+	@PublicEvolving
+	public StreamExecutionEnvironment setDeterminantSharingDepth(int depth){
+		config.setDeterminantSharingDepth(depth);
+		return this;
+	}
+
+	/**
+	 * Returns the depth up to which a vertex should share its determinants
+	 */
+	@PublicEvolving
+	public int getDeterminantSharingDepth(){
+		return config.getDeterminantSharingDepth();
+	}
+
+	/**
 	 * Sets the parallelism for operations executed through this environment.
 	 * Setting a parallelism of x here will cause all operators (such as map,
 	 * batchReduce) to run with x parallel instances. This method overrides the
@@ -199,6 +219,7 @@ public abstract class StreamExecutionEnvironment {
 		config.setMaxParallelism(maxParallelism);
 		return this;
 	}
+
 
 	/**
 	 * Gets the parallelism with which operation are executed by default.

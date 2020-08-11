@@ -29,6 +29,7 @@ import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferPool;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
+import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBufAllocator;
 import org.apache.flink.shaded.netty4.io.netty.buffer.CompositeByteBuf;
 import org.apache.flink.shaded.netty4.io.netty.buffer.Unpooled;
 import org.slf4j.Logger;
@@ -74,7 +75,7 @@ public class NetworkBufferBasedContiguousThreadCausalLog implements ThreadCausal
 	protected long earliestEpoch;
 
 	public NetworkBufferBasedContiguousThreadCausalLog(BufferPool bufferPool) {
-		buf = Unpooled.compositeBuffer(Integer.MAX_VALUE);
+		buf = ByteBufAllocator.DEFAULT.compositeDirectBuffer(Integer.MAX_VALUE);
 		this.bufferPool = bufferPool;
 
 		addComponent();

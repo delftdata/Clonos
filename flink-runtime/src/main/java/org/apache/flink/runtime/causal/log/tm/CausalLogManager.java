@@ -78,7 +78,7 @@ public class CausalLogManager {
 	}
 
 	public JobCausalLog registerNewJob(JobID jobID, VertexGraphInformation vertexGraphInformation,
-									   ResultPartitionWriter[] resultPartitionsOfLocalVertex, Object lock) {
+									   int determinantSharingDepth, ResultPartitionWriter[] resultPartitionsOfLocalVertex, Object lock) {
 		LOG.debug("Registering a new Job {}.", jobID);
 
 		BufferPool taskDeterminantBufferPool = null;
@@ -89,7 +89,7 @@ public class CausalLogManager {
 			throw new RuntimeException("Could not register determinant buffer pool!: \n" + e.getMessage());
 		}
 
-		JobCausalLog jobCausalLog = new JobCausalLog(vertexGraphInformation, resultPartitionsOfLocalVertex,
+		JobCausalLog jobCausalLog = new JobCausalLog(vertexGraphInformation, determinantSharingDepth, resultPartitionsOfLocalVertex,
 			taskDeterminantBufferPool, lock);
 
 		synchronized (jobIDToManagerMap) {

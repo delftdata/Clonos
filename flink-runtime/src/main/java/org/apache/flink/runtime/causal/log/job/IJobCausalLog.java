@@ -24,6 +24,7 @@
  */
 package org.apache.flink.runtime.causal.log.job;
 
+import org.apache.flink.runtime.causal.DeterminantResponseEvent;
 import org.apache.flink.runtime.causal.VertexID;
 import org.apache.flink.runtime.causal.determinant.*;
 import org.apache.flink.runtime.causal.log.vertex.VertexCausalLogDelta;
@@ -53,7 +54,7 @@ public interface IJobCausalLog extends CheckpointListener {
 
 	void processUpstreamVertexCausalLogDelta(VertexCausalLogDelta d, long epochID);
 
-	VertexCausalLogDelta getDeterminantsOfVertex(VertexID vertexId, long startEpochID);
+	DeterminantResponseEvent respondToDeterminantRequest(VertexID vertexId, long startEpochID);
 
 	List<VertexCausalLogDelta> getNextDeterminantsForDownstream(InputChannelID inputChannelID, long checkpointID);
 
