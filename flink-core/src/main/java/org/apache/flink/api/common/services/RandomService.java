@@ -25,12 +25,14 @@
 
 package org.apache.flink.api.common.services;
 
+import org.apache.flink.annotation.Public;
 import org.apache.flink.api.common.functions.RuntimeContext;
 
 /**
  * A service that is exposed in the {@link RuntimeContext}, so that UDFs may safely utilize random numbers in their
  * functions, in such a way that after local recovery, the state of the task is consistent with the state before failure
  */
+@Public
 public interface RandomService {
 
 	/**
