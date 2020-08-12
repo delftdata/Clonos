@@ -103,7 +103,7 @@ public class BasicUpstreamVertexCausalLog implements UpstreamVertexCausalLog {
 			List<SubpartitionThreadLogDelta> deltasWithData = new ArrayList<>(datasetEntry.getValue().size());
 			for (Map.Entry<Integer, UpstreamThreadCausalLog> subpartitionEntry : datasetEntry.getValue().entrySet()) {
 				ByteBuf buf = subpartitionEntry.getValue().getDeterminants(startEpochID);
-				if (buf.capacity() > 0)
+				if (buf.writerIndex() > 0)
 					deltasWithData.add(new SubpartitionThreadLogDelta(buf, 0, subpartitionEntry.getKey()));
 			}
 			if (!deltasWithData.isEmpty()) {
@@ -114,7 +114,7 @@ public class BasicUpstreamVertexCausalLog implements UpstreamVertexCausalLog {
 
 		}
 
-		return new VertexCausalLogDelta(vertexId, (mainThreadBuf.capacity() > 0 ? new ThreadLogDelta(mainThreadBuf, 0) : null), subpartitionDeltas);
+		return new VertexCausalLogDelta(vertexId, (mainThreadBuf.writerIndex() > 0 ? new ThreadLogDelta(mainThreadBuf, 0) : null), subpartitionDeltas);
 	}
 
 	@Override

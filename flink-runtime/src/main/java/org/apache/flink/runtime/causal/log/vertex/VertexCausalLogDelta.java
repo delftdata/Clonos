@@ -186,6 +186,10 @@ public class VertexCausalLogDelta implements NettyMessageWritable, IOReadableWri
 
 	@Override
 	public void write(DataOutputView out) throws IOException {
+		/**
+		 * This write is called by EventSerializer. Thus we can release the backing buffers here, after writing them
+		 * out to out
+		 */
 		out.writeShort(vertexID.getVertexId());
 		out.writeBoolean(mainThreadDelta != null);
 		out.writeShort(partitionDeltas.size());
@@ -210,6 +214,7 @@ public class VertexCausalLogDelta implements NettyMessageWritable, IOReadableWri
 			byte[] copy = new byte[mainThreadDelta.getDeltaSize()];
 			mainThreadDelta.getRawDeterminants().readBytes(copy);
 			out.write(copy); //todo if possible we should avoid this data copy, however it isnt critical path
+			mainThreadDelta.getRawDeterminants().release();
 		}
 
 		for (Map.Entry<IntermediateResultPartitionID, SortedMap<Integer, SubpartitionThreadLogDelta>> entry : partitionDeltas.entrySet()) {
@@ -217,6 +222,7 @@ public class VertexCausalLogDelta implements NettyMessageWritable, IOReadableWri
 				byte[] copy = new byte[subpartitionLogDelta.getDeltaSize()];
 				subpartitionLogDelta.getRawDeterminants().readBytes(copy);
 				out.write(copy); //todo if possible we should avoid this data copy, however it isnt critical path
+				subpartitionLogDelta.getRawDeterminants().release();
 			}
 		}
 	}

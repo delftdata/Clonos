@@ -78,7 +78,6 @@ public class RunningState extends AbstractState {
 			LOG.info("Responding with: {}", responseEvent);
 
 			context.inputGate.getInputChannel(channelRequestArrivedFrom).sendTaskEvent(responseEvent);
-			responseEvent.getVertexCausalLogDelta().release();
 		} catch (IOException | InterruptedException ex) {
 			ex.printStackTrace();
 		}

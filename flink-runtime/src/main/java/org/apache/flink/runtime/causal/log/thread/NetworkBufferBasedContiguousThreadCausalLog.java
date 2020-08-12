@@ -28,15 +28,21 @@ package org.apache.flink.runtime.causal.log.thread;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferPool;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
-import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
-import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBufAllocator;
-import org.apache.flink.shaded.netty4.io.netty.buffer.CompositeByteBuf;
-import org.apache.flink.shaded.netty4.io.netty.buffer.Unpooled;
+import org.apache.flink.shaded.netty4.io.netty.buffer.*;
+import org.apache.flink.shaded.netty4.io.netty.util.ByteProcessor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.concurrent.GuardedBy;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.channels.FileChannel;
+import java.nio.channels.GatheringByteChannel;
+import java.nio.channels.ScatteringByteChannel;
+import java.nio.charset.Charset;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -59,7 +65,7 @@ public class NetworkBufferBasedContiguousThreadCausalLog implements ThreadCausal
 
 	protected final BufferPool bufferPool;
 
-	protected CompositeByteBuf buf;
+	protected final CompositeByteBuf buf;
 
 	@GuardedBy("buf")
 	protected ConcurrentMap<Long, EpochStartOffset> epochStartOffsets;
@@ -87,7 +93,7 @@ public class NetworkBufferBasedContiguousThreadCausalLog implements ThreadCausal
 		readLock = epochLock.readLock();
 		writeLock = epochLock.writeLock();
 
-		earliestEpoch = 0l;
+		earliestEpoch = 0L;
 	}
 
 	@Override
@@ -100,10 +106,20 @@ public class NetworkBufferBasedContiguousThreadCausalLog implements ThreadCausal
 			EpochStartOffset offset = epochStartOffsets.get(epoch);
 			if (offset != null)
 				startIndex = offset.getOffset();
+			int writerPos = writerIndex.get();
+			int numBytesToSend = writerPos-startIndex;
+			//result = buf.alloc().directBuffer(numBytesToSend);
+			//buf.readBytes(result, startIndex, numBytesToSend);
 
-			synchronized (buf) {
-				result = buf.asReadOnly().slice(startIndex, writerIndex.get()-startIndex).retain();
-			}
+			//result = getPooledByteBuf();
+			//result.writeBytes(buf,writerPos, numBytesToSend);
+
+			result = makeAllocatedDelta(buf, startIndex, numBytesToSend);
+
+
+			//result= Unpooled.directBuffer(numBytesToSend, numBytesToSend);
+
+			//result.writeBytes(buf, startIndex, numBytesToSend);
 		} finally {
 			readLock.unlock();
 		}
@@ -133,8 +149,15 @@ public class NetworkBufferBasedContiguousThreadCausalLog implements ThreadCausal
 			int physicalConsumerOffset = consumerOffset.epochStart.offset + consumerOffset.offset;
 
 			int numBytesToSend = computeNumberOfBytesToSend(epochID, physicalConsumerOffset);
+			ByteBuf update;
 
-			ByteBuf update = buf.asReadOnly().slice(physicalConsumerOffset, numBytesToSend).retain();
+			if(numBytesToSend == 0)
+				update = Unpooled.EMPTY_BUFFER;
+			else {
+				update = makeAllocatedDelta(buf, physicalConsumerOffset, numBytesToSend);
+				//update = Unpooled.directBuffer(numBytesToSend, numBytesToSend);
+				//update.writeBytes(buf, physicalConsumerOffset, numBytesToSend);
+			}
 
 			ThreadLogDelta toReturn = new ThreadLogDelta(update, consumerOffset.getOffset());
 			consumerOffset.setOffset(consumerOffset.getOffset() + numBytesToSend);
@@ -142,6 +165,63 @@ public class NetworkBufferBasedContiguousThreadCausalLog implements ThreadCausal
 		} finally {
 			readLock.unlock();
 		}
+	}
+
+	private ByteBuf getPooledByteBuf(){
+		Buffer ret = null;
+		try{
+			while(ret == null)
+				ret = bufferPool.requestBuffer();
+		}catch(IOException e) {
+			e.printStackTrace();
+		}
+		return ret.asByteBuf();
+	}
+
+	private ByteBuf makeAllocatedDelta(CompositeByteBuf buf, int srcOffset, int numBytesToSend){
+		CompositeByteBuf result = ByteBufAllocator.DEFAULT.compositeDirectBuffer(Integer.MAX_VALUE);
+
+		ByteBuf comp = getPooledByteBuf();
+		comp.writerIndex(comp.capacity());
+		int compSize = comp.capacity();
+		int numComponentsNeeded = (int) Math.ceil(numBytesToSend/(float)compSize);
+
+		result.addComponent(comp);
+		for(int i = 1; i < numComponentsNeeded; i++){
+
+			ByteBuf c = getPooledByteBuf();
+			c.writerIndex(c.capacity());
+			result.addComponent(c);
+		}
+
+		result.writeBytes(buf, srcOffset, numBytesToSend);
+		return result;
+	}
+
+	/**
+	 *
+	 * Uses must be wrapped by reader lock
+	 */
+	private ByteBuf makeDeltaUnsafe(CompositeByteBuf buf, int srcOffset, int numBytesToSend) {
+		CompositeByteBuf result = ByteBufAllocator.DEFAULT.compositeDirectBuffer(Integer.MAX_VALUE);
+
+		int currOffset = srcOffset;
+		int numBytesLeft = numBytesToSend;
+		while(numBytesLeft != 0 ){
+
+			ByteBuf component = buf.componentAtOffset(currOffset);
+			int numBytesToAddFromThisComp = Math.min(numBytesLeft, component.capacity());
+			//We do not retain due to the invariant that if a consumer has not received this epochs determinants,
+			// then the epoch may not be completed. Thus, only when all references to this epochs components are
+			// released, will the epoch be able to complete
+			ByteBuf slice = component.retainedSlice(0, numBytesToAddFromThisComp);
+
+			result.addComponent(true, slice);
+
+			numBytesLeft -= numBytesToAddFromThisComp;
+			currOffset += numBytesToAddFromThisComp;
+		}
+		return result;
 	}
 
 	@Override
@@ -271,7 +351,7 @@ public class NetworkBufferBasedContiguousThreadCausalLog implements ThreadCausal
 	/**
 	 * Marks the next element to be read by the downstream consumer
 	 */
-	protected class ConsumerOffset {
+	protected static class ConsumerOffset {
 		// Refers to the epoch that the downstream is currently in
 		private EpochStartOffset epochStart;
 
@@ -307,4 +387,5 @@ public class NetworkBufferBasedContiguousThreadCausalLog implements ThreadCausal
 				'}';
 		}
 	}
+
 }
