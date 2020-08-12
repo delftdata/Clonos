@@ -137,4 +137,68 @@ public class NettyTests {
 		assert slice.release();
 		assert b1.refCnt() == 0;
 	}
+
+	@Test
+	public void CompositeFromCompositeComponentsTest(){
+		CompositeByteBuf log = Unpooled.compositeBuffer(Integer.MAX_VALUE);
+
+		for(int i = 0; i < 5; i++){
+			ByteBuf b = Unpooled.buffer();
+			b.writeBytes("Hello world".getBytes());
+			assert b.refCnt() == 1;
+			log.addComponent(true, b);
+			assert b.refCnt() == 1;
+		}
+		assert log.internalComponent(1).refCnt() == 1;
+		assert log.refCnt() == 1;
+
+		//delta is going to be from 5 - 30, including 6 bytes from first, 11 from second and 8 from third bufs
+		//"Hello worldHello worldHello worldHello worldHello world"
+		//"_____ worldHello worldHello w__________________________
+		CompositeByteBuf delta = buildDelta(log, 16, 41-16);
+
+		assert delta.refCnt() == 1 ;
+		System.out.println(log.internalComponent(1).refCnt());
+		assert log.internalComponent(1).refCnt() == 2;
+
+		byte[] bytes = new byte[delta.readableBytes()];
+		delta.readBytes(bytes);
+		System.out.println(new String(bytes));
+		assert new String(bytes).equals(" worldHello worldHello wo"); //o?
+		delta.readerIndex(0);
+
+		log.readerIndex(12);
+		log.discardReadComponents();
+		assert log.capacity() == 44;
+
+		delta.readBytes(bytes);
+		System.out.println(new String(bytes));
+		assert new String(bytes).equals(" worldHello worldHello wo"); //o?
+
+		delta.release();
+		System.out.println(log.internalComponent(1).refCnt());
+		assert log.internalComponent(1).refCnt() == 1;
+
+
+	}
+
+	private static CompositeByteBuf buildDelta(CompositeByteBuf log, int startIndex, int length){
+
+		CompositeByteBuf delta = Unpooled.compositeBuffer(Integer.MAX_VALUE);
+		int numBytesLeft = length;
+		int currIndex = startIndex;
+		int bufferComponentSizes = log.internalComponent(0).capacity();
+		while (numBytesLeft != 0){
+			int bufferIndex = currIndex / bufferComponentSizes;
+			ByteBuf buf = log.internalComponent(bufferIndex);
+			int indexInBuffer = currIndex % bufferComponentSizes;
+			int numBytesFromBuf = Math.min(numBytesLeft, bufferComponentSizes - indexInBuffer);
+			delta.addComponent(true, buf.retainedSlice(indexInBuffer, numBytesFromBuf));
+			currIndex+= numBytesFromBuf;
+			numBytesLeft -= numBytesFromBuf;
+		}
+
+		return delta;
+
+	}
 }

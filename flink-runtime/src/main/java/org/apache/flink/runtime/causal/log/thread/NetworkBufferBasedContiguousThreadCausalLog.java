@@ -114,7 +114,7 @@ public class NetworkBufferBasedContiguousThreadCausalLog implements ThreadCausal
 			//result = getPooledByteBuf();
 			//result.writeBytes(buf,writerPos, numBytesToSend);
 
-			result = makeAllocatedDelta(buf, startIndex, numBytesToSend);
+			result = makeDeltaUnsafe(buf, startIndex, numBytesToSend);
 
 
 			//result= Unpooled.directBuffer(numBytesToSend, numBytesToSend);
@@ -154,7 +154,7 @@ public class NetworkBufferBasedContiguousThreadCausalLog implements ThreadCausal
 			if(numBytesToSend == 0)
 				update = Unpooled.EMPTY_BUFFER;
 			else {
-				update = makeAllocatedDelta(buf, physicalConsumerOffset, numBytesToSend);
+				update = makeDeltaUnsafe(buf, physicalConsumerOffset, numBytesToSend);
 				//update = Unpooled.directBuffer(numBytesToSend, numBytesToSend);
 				//update.writeBytes(buf, physicalConsumerOffset, numBytesToSend);
 			}
@@ -202,24 +202,28 @@ public class NetworkBufferBasedContiguousThreadCausalLog implements ThreadCausal
 	 *
 	 * Uses must be wrapped by reader lock
 	 */
-	private ByteBuf makeDeltaUnsafe(CompositeByteBuf buf, int srcOffset, int numBytesToSend) {
+	private ByteBuf makeDeltaUnsafe(CompositeByteBuf log, int srcOffset, int numBytesToSend) {
+		/**
+		 * Build a composite byte buffer using the log internal components. Doing so guarantees that even if a
+		 * checkpoint happens, sliced internal components data will not be moved.
+		 * Thus, as long as this is called within the reader lock, we are safe to not copy the data.
+		 * This is because of the invariant that a checkpoint cannot complete if there are still unsent determinants
+		 * of an epoch.
+		 */
 		CompositeByteBuf result = ByteBufAllocator.DEFAULT.compositeDirectBuffer(Integer.MAX_VALUE);
 
-		int currOffset = srcOffset;
+		int currIndex = srcOffset;
 		int numBytesLeft = numBytesToSend;
+		int bufferComponentSizes = bufferPool.getMemorySegmentSize();
 		while(numBytesLeft != 0 ){
+			int bufferIndex = currIndex / bufferComponentSizes;
+			int indexInBuffer = currIndex %bufferComponentSizes;
+			ByteBuf buf = log.internalComponent(bufferIndex);
+			int numBytesFromBuf = Math.min(numBytesLeft, bufferComponentSizes - indexInBuffer);
+			result.addComponent(true, buf.retainedSlice(indexInBuffer, numBytesFromBuf));
 
-			ByteBuf component = buf.componentAtOffset(currOffset);
-			int numBytesToAddFromThisComp = Math.min(numBytesLeft, component.capacity());
-			//We do not retain due to the invariant that if a consumer has not received this epochs determinants,
-			// then the epoch may not be completed. Thus, only when all references to this epochs components are
-			// released, will the epoch be able to complete
-			ByteBuf slice = component.retainedSlice(0, numBytesToAddFromThisComp);
-
-			result.addComponent(true, slice);
-
-			numBytesLeft -= numBytesToAddFromThisComp;
-			currOffset += numBytesToAddFromThisComp;
+			numBytesLeft -= numBytesFromBuf;
+			currIndex += numBytesFromBuf;
 		}
 		return result;
 	}
