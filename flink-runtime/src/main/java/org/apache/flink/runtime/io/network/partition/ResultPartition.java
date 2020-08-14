@@ -368,6 +368,12 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 		if (bufferPool != null) {
 			bufferPool.lazyDestroy();
 		}
+
+		for(ResultSubpartition rs : subpartitions){
+			if (rs instanceof PipelinedSubpartition){
+				((PipelinedSubpartition) rs).getInFlightLog().destroyBufferPools();
+			}
+		}
 	}
 
 	/**

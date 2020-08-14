@@ -58,4 +58,6 @@ public interface VertexCausalLog {
     int mainThreadLogLength();
 
 	int subpartitionLogLength(IntermediateResultPartitionID intermediateResultPartitionID, int subpartitionIndex);
+
+    void close();
 }

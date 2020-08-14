@@ -55,4 +55,6 @@ public interface ThreadCausalLog extends CheckpointListener {
 	 * Obtains the length in bytes of the log
 	 */
     int logLength();
+
+    void close();
 }

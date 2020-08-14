@@ -68,4 +68,6 @@ public interface IJobCausalLog extends CheckpointListener {
 	// These methods are used to ensure that after recovery, log length is the exact size it should be
     int mainThreadLogLength();
     int subpartitionLogLength(IntermediateResultPartitionID intermediateResultPartitionID, int subpartitionIndex);
+
+    void close();
 }

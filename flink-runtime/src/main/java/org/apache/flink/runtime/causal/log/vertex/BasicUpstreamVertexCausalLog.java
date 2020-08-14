@@ -168,6 +168,14 @@ public class BasicUpstreamVertexCausalLog implements UpstreamVertexCausalLog {
 	}
 
 	@Override
+	public void close() {
+		mainThreadLog.close();
+		for(ConcurrentMap<Integer, UpstreamThreadCausalLog> partitionLogs: subpartitionLogs.values())
+			for(UpstreamThreadCausalLog subpartitionLog : partitionLogs.values())
+				subpartitionLog.close();
+	}
+
+	@Override
 	public String toString() {
 		return "BasicUpstreamVertexCausalLog{" +
 			"vertexId=" + vertexId +

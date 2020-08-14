@@ -78,7 +78,8 @@ public class CausalLogManager {
 	}
 
 	public JobCausalLog registerNewJob(JobID jobID, VertexGraphInformation vertexGraphInformation,
-									   int determinantSharingDepth, ResultPartitionWriter[] resultPartitionsOfLocalVertex, Object lock) {
+									   int determinantSharingDepth,
+									   ResultPartitionWriter[] resultPartitionsOfLocalVertex, Object lock) {
 		LOG.debug("Registering a new Job {}.", jobID);
 
 		BufferPool taskDeterminantBufferPool = null;
@@ -89,7 +90,8 @@ public class CausalLogManager {
 			throw new RuntimeException("Could not register determinant buffer pool!: \n" + e.getMessage());
 		}
 
-		JobCausalLog jobCausalLog = new JobCausalLog(vertexGraphInformation, determinantSharingDepth, resultPartitionsOfLocalVertex,
+		JobCausalLog jobCausalLog = new JobCausalLog(vertexGraphInformation, determinantSharingDepth,
+			resultPartitionsOfLocalVertex,
 			taskDeterminantBufferPool, lock);
 
 		synchronized (jobIDToManagerMap) {
@@ -126,7 +128,7 @@ public class CausalLogManager {
 		synchronized (inputChannelIDToManagerMap) {
 			log = inputChannelIDToManagerMap.get(inputChannelID);
 			while (log == null) {
-				if(removedConsumers.containsKey(inputChannelID))
+				if (removedConsumers.containsKey(inputChannelID))
 					return new CausalLogDelta(epochID, new VertexCausalLogDelta[0]);
 				waitUninterruptedly(inputChannelIDToManagerMap);
 				log = inputChannelIDToManagerMap.get(inputChannelID);
@@ -151,7 +153,7 @@ public class CausalLogManager {
 	}
 
 	public void processCausalLogDelta(JobID jobID, CausalLogDelta causalLogDelta) {
-		JobCausalLog jobCausalLog ;
+		JobCausalLog jobCausalLog;
 		synchronized (jobIDToManagerMap) {
 			jobCausalLog = jobIDToManagerMap.get(jobID);
 			while (jobCausalLog == null) {
@@ -170,5 +172,20 @@ public class CausalLogManager {
 		} catch (InterruptedException e) {
 			e.printStackTrace();
 		}
+	}
+
+	public void unregisterJob(JobID jobID) {
+		JobCausalLog jobCausalLog;
+		synchronized (jobIDToManagerMap) {
+			jobCausalLog = jobIDToManagerMap.remove(jobID);
+			while (jobCausalLog == null) {
+				waitUninterruptedly(jobIDToManagerMap);
+				jobCausalLog = jobIDToManagerMap.get(jobID);
+			}
+		}
+
+		jobCausalLog.close();
+
+
 	}
 }

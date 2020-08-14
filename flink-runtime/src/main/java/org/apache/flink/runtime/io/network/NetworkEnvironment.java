@@ -326,6 +326,7 @@ public class NetworkEnvironment {
 					}
 				}
 			}
+			causalLogManager.unregisterJob(task.getJobID());
 		}
 	}
 

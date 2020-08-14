@@ -49,13 +49,10 @@ public class JobCausalLog implements IJobCausalLog {
 
 	private static final Logger LOG = LoggerFactory.getLogger(JobCausalLog.class);
 
-	private final VertexID myVertexID;
-
 	private final ConcurrentMap<VertexID, UpstreamVertexCausalLog> upstreamDeterminantLogs;
 
 	private final LocalVertexCausalLog localCausalLog;
 
-	private final ConcurrentSet<InputChannelID> registeredConsumers;
 
 	private final BufferPool bufferPool;
 
@@ -69,7 +66,7 @@ public class JobCausalLog implements IJobCausalLog {
 
 	public JobCausalLog(VertexGraphInformation vertexGraphInformation, int determinantSharingDepth,
 						ResultPartitionWriter[] resultPartitionsOfLocalVertex, BufferPool bufferPool, Object lock) {
-		this.myVertexID = vertexGraphInformation.getThisTasksVertexID();
+		VertexID myVertexID = vertexGraphInformation.getThisTasksVertexID();
 		this.distancesToVertex = vertexGraphInformation.getDistances();
 		this.bufferPool = bufferPool;
 		this.determinantSharingDepth = determinantSharingDepth;
@@ -83,7 +80,6 @@ public class JobCausalLog implements IJobCausalLog {
 
 		//Defer initializing the determinant logs to avoid having to perform reachability analysis
 		this.upstreamDeterminantLogs = new ConcurrentHashMap<>();
-		this.registeredConsumers = new ConcurrentSet<>();
 
 		this.lock = lock;
 	}
@@ -97,7 +93,6 @@ public class JobCausalLog implements IJobCausalLog {
 		for (VertexCausalLog causalLog : upstreamDeterminantLogs.values())
 			causalLog.registerDownstreamConsumer(inputChannelID, consumedResultPartitionID, consumedSubpartition);
 		localCausalLog.registerDownstreamConsumer(inputChannelID, consumedResultPartitionID, consumedSubpartition);
-		registeredConsumers.add(inputChannelID);
 	}
 
 	@Override
@@ -150,7 +145,6 @@ public class JobCausalLog implements IJobCausalLog {
 
 	@Override
 	public void unregisterDownstreamConsumer(InputChannelID toCancel) {
-		this.registeredConsumers.remove(toCancel);
 		localCausalLog.unregisterDownstreamConsumer(toCancel);
 		for (UpstreamVertexCausalLog upstreamVertexCausalLog : upstreamDeterminantLogs.values())
 			upstreamVertexCausalLog.unregisterDownstreamConsumer(toCancel);
@@ -199,4 +193,12 @@ public class JobCausalLog implements IJobCausalLog {
 		localCausalLog.notifyCheckpointComplete(checkpointId);
 	}
 
+
+	@Override
+	public void close() {
+		this.localCausalLog.close();
+		for(UpstreamVertexCausalLog upstreamVertexCausalLog : upstreamDeterminantLogs.values())
+			upstreamVertexCausalLog.close();
+		bufferPool.lazyDestroy();
+	}
 }

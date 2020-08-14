@@ -75,6 +75,18 @@ public class InMemorySubpartitionInFlightLogger implements InFlightLog {
 		return replayIterator;
 	}
 
+	@Override
+	public void destroyBufferPools() {
+
+	}
+
+	@Override
+	public synchronized void close() {
+		for(List<Buffer> epoch : slicedLog.values())
+			for(Buffer b : epoch)
+				b.recycleBuffer();
+	}
+
 	private void increaseReferenceCountsUnsafe(Long epochID) {
 		for (List<Buffer> epoch : slicedLog.tailMap(epochID).values())
 			for (Buffer buffer : epoch)

@@ -219,6 +219,11 @@ public class PipelinedSubpartition extends ResultSubpartition {
 				return;
 			}
 
+			inFlightLog.close();
+			if(inflightReplayIterator != null)
+				inflightReplayIterator.close();
+
+
 			// Release all available buffers
 			for (BufferConsumer buffer : buffers) {
 				buffer.close();

@@ -45,4 +45,7 @@ public interface InFlightLog extends CheckpointListener {
 	 */
 	InFlightLogIterator<Buffer> getInFlightIterator(long epochID, int ignoreBuffers);
 
+    void destroyBufferPools();
+
+	void close();
 }

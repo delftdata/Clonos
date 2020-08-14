@@ -50,7 +50,7 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 	private final SortedMap<Long, Epoch> slicedLog;
 	private final IOManager ioManager;
 
-	private final Object subpartitionLock = new Object();
+	private final Object flushLock = new Object();
 	private final Consumer<SpillableSubpartitionInFlightLogger> flushPolicy;
 	private final boolean policyIsSynchronous;
 	private final BufferPool recoveryBufferPool;
@@ -75,7 +75,7 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 		this.isReplaying = new AtomicBoolean(false);
 
 		if(!policyIsSynchronous) {
-			this.flusherThread = new Thread(new FlushRunnable(this, flushPolicy, subpartitionLock,
+			this.flusherThread = new Thread(new FlushRunnable(this, flushPolicy, flushLock,
 				flusherSleepTime, isReplaying));
 			this.flusherThread.start();
 		}else {
@@ -86,7 +86,7 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 
 	@Override
 	public void log(Buffer buffer, long epochID) {
-		synchronized (subpartitionLock) {
+		synchronized (flushLock) {
 			Epoch epoch = slicedLog.computeIfAbsent(epochID, k -> new Epoch(createNewWriter(k), k));
 			epoch.append(buffer);
 			if(policyIsSynchronous && !isReplaying.get())
@@ -101,7 +101,7 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 		List<Long> toRemove = new LinkedList<>();
 		List<Epoch> epochsRemoved = new LinkedList<>();
 
-		synchronized (subpartitionLock) {
+		synchronized (flushLock) {
 			//keys are in ascending order
 			for (long epochID : slicedLog.keySet())
 				if (epochID < checkpointID)
@@ -119,13 +119,27 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 	public InFlightLogIterator<Buffer> getInFlightIterator(long epochID, int ignoreBuffers) {
 		SortedMap<Long, Epoch> logToReplay;
 		this.isReplaying.set(true);
-		synchronized (subpartitionLock) {
+		synchronized (flushLock) {
 			logToReplay = slicedLog.tailMap(epochID);
 			if (logToReplay.size() == 0)
 				return null;
 		}
 
-		return new SpilledReplayIterator(logToReplay, recoveryBufferPool, ioManager, subpartitionLock, ignoreBuffers, isReplaying);
+		return new SpilledReplayIterator(logToReplay, recoveryBufferPool, ioManager, flushLock, ignoreBuffers, isReplaying);
+	}
+
+	@Override
+	public void destroyBufferPools() {
+		recoveryBufferPool.lazyDestroy();
+		subpartitionBufferPool.lazyDestroy();
+	}
+
+	@Override
+	public void close() {
+		synchronized (flushLock){
+			for(Epoch e : slicedLog.values())
+				e.removeEpochFile();
+		}
 	}
 
 	public SortedMap<Long, Epoch> getSlicedLog() {
@@ -133,7 +147,7 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 	}
 
 	private void notifyFlushCompleted(long epochID) {
-		synchronized (subpartitionLock) {
+		synchronized (flushLock) {
 			Epoch epoch = slicedLog.get(epochID);
 			if (epoch != null && !epoch.stable())
 				epoch.notifyFlushCompleted();
@@ -141,7 +155,7 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 	}
 
 	private void notifyFlushFailed(long epochID) {
-		synchronized (subpartitionLock) {
+		synchronized (flushLock) {
 			Epoch epoch = slicedLog.get(epochID);
 			if (epoch != null && !epoch.stable())
 				epoch.notifyFlushFailed();
@@ -150,7 +164,7 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 
 
 	public boolean isPoolAvailabilityLow() {
-		synchronized (subpartitionLock) {
+		synchronized (flushLock) {
 			float availability = computePoolAvailability();
 			LOG.debug("Is pool availability low? {} < {} ? Pool: {} ", availability, availabilityFillFactor,
 				subpartitionBufferPool);
@@ -176,7 +190,7 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 	}
 
 	public Object getLock() {
-		return subpartitionLock;
+		return flushLock;
 	}
 
 	public void registerSubpartitionBufferPool(BufferPool subpartitionBufferPool){
@@ -232,7 +246,6 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 		public void notifyFlushCompleted() {
 			LOG.debug("Notify flush completed");
 			Buffer buffer = epochBuffers.get(nextBufferToCompleteFlushing);
-
 			buffer.recycleBuffer();
 			nextBufferToCompleteFlushing++;
 		}
@@ -295,6 +308,7 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 				", nextBufferToCompleteFlushing=" + nextBufferToCompleteFlushing +
 				'}';
 		}
+
 	}
 
 	private static class FlushCompletedCallback implements RequestDoneCallback<Buffer> {

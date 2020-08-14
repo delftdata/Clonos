@@ -29,20 +29,11 @@ import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferPool;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
 import org.apache.flink.shaded.netty4.io.netty.buffer.*;
-import org.apache.flink.shaded.netty4.io.netty.util.ByteProcessor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.concurrent.GuardedBy;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.nio.channels.FileChannel;
-import java.nio.channels.GatheringByteChannel;
-import java.nio.channels.ScatteringByteChannel;
-import java.nio.charset.Charset;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -243,6 +234,13 @@ public class NetworkBufferBasedContiguousThreadCausalLog implements ThreadCausal
 			readLock.unlock();
 		}
 		return result;
+	}
+
+	@Override
+	public void close() {
+		writeLock.lock();
+		buf.release();
+		writeLock.unlock();
 	}
 
 	private int computeNumberOfBytesToSend(long epochID, int physicalConsumerOffset) {

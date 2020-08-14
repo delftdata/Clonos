@@ -168,6 +168,14 @@ public class BasicLocalVertexCausalLog implements LocalVertexCausalLog {
 	}
 
 	@Override
+	public void close() {
+		mainThreadLog.close();
+		for(LocalThreadCausalLog[] partitionLogs: subpartitionLogs.values())
+			for(LocalThreadCausalLog subpartitionLog : partitionLogs)
+				subpartitionLog.close();
+	}
+
+	@Override
 	public String toString() {
 		return "BasicLocalVertexCausalLog{" +
 			"vertexId=" + vertexId +
