@@ -25,17 +25,6 @@
 
 package org.apache.flink.runtime.causal;
 
-import org.apache.flink.runtime.causal.log.thread.ReplicatedThreadCausalLog;
-import org.apache.flink.runtime.causal.log.thread.UpstreamThreadCausalLog;
-import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
-import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
-import org.apache.flink.shaded.netty4.io.netty.buffer.Unpooled;
-import org.junit.Test;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Random;
-
 public class RemoteCausalLogTest {
 
 	static byte[] toSend = getAlphaNumericString(50000).getBytes();
