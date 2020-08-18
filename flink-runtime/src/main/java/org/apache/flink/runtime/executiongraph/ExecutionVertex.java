@@ -696,12 +696,15 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 
 		//Tell consumers of failed operator to reconfigure connections
 		LOG.debug("Update the to-run standby task's " + currentExecution + " consumer vertices (if any).");
+		LOG.info("Before requesting update of downstream");
 		for (IntermediateResultPartition partition : resultPartitions.values()) {
 			checkPartition(partition);
 			currentExecution.scheduleOrUpdateConsumers(partition.getConsumers(),
 				updateConsumersOnFailover);
 		}
+		LOG.info("After requesting update of doenstream");
 
+		LOG.info("Before requesting update of upstream");
 		//Tell producers for failed operator to reconfigure connections
 		for (ExecutionEdge[] edges : inputEdges) {
 			for (ExecutionEdge edge : edges) {
@@ -718,6 +721,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 					updateConsumersOnFailover);
 			}
 		}
+		LOG.info("After requesting update of upstream");
 
 	}
 

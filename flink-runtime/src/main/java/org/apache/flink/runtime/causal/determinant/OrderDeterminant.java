@@ -51,4 +51,8 @@ public final class OrderDeterminant extends Determinant {
 	public int getEncodedSizeInBytes() {
 		return super.getEncodedSizeInBytes() + Byte.BYTES;
 	}
+
+	public static byte getTypeTag() {
+		return ORDER_DETERMINANT_TAG;
+	}
 }

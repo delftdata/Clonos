@@ -87,4 +87,8 @@ public class TimerTriggerDeterminant extends AsyncDeterminant {
 		return super.getEncodedSizeInBytes() + Long.BYTES + Byte.BYTES + (processingTimeCallbackID.getType() != ProcessingTimeCallbackID.Type.INTERNAL ?
 			0 : Integer.BYTES + processingTimeCallbackID.getName().getBytes().length);
 	}
+
+	public static byte getTypeTag() {
+		return TIMER_TRIGGER_DETERMINANT;
+	}
 }

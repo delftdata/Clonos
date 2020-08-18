@@ -117,6 +117,7 @@ public class RunStandbyTaskStrategy extends FailoverStrategy {
 		standbyReady.thenAcceptAsync((Void) -> {
 			LOG.info("Running the standby execution.");
 			vertexToRecover.runStandbyExecution();
+			LOG.info("Done requesting standby execution");
 		}, callbackExecutor);
 
 		//In case of exceptions during the whole execution, trigger full recovery

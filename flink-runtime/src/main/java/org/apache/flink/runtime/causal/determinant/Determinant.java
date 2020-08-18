@@ -22,9 +22,9 @@ public abstract class Determinant {
 	public static final byte ORDER_DETERMINANT_TAG = 0;
 	public static final byte TIMESTAMP_DETERMINANT_TAG = 1;
 	public static final byte RNG_DETERMINANT_TAG = 2;
-	public static final byte BUFFER_BUILT_TAG = 3;
-	public static final byte TIMER_TRIGGER_DETERMINANT = 4;
-	public static final byte SOURCE_CHECKPOINT_DETERMINANT = 5;
+	public static final byte TIMER_TRIGGER_DETERMINANT = 3;
+	public static final byte SOURCE_CHECKPOINT_DETERMINANT = 4;
+	public static final byte BUFFER_BUILT_TAG = 5;
 
 
 	public boolean isOrderDeterminant() {
@@ -78,5 +78,19 @@ public abstract class Determinant {
 
 	public int getEncodedSizeInBytes(){
 		return Byte.BYTES;
+	}
+
+	public byte getTag(){
+		if(this instanceof OrderDeterminant)
+			return ORDER_DETERMINANT_TAG;
+		if(this instanceof TimestampDeterminant)
+			return TIMESTAMP_DETERMINANT_TAG;
+		if(this instanceof RNGDeterminant)
+			return RNG_DETERMINANT_TAG;
+		if(this instanceof TimerTriggerDeterminant)
+			return TIMER_TRIGGER_DETERMINANT;
+		if(this instanceof SourceCheckpointDeterminant)
+			return SOURCE_CHECKPOINT_DETERMINANT;
+		return BUFFER_BUILT_TAG;
 	}
 }

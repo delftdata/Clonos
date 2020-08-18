@@ -18,6 +18,7 @@
 package org.apache.flink.runtime.causal.determinant;
 
 public final class TimestampDeterminant extends Determinant {
+
 	long timestamp;
 
 	public TimestampDeterminant(){}
@@ -45,5 +46,9 @@ public final class TimestampDeterminant extends Determinant {
 	@Override
 	public int getEncodedSizeInBytes() {
 		return super.getEncodedSizeInBytes() + Long.BYTES;
+	}
+
+	public static byte getTypeTag() {
+		return TIMESTAMP_DETERMINANT_TAG;
 	}
 }

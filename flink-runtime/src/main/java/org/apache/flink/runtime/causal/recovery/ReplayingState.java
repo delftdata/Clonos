@@ -64,6 +64,7 @@ public class ReplayingState extends AbstractState {
 
 	Determinant nextDeterminant;
 
+	Queue<Determinant>[] reuseCache;
 
 	public ReplayingState(RecoveryManager context, VertexCausalLogDelta recoveryDeterminants) {
 		super(context);
@@ -71,12 +72,40 @@ public class ReplayingState extends AbstractState {
 		LOG.info("Entered replaying state with delta: {}", recoveryDeterminants);
 		determinantEncoder = context.jobCausalLog.getDeterminantEncoder();
 
+		setupDeterminantCache();
+
 		createSubpartitionRecoveryThreads(recoveryDeterminants);
 		for (Thread t : recoveryThreads)
 			t.start();
 
 		if (recoveryDeterminants.getMainThreadDelta() != null)
 			this.mainThreadRecoveryBuffer = recoveryDeterminants.getMainThreadDelta().getRawDeterminants();
+
+
+	}
+
+	private void setupDeterminantCache() {
+		reuseCache = new Queue[5];
+
+		reuseCache[OrderDeterminant.getTypeTag()] = new LinkedList<>();
+		reuseCache[OrderDeterminant.getTypeTag()].add(new OrderDeterminant());
+		reuseCache[OrderDeterminant.getTypeTag()].add(new OrderDeterminant());
+
+		reuseCache[TimestampDeterminant.getTypeTag()] = new LinkedList<>();
+		reuseCache[TimestampDeterminant.getTypeTag()].add(new TimestampDeterminant());
+		reuseCache[TimestampDeterminant.getTypeTag()].add(new TimestampDeterminant());
+
+		reuseCache[RNGDeterminant.getTypeTag()] = new LinkedList<>();
+		reuseCache[RNGDeterminant.getTypeTag()].add(new RNGDeterminant());
+		reuseCache[RNGDeterminant.getTypeTag()].add(new RNGDeterminant());
+
+		reuseCache[TimerTriggerDeterminant.getTypeTag()] = new LinkedList<>();
+		reuseCache[TimerTriggerDeterminant.getTypeTag()].add(new TimerTriggerDeterminant());
+		reuseCache[TimerTriggerDeterminant.getTypeTag()].add(new TimerTriggerDeterminant());
+
+		reuseCache[SourceCheckpointDeterminant.getTypeTag()] = new LinkedList<>();
+		reuseCache[SourceCheckpointDeterminant.getTypeTag()].add(new SourceCheckpointDeterminant());
+		reuseCache[SourceCheckpointDeterminant.getTypeTag()].add(new SourceCheckpointDeterminant());
 	}
 
 	public void executeEnter() {
@@ -131,11 +160,12 @@ public class ReplayingState extends AbstractState {
 	public int replayRandomInt() {
 		if (!(nextDeterminant instanceof RNGDeterminant))
 			throw new RuntimeException("Unexpected Determinant type: Expected RNG, but got: " + nextDeterminant);
-		RNGDeterminant toReturn = (RNGDeterminant) nextDeterminant;
+		int toReturn = ((RNGDeterminant) nextDeterminant).getNumber();
+		recycleDeterminant(nextDeterminant);
 		prepareNext();
 		if (nextDeterminant == null)
 			finishReplaying();
-		return toReturn.getNumber();
+		return toReturn;
 	}
 
 	@Override
@@ -143,11 +173,12 @@ public class ReplayingState extends AbstractState {
 		if (!(nextDeterminant instanceof OrderDeterminant))
 			throw new RuntimeException("Unexpected Determinant type: Expected Order, but got: " + nextDeterminant);
 
-		OrderDeterminant toReturn = (OrderDeterminant) nextDeterminant;
+		byte toReturn = ((OrderDeterminant) nextDeterminant).getChannel();
+		recycleDeterminant(nextDeterminant);
 		prepareNext();
 		if (nextDeterminant == null)
 			finishReplaying();
-		return toReturn.getChannel();
+		return toReturn;
 	}
 
 	@Override
@@ -155,11 +186,12 @@ public class ReplayingState extends AbstractState {
 		if (!(nextDeterminant instanceof TimestampDeterminant))
 			throw new RuntimeException("Unexpected Determinant type: Expected Timestamp, but got: " + nextDeterminant);
 
-		TimestampDeterminant toReturn = (TimestampDeterminant) nextDeterminant;
+		long toReturn = ((TimestampDeterminant) nextDeterminant).getTimestamp();
+		recycleDeterminant(nextDeterminant);
 		prepareNext();
 		if (nextDeterminant == null)
 			finishReplaying();
-		return toReturn.getTimestamp();
+		return toReturn;
 	}
 
 	@Override
@@ -174,8 +206,11 @@ public class ReplayingState extends AbstractState {
 				LOG.debug("We are at the same point in the stream, with record count: {}",
 					asyncDeterminant.getRecordCount());
 				//Prepare next first, because the async event, in being processed, may require determinants
+				//But do not yet recycle the asyncDeterminant, as we must process it first
 				prepareNext();
 				asyncDeterminant.process(context);
+				//Now that we have used it, we may recycle it
+				recycleDeterminant(asyncDeterminant);
 				if (nextDeterminant == null)
 					finishReplaying();
 
@@ -184,10 +219,14 @@ public class ReplayingState extends AbstractState {
 		}
 	}
 
+	private void recycleDeterminant(Determinant determinant){
+		if(determinant != null)
+			reuseCache[determinant.getTag()].add(determinant);
+	}
 	private void prepareNext() {
 		nextDeterminant = null;
 		if (mainThreadRecoveryBuffer != null && mainThreadRecoveryBuffer.isReadable())
-			nextDeterminant = determinantEncoder.decodeNext(mainThreadRecoveryBuffer);
+			nextDeterminant = determinantEncoder.decodeNext(mainThreadRecoveryBuffer, reuseCache);
 	}
 
 	private void finishReplaying() {
@@ -228,13 +267,16 @@ private static class SubpartitionRecoveryThread extends Thread {
 
 	@Override
 	public void run() {
-		context.numberOfRecoveringSubpartitions.incrementAndGet();
 		//1. Netty has been told that there is no data.
-		pipelinedSubpartition.setIsRecoveringSubpartitionInFlightState(true);
+		context.numberOfRecoveringSubpartitions.incrementAndGet();
+		BufferBuiltDeterminant reuse = new BufferBuiltDeterminant();
+		Queue<Determinant>[] subpartCache = new Queue[6];
+		subpartCache[BufferBuiltDeterminant.getTypeTag()] = new LinkedList<>();
+		subpartCache[BufferBuiltDeterminant.getTypeTag()].add(reuse);
 		//2. Rebuild in-fligh log and subpartition state
 		while (recoveryBuffer.isReadable()) {
 
-			Determinant determinant = determinantEncoder.decodeNext(recoveryBuffer);
+			Determinant determinant = determinantEncoder.decodeNext(recoveryBuffer, subpartCache);
 
 			if (!(determinant instanceof BufferBuiltDeterminant))
 				throw new RuntimeException("Subpartition has corrupt recovery buffer, expected buffer built, got: " + determinant);
@@ -242,6 +284,8 @@ private static class SubpartitionRecoveryThread extends Thread {
 
 			LOG.debug("Requesting to build and log buffer with {} bytes", bufferBuiltDeterminant.getNumberOfBytes());
 			pipelinedSubpartition.buildAndLogBuffer(bufferBuiltDeterminant.getNumberOfBytes());
+			subpartCache[BufferBuiltDeterminant.getTypeTag()].add(reuse);
+
 		}
 		LOG.info("Done recovering pipelined subpartition");
 		//Safety check that recovery brought us to the exact same state as pre-failure

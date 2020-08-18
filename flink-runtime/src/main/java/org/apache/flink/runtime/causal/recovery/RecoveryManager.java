@@ -94,6 +94,8 @@ public class RecoveryManager implements IRecoveryManager {
 
 		this.incompleteStateRestorations = new ConcurrentHashMap<>();
 
+		setPartitions(partitions);
+
 		this.currentState = readyToReplayFuture == null ? new RunningState(this) : new StandbyState(this);
 
 		LOG.info("Starting recovery manager in state {}", currentState);
@@ -102,7 +104,6 @@ public class RecoveryManager implements IRecoveryManager {
 		this.recordCountProvider = recordCountProvider;
 		this.numberOfRecoveringSubpartitions = new AtomicInteger(0);
 		this.checkpointForceable = checkpointForceable;
-		setPartitions(partitions);
 	}
 
 	private void setPartitions(ResultPartition[] partitions) {

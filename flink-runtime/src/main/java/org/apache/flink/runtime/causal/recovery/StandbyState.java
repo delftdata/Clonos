@@ -25,6 +25,7 @@
 
 package org.apache.flink.runtime.causal.recovery;
 
+import org.apache.flink.runtime.io.network.partition.PipelinedSubpartition;
 import org.apache.flink.runtime.io.network.partition.consumer.RemoteInputChannel;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.slf4j.Logger;
@@ -53,6 +54,8 @@ public class StandbyState extends AbstractState {
 
 		this.inputChannelNotifications = new ConcurrentHashMap<>();
 		this.outputChannelNotifications = new ConcurrentHashMap<>();
+		for(PipelinedSubpartition ps : context.subpartitionTable.values())
+			ps.setIsRecoveringSubpartitionInFlightState(true);
 	}
 
 	@Override

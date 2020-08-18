@@ -18,6 +18,7 @@
 package org.apache.flink.runtime.causal.determinant;
 
 public final class RNGDeterminant extends Determinant {
+
 	int number;
 
 	public RNGDeterminant(){}
@@ -46,5 +47,9 @@ public final class RNGDeterminant extends Determinant {
 	@Override
 	public int getEncodedSizeInBytes() {
 		return super.getEncodedSizeInBytes() + Integer.BYTES;
+	}
+
+	public static byte getTypeTag() {
+		return RNG_DETERMINANT_TAG;
 	}
 }

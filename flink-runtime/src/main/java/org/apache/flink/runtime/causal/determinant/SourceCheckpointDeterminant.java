@@ -36,7 +36,6 @@ import java.util.Arrays;
 
 public class SourceCheckpointDeterminant extends AsyncDeterminant {
 
-
 	private byte[] storageReference;
 	private long checkpointID;
 	private long checkpointTimestamp;
@@ -114,5 +113,9 @@ public class SourceCheckpointDeterminant extends AsyncDeterminant {
 		//An extra byte is used to encode if storage reference exists
 		return super.getEncodedSizeInBytes() + Long.BYTES + Long.BYTES + Byte.BYTES + Byte.BYTES +
 			(storageReference != null ? Integer.BYTES + storageReference.length : 0);
+	}
+
+	public static byte getTypeTag() {
+		return SOURCE_CHECKPOINT_DETERMINANT;
 	}
 }

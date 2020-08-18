@@ -22,6 +22,8 @@ import org.apache.flink.runtime.checkpoint.CheckpointType;
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 import org.apache.flink.shaded.netty4.io.netty.buffer.Unpooled;
 
+import java.util.Queue;
+
 public class SimpleDeterminantEncoder implements DeterminantEncoder {
 
 	@Override
@@ -73,9 +75,29 @@ public class SimpleDeterminantEncoder implements DeterminantEncoder {
 		throw new CorruptDeterminantArrayException();
 	}
 
+	@Override
+	public Determinant decodeNext(ByteBuf b, Queue<Determinant>[] determinantCache) {
+		if (b == null)
+			return null;
+		if (!b.isReadable())
+			return null;
+		byte tag = b.readByte();
+		if (tag == Determinant.ORDER_DETERMINANT_TAG) return decodeOrderDeterminant(b, (OrderDeterminant) determinantCache[tag].poll());
+		if (tag == Determinant.TIMESTAMP_DETERMINANT_TAG) return decodeTimestampDeterminant(b, (TimestampDeterminant) determinantCache[tag].poll());
+		if (tag == Determinant.RNG_DETERMINANT_TAG) return decodeRNGDeterminant(b, (RNGDeterminant) determinantCache[tag].poll());
+		if (tag == Determinant.BUFFER_BUILT_TAG) return decodeBufferBuiltDeterminant(b, (BufferBuiltDeterminant) determinantCache[tag].poll());
+		if (tag == Determinant.TIMER_TRIGGER_DETERMINANT) return decodeTimerTriggerDeterminant(b, (TimerTriggerDeterminant) determinantCache[tag].poll());
+		if (tag == Determinant.SOURCE_CHECKPOINT_DETERMINANT) return decodeSourceCheckpointDeterminant(b, (SourceCheckpointDeterminant) determinantCache[tag].poll());
+		throw new CorruptDeterminantArrayException();
+	}
 
-	private Determinant decodeOrderDeterminant(ByteBuf b) {
-		return new OrderDeterminant(b.readByte());
+	@Override
+	public Determinant decodeOrderDeterminant(ByteBuf b) {
+		return decodeOrderDeterminant(b, new OrderDeterminant());
+	}
+	@Override
+	public Determinant decodeOrderDeterminant(ByteBuf b, OrderDeterminant reuse) {
+		return reuse.replace(b.readByte());
 	}
 
 	private void encodeOrderDeterminant(OrderDeterminant orderDeterminant, ByteBuf buf) {
@@ -90,10 +112,15 @@ public class SimpleDeterminantEncoder implements DeterminantEncoder {
 		return bytes;
 	}
 
-	private Determinant decodeTimestampDeterminant(ByteBuf b) {
-		return new TimestampDeterminant(b.readLong());
+	@Override
+	public Determinant decodeTimestampDeterminant(ByteBuf b) {
+		return decodeTimestampDeterminant(b, new TimestampDeterminant());
 	}
 
+	@Override
+	public Determinant decodeTimestampDeterminant(ByteBuf b, TimestampDeterminant reuse) {
+		return reuse.replace(b.readLong());
+	}
 	private void encodeTimestampDeterminant(TimestampDeterminant timestampDeterminant, ByteBuf buf) {
 		buf.writeByte(Determinant.TIMESTAMP_DETERMINANT_TAG);
 		buf.writeLong(timestampDeterminant.getTimestamp());
@@ -106,8 +133,14 @@ public class SimpleDeterminantEncoder implements DeterminantEncoder {
 		return bytes;
 	}
 
-	private Determinant decodeRNGDeterminant(ByteBuf b) {
-		return new RNGDeterminant(b.readInt());
+	@Override
+	public Determinant decodeRNGDeterminant(ByteBuf b) {
+		return decodeRNGDeterminant(b, new RNGDeterminant());
+	}
+
+	@Override
+	public Determinant decodeRNGDeterminant(ByteBuf b, RNGDeterminant reuse) {
+		return reuse.replace(b.readInt());
 	}
 
 	private void encodeRNGDeterminant(RNGDeterminant rngDeterminant, ByteBuf buf) {
@@ -122,9 +155,14 @@ public class SimpleDeterminantEncoder implements DeterminantEncoder {
 		return bytes;
 	}
 
-	private Determinant decodeBufferBuiltDeterminant(ByteBuf b) {
-		int bytes = b.readInt();
-		return new BufferBuiltDeterminant(bytes);
+	@Override
+	public Determinant decodeBufferBuiltDeterminant(ByteBuf b) {
+		return decodeBufferBuiltDeterminant(b, new BufferBuiltDeterminant());
+	}
+
+	@Override
+	public Determinant decodeBufferBuiltDeterminant(ByteBuf b, BufferBuiltDeterminant reuse) {
+		return reuse.replace(b.readInt());
 	}
 
 	private void encodeBufferBuiltDeterminant(BufferBuiltDeterminant bufferBuiltDeterminant, ByteBuf buf) {
@@ -160,7 +198,13 @@ public class SimpleDeterminantEncoder implements DeterminantEncoder {
 		return bytes;
 	}
 
-	private Determinant decodeTimerTriggerDeterminant(ByteBuf b) {
+	@Override
+	public Determinant decodeTimerTriggerDeterminant(ByteBuf b) {
+		return decodeTimerTriggerDeterminant(b, new TimerTriggerDeterminant());
+	}
+
+	@Override
+	public Determinant decodeTimerTriggerDeterminant(ByteBuf b, TimerTriggerDeterminant reuse){
 		int recordCount = b.readInt();
 		long timestamp = b.readLong();
 		ProcessingTimeCallbackID.Type type = ProcessingTimeCallbackID.Type.values()[b.readByte()];
@@ -173,8 +217,7 @@ public class SimpleDeterminantEncoder implements DeterminantEncoder {
 		} else {
 			id = new ProcessingTimeCallbackID(type);
 		}
-
-		return new TimerTriggerDeterminant(recordCount, id, timestamp);
+		return reuse.replace(recordCount, id, timestamp);
 	}
 
 	private void encodeSourceCheckpointDeterminant(SourceCheckpointDeterminant det, ByteBuf buf) {
@@ -200,7 +243,13 @@ public class SimpleDeterminantEncoder implements DeterminantEncoder {
 		return bytes;
 	}
 
-	private Determinant decodeSourceCheckpointDeterminant(ByteBuf b) {
+	@Override
+	public Determinant decodeSourceCheckpointDeterminant(ByteBuf b) {
+		return decodeSourceCheckpointDeterminant(b, new SourceCheckpointDeterminant());
+	}
+
+	@Override
+	public Determinant decodeSourceCheckpointDeterminant(ByteBuf b, SourceCheckpointDeterminant reuse) {
 		int recCount = b.readInt();
 		long checkpoint = b.readLong();
 		long ts = b.readLong();
@@ -212,7 +261,7 @@ public class SimpleDeterminantEncoder implements DeterminantEncoder {
 			ref = new byte[length];
 			b.readBytes(ref);
 		}
-		return new SourceCheckpointDeterminant(recCount, checkpoint, ts, CheckpointType.values()[typeOrd], ref);
+		return reuse.replace(recCount, checkpoint, ts, CheckpointType.values()[typeOrd], ref);
 
 	}
 }

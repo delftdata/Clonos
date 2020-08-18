@@ -22,6 +22,7 @@ import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 
 import java.nio.ByteBuffer;
 import java.util.List;
+import java.util.Queue;
 
 /**
  * Encoding strategy for determinants. Takes a determinant and returns its representation as bytes.
@@ -35,4 +36,29 @@ public interface DeterminantEncoder {
 
 	Determinant decodeNext(ByteBuf buffer);
 
+    Determinant decodeNext(ByteBuf b, Queue<Determinant>[] determinantCache);
+
+	Determinant decodeOrderDeterminant(ByteBuf b);
+
+	Determinant decodeOrderDeterminant(ByteBuf b, OrderDeterminant reuse);
+
+	Determinant decodeTimestampDeterminant(ByteBuf b);
+
+	Determinant decodeTimestampDeterminant(ByteBuf b, TimestampDeterminant reuse);
+
+	Determinant decodeRNGDeterminant(ByteBuf b);
+
+	Determinant decodeRNGDeterminant(ByteBuf b, RNGDeterminant reuse);
+
+	Determinant decodeBufferBuiltDeterminant(ByteBuf b);
+
+	Determinant decodeBufferBuiltDeterminant(ByteBuf b, BufferBuiltDeterminant reuse);
+
+	Determinant decodeTimerTriggerDeterminant(ByteBuf b);
+
+	Determinant decodeTimerTriggerDeterminant(ByteBuf b, TimerTriggerDeterminant reuse);
+
+	Determinant decodeSourceCheckpointDeterminant(ByteBuf b);
+
+	Determinant decodeSourceCheckpointDeterminant(ByteBuf b, SourceCheckpointDeterminant reuse);
 }

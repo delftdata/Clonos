@@ -33,7 +33,6 @@ import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 
 public final class BufferBuiltDeterminant extends Determinant{
 
-
 	private int numberOfBytes;
 
 	public BufferBuiltDeterminant(){}
@@ -62,5 +61,9 @@ public final class BufferBuiltDeterminant extends Determinant{
 	@Override
 	public int getEncodedSizeInBytes() {
 		return super.getEncodedSizeInBytes() + Integer.BYTES;
+	}
+
+	public static byte getTypeTag() {
+		return BUFFER_BUILT_TAG;
 	}
 }
