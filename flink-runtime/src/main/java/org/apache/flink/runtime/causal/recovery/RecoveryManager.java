@@ -56,6 +56,7 @@ public class RecoveryManager implements IRecoveryManager {
 	final JobCausalLog jobCausalLog;
 
 	final ConcurrentMap<VertexID, UnansweredDeterminantRequest> unansweredDeterminantRequests;
+	final int determinantSharingDepth;
 
 	Table<IntermediateResultPartitionID, Integer, InFlightLogRequestEvent> unansweredInFlighLogRequests;
 
@@ -75,6 +76,7 @@ public class RecoveryManager implements IRecoveryManager {
 
 	ProcessingTimeForceable processingTimeForceable;
 	CheckpointForceable checkpointForceable;
+	RecordCountTargetForceable recordCountTargetForceable;
 
 	public enum SinkRecoveryStrategy {
 		TRANSACTIONAL,
@@ -85,7 +87,8 @@ public class RecoveryManager implements IRecoveryManager {
 
 	public RecoveryManager(EpochProvider epochProvider, JobCausalLog jobCausalLog,
 						   CompletableFuture<Void> readyToReplayFuture, VertexGraphInformation vertexGraphInformation,
-						   RecordCountProvider recordCountProvider, CheckpointForceable checkpointForceable, ResultPartition[] partitions) {
+						   RecordCountProvider recordCountProvider, CheckpointForceable checkpointForceable,
+						   ResultPartition[] partitions, int determinantSharingDepth) {
 		this.jobCausalLog = jobCausalLog;
 		this.readyToReplayFuture = readyToReplayFuture;
 		this.vertexGraphInformation = vertexGraphInformation;
@@ -104,6 +107,8 @@ public class RecoveryManager implements IRecoveryManager {
 		this.recordCountProvider = recordCountProvider;
 		this.numberOfRecoveringSubpartitions = new AtomicInteger(0);
 		this.checkpointForceable = checkpointForceable;
+
+		this.determinantSharingDepth = determinantSharingDepth;
 	}
 
 	private void setPartitions(ResultPartition[] partitions) {
@@ -135,6 +140,11 @@ public class RecoveryManager implements IRecoveryManager {
 	@Override
 	public CheckpointForceable getCheckpointForceable() {
 		return checkpointForceable;
+	}
+
+	@Override
+	public void setRecordCountTargetForceable(RecordCountTargetForceable recordCountTargetForceable) {
+		this.recordCountTargetForceable = recordCountTargetForceable;
 	}
 
 	public void setInputGate(InputGate inputGate) {
@@ -191,8 +201,8 @@ public class RecoveryManager implements IRecoveryManager {
 	}
 
 	@Override
-	public synchronized void checkAsyncEvent() {
-		this.currentState.checkAsyncEvent();
+	public synchronized void triggerAsyncEvent() {
+		this.currentState.triggerAsyncEvent();
 	}
 
 

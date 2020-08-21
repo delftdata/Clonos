@@ -289,7 +289,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			vertexGraphInformation, getExecutionConfig().getDeterminantSharingDepth(), getEnvironment().getAllWriters(), getCheckpointLock());
 
 		this.recoveryManager = new RecoveryManager(this, jobCausalLog, readyToReplayFuture, vertexGraphInformation,
-			recordCountProvider, this, environment.getContainingTask().getProducedPartitions());
+			recordCountProvider, this, environment.getContainingTask().getProducedPartitions(), getExecutionConfig().getDeterminantSharingDepth());
 
 		this.timeService = new CausalTimeService(jobCausalLog, recoveryManager, this);
 		this.randomService = new CausalRandomService(jobCausalLog, recoveryManager, this);

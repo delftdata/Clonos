@@ -59,56 +59,42 @@ public class WaitingDeterminantsState extends AbstractState {
 
 	public WaitingDeterminantsState(RecoveryManager context) {
 		super(context);
-		this.numResponsesExpected = context.vertexGraphInformation.getNumberOfDirectDownstreamNeighbours();
 		delta = new VertexCausalLogDelta(context.vertexGraphInformation.getThisTasksVertexID());
 	}
 
 	@Override
 	public void executeEnter() {
+		//Send all Replay requests, regardless of how we recover (causally or not), ensuring at-least-once processing
+		sendInFlightLogReplayRequests();
+
+		//By default, we should expect as many determinant responses as we have downstream neighbours
+		numResponsesExpected = context.vertexGraphInformation.getNumberOfDirectDownstreamNeighbours();
+
+		//If determinant sharing depth is 0, then we are not recovering causally, we can skip to the next state
+		if (context.determinantSharingDepth == 0) {
+			gotToReplayingState();
+			return;
+		}
 
 		//If we are a sink
 		if (!context.vertexGraphInformation.hasDownstream()) {
-			/**
-			 * With the transactional strategy, all determinants are dropped and we immediately switch to replaying
-			 */
+			//With the transactional strategy, all determinants are dropped and we immediately switch to replaying
 			if (RecoveryManager.sinkRecoveryStrategy == RecoveryManager.SinkRecoveryStrategy.TRANSACTIONAL) {
 				gotToReplayingState();
-			} else if (RecoveryManager.sinkRecoveryStrategy == RecoveryManager.SinkRecoveryStrategy.KAFKA) {
+				return;
+			}
+			//This strategy (not implemented yet), will obtain a single message from kafka, containing determinants
+			else if (RecoveryManager.sinkRecoveryStrategy == RecoveryManager.SinkRecoveryStrategy.KAFKA) {
 				numResponsesExpected = 1;
+				return;
 			}
 		}
 
-		try {
-			//Send all Determinant requests
-			if (context.vertexGraphInformation.hasDownstream()) {
-				LOG.info("Sending determinant requests");
-				DeterminantRequestEvent determinantRequestEvent =
-					new DeterminantRequestEvent(context.vertexGraphInformation.getThisTasksVertexID(),
-						context.epochProvider.getCurrentEpochID());
-				broadcastDeterminantRequest(determinantRequestEvent);
-			}
-
-			//Send all Replay requests
-			if (context.vertexGraphInformation.hasUpstream()) {
-				for (SingleInputGate singleInputGate : context.inputGate.getInputGates()) {
-					int consumedIndex = singleInputGate.getConsumedSubpartitionIndex();
-					for (int i = 0; i < singleInputGate.getNumberOfInputChannels(); i++) {
-						RemoteInputChannel inputChannel = (RemoteInputChannel) singleInputGate.getInputChannel(i);
-						InFlightLogRequestEvent inFlightLogRequestEvent =
-							new InFlightLogRequestEvent(inputChannel.getPartitionId().getPartitionId(), consumedIndex,
-								context.epochProvider.getCurrentEpochID());
-						LOG.info("Sending inFlightLog request {} through input gate {}, channel {}.",
-							inFlightLogRequestEvent, singleInputGate, i);
-						inputChannel.sendTaskEvent(inFlightLogRequestEvent);
-					}
-				}
-			}
-
-		} catch (IOException | InterruptedException e) {
-			e.printStackTrace();
-		}
+		//Send all Determinant requests
+		sendDeterminantRequests();
 
 	}
+
 
 	@Override
 	public void notifyDeterminantResponseEvent(DeterminantResponseEvent e) {
@@ -127,15 +113,6 @@ public class WaitingDeterminantsState extends AbstractState {
 		} else
 			super.notifyDeterminantResponseEvent(e);
 	}
-
-	public void gotToReplayingState() {
-		while (context.isRestoringState())
-			LOG.info("Ready to replay, but waiting for restore state to finish"); //spin waiting
-		LOG.info("Received all determinants, transitioning to Replaying state!");
-
-		context.setState(new ReplayingState(context, delta));
-	}
-
 
 	@Override
 	public void notifyNewInputChannel(RemoteInputChannel inputChannel, int channelIndex, int numBuffersRemoved) {
@@ -161,6 +138,45 @@ public class WaitingDeterminantsState extends AbstractState {
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
+	}
+
+	private void sendInFlightLogReplayRequests() {
+		try {
+			if (context.vertexGraphInformation.hasUpstream()) {
+				for (SingleInputGate singleInputGate : context.inputGate.getInputGates()) {
+					int consumedIndex = singleInputGate.getConsumedSubpartitionIndex();
+					for (int i = 0; i < singleInputGate.getNumberOfInputChannels(); i++) {
+						RemoteInputChannel inputChannel = (RemoteInputChannel) singleInputGate.getInputChannel(i);
+						InFlightLogRequestEvent inFlightLogRequestEvent =
+							new InFlightLogRequestEvent(inputChannel.getPartitionId().getPartitionId(), consumedIndex,
+								context.epochProvider.getCurrentEpochID());
+						LOG.info("Sending inFlightLog request {} through input gate {}, channel {}.",
+							inFlightLogRequestEvent, singleInputGate, i);
+						inputChannel.sendTaskEvent(inFlightLogRequestEvent);
+					}
+				}
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+
+	private void sendDeterminantRequests() {
+		if (context.vertexGraphInformation.hasDownstream()) {
+			LOG.info("Sending determinant requests");
+			DeterminantRequestEvent determinantRequestEvent =
+				new DeterminantRequestEvent(context.vertexGraphInformation.getThisTasksVertexID(),
+					context.epochProvider.getCurrentEpochID());
+			broadcastDeterminantRequest(determinantRequestEvent);
+		}
+	}
+
+	private void gotToReplayingState() {
+		while (context.isRestoringState())
+			LOG.info("Ready to replay, but waiting for restore state to finish"); //spin waiting
+		LOG.info("Received all determinants, transitioning to Replaying state!");
+
+		context.setState(new ReplayingState(context, delta));
 	}
 
 }

@@ -23,7 +23,8 @@ import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.SimpleCounter;
-import org.apache.flink.runtime.causal.log.job.IJobCausalLog;
+import org.apache.flink.runtime.causal.RecordCountProvider;
+import org.apache.flink.runtime.causal.RecordCountTargetForceable;
 import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 import org.apache.flink.runtime.event.AbstractEvent;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
@@ -75,7 +76,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * @param <IN2> The type of the records that arrive on the second input
  */
 @Internal
-public class StreamTwoInputProcessor<IN1, IN2> {
+public class StreamTwoInputProcessor<IN1, IN2> implements RecordCountTargetForceable {
 
 	private static final Logger LOG = LoggerFactory.getLogger(StreamTwoInputProcessor.class);
 
@@ -93,7 +94,8 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 	private final Object lock;
 
 	private IRecoveryManager recoveryManager;
-	private boolean isRecovering;
+	private final RecordCountProvider recordCountProvider;
+	private int asyncEventRecordCountTarget;
 
 	// ---------------- Status and Watermark Valves ------------------
 
@@ -171,7 +173,8 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 		this.lock = checkNotNull(lock);
 
 		this.recoveryManager = checkpointedTask.getRecoveryManager();
-		this.isRecovering = !recoveryManager.isRunning();
+		this.recordCountProvider = checkpointedTask.getRecordCountProvider();
+		asyncEventRecordCountTarget = -1;
 
 		StreamElementSerializer<IN1> ser1 = new StreamElementSerializer<>(inputSerializer1);
 		this.deserializationDelegate1 = new NonReusingDeserializationDelegate<>(ser1);
@@ -240,8 +243,8 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 				}
 
 				if (result.isFullRecord()) {
-					if(isRecovering && (isRecovering = recoveryManager.isReplaying()))
-						recoveryManager.checkAsyncEvent();
+					if (asyncEventRecordCountTarget != -1 && recordCountProvider.getRecordCount() == asyncEventRecordCountTarget)
+						recoveryManager.triggerAsyncEvent();
 					if (currentChannel < numInputChannels1) {
 						StreamElement recordOrWatermark = deserializationDelegate1.getInstance();
 						if (recordOrWatermark.isWatermark()) {
@@ -295,8 +298,8 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 				}
 			}
 
-			if(isRecovering && (isRecovering = recoveryManager.isReplaying()))
-				recoveryManager.checkAsyncEvent();
+			if (asyncEventRecordCountTarget != -1 && recordCountProvider.getRecordCount() == asyncEventRecordCountTarget)
+				recoveryManager.triggerAsyncEvent();
 
 			LOG.debug("barrierHandler.getNextNonBlocked().");
 			final BufferOrEvent bufferOrEvent = barrierHandler.getNextNonBlocked();
@@ -340,6 +343,11 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 
 		// cleanup the barrier handler resources
 		barrierHandler.cleanup();
+	}
+
+	@Override
+	public void setRecordCountTarget(int target) {
+		this.asyncEventRecordCountTarget = target;
 	}
 
 	private class ForwardingValveOutputHandler1 implements StatusWatermarkValve.ValveOutputHandler {

@@ -62,5 +62,5 @@ public interface State {
 
 	long replayNextTimestamp();
 
-    void checkAsyncEvent();
+    void triggerAsyncEvent();
 }

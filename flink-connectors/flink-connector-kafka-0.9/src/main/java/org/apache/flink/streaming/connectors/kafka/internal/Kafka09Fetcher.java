@@ -20,12 +20,10 @@ package org.apache.flink.streaming.connectors.kafka.internal;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.metrics.MetricGroup;
-import org.apache.flink.runtime.causal.RecordCountProvider;
 import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 import org.apache.flink.streaming.api.functions.AssignerWithPeriodicWatermarks;
 import org.apache.flink.streaming.api.functions.AssignerWithPunctuatedWatermarks;
 import org.apache.flink.streaming.api.functions.source.SourceFunction.SourceContext;
-import org.apache.flink.streaming.api.operators.StreamingRuntimeContext;
 import org.apache.flink.streaming.connectors.kafka.internals.AbstractFetcher;
 import org.apache.flink.streaming.connectors.kafka.internals.KafkaCommitCallback;
 import org.apache.flink.streaming.connectors.kafka.internals.KafkaTopicPartition;
@@ -183,7 +181,7 @@ public class Kafka09Fetcher<T> extends AbstractFetcher<T, TopicPartition> {
 						}
 						//This short circuits on isRecovering if it is false, hopefully achieving higher performance when running
 						if(isRecovering && (isRecovering = recoveryManager.isReplaying()))
-							recoveryManager.checkAsyncEvent();
+							recoveryManager.triggerAsyncEvent();
 						// emit the actual record. this also updates offset state atomically
 						// and deals with timestamps and watermark generation
 						emitRecord(value, partition, record.offset(), record);

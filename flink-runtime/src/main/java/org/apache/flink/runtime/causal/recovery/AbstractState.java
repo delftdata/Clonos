@@ -152,7 +152,7 @@ public abstract class AbstractState implements State {
 	}
 
 	@Override
-	public void checkAsyncEvent() {
+	public void triggerAsyncEvent() {
 		throw new RuntimeException("Unexpected check for Async event in state" + this.getClass());
 	}
 

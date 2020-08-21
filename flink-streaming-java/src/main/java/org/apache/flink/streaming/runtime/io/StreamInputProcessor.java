@@ -24,9 +24,8 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.SimpleCounter;
 import org.apache.flink.runtime.causal.RecordCountProvider;
-import org.apache.flink.runtime.causal.log.job.IJobCausalLog;
+import org.apache.flink.runtime.causal.RecordCountTargetForceable;
 import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
-import org.apache.flink.runtime.causal.recovery.RecoveryManager;
 import org.apache.flink.runtime.event.AbstractEvent;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
@@ -75,7 +74,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * @param <IN> The type of the record that can be read with this record reader.
  */
 @Internal
-public class StreamInputProcessor<IN> {
+public class StreamInputProcessor<IN> implements RecordCountTargetForceable {
 
 	private static final Logger LOG = LoggerFactory.getLogger(StreamInputProcessor.class);
 
@@ -121,10 +120,8 @@ public class StreamInputProcessor<IN> {
 	private final IRecoveryManager recoveryManager;
 	private final RecordCountProvider recordCountProvider;
 
-	/**
-	 * Used for performance to short circuit the check for if is recovering.
-	 */
-	private boolean isRecovering;
+
+	private int asyncEventRecordCountTarget;
 
 	@SuppressWarnings("unchecked")
 	public StreamInputProcessor(
@@ -141,7 +138,9 @@ public class StreamInputProcessor<IN> {
 		WatermarkGauge watermarkGauge) throws IOException {
 
 		this.recoveryManager = checkpointedTask.getRecoveryManager();
-		this.isRecovering = !recoveryManager.isRunning();
+
+		asyncEventRecordCountTarget = -1;
+
 		this.recordCountProvider = checkpointedTask.getRecordCountProvider();
 		InputGate inputGate = InputGateUtil.createInputGate(inputGates);
 		checkpointedTask.getRecoveryManager().setInputGate(inputGate);
@@ -155,7 +154,8 @@ public class StreamInputProcessor<IN> {
 		this.deserializationDelegate = new NonReusingDeserializationDelegate<>(ser);
 
 		// Initialize one deserializer per input channel
-		this.recordDeserializers = new SpillingAdaptiveSpanningRecordDeserializer[inputGate.getNumberOfInputChannels()];
+		this.recordDeserializers =
+			new SpillingAdaptiveSpanningRecordDeserializer[inputGate.getNumberOfInputChannels()];
 
 		for (int i = 0; i < recordDeserializers.length; i++) {
 			recordDeserializers[i] = new SpillingAdaptiveSpanningRecordDeserializer<>(
@@ -181,7 +181,8 @@ public class StreamInputProcessor<IN> {
 		}
 		if (numRecordsIn == null) {
 			try {
-				numRecordsIn = ((OperatorMetricGroup) streamOperator.getMetricGroup()).getIOMetricGroup().getNumRecordsInCounter();
+				numRecordsIn =
+					((OperatorMetricGroup) streamOperator.getMetricGroup()).getIOMetricGroup().getNumRecordsInCounter();
 			} catch (Exception e) {
 				LOG.warn("An exception occurred during the metrics setup.", e);
 				numRecordsIn = new SimpleCounter();
@@ -200,9 +201,8 @@ public class StreamInputProcessor<IN> {
 				if (result.isFullRecord()) {
 					StreamElement recordOrMark = deserializationDelegate.getInstance();
 
-					//This short circuits on isRecovering if it is false, hopefully achieving higher performance when running
-					if (isRecovering && (isRecovering = recoveryManager.isReplaying()))
-						recoveryManager.checkAsyncEvent();
+					if (asyncEventRecordCountTarget != -1 && recordCountProvider.getRecordCount() == asyncEventRecordCountTarget)
+						recoveryManager.triggerAsyncEvent();
 
 					if (recordOrMark.isWatermark()) {
 						synchronized (lock) {
@@ -240,11 +240,10 @@ public class StreamInputProcessor<IN> {
 				}
 			}
 
-			//Note this ensures that if the first thing that happens in an epoch is a window triggering, then we
+			//Note this ensures that if the first thing that happens in an epoch is an async event, then we
 			// recover correctly.
-			//This short circuits on isRecovering if it is false, hopefully achieving higher performance when running
-			if (isRecovering && (isRecovering = recoveryManager.isReplaying()))
-				recoveryManager.checkAsyncEvent();
+			if (asyncEventRecordCountTarget != -1 && recordCountProvider.getRecordCount() == asyncEventRecordCountTarget)
+				recoveryManager.triggerAsyncEvent();
 
 			final BufferOrEvent bufferOrEvent;
 			bufferOrEvent = barrierHandler.getNextNonBlocked();
@@ -281,6 +280,11 @@ public class StreamInputProcessor<IN> {
 
 		// cleanup the barrier handler resources
 		barrierHandler.cleanup();
+	}
+
+	@Override
+	public void setRecordCountTarget(int target) {
+		asyncEventRecordCountTarget = target;
 	}
 
 
