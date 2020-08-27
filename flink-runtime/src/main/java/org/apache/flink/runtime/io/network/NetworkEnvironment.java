@@ -242,8 +242,8 @@ public class NetworkEnvironment {
 			int maxNumberOfMemorySegments = partition.getPartitionType().isBounded() ?
 				partition.getNumberOfSubpartitions() * networkBuffersPerChannel +
 					extraNetworkBuffersPerGate : Integer.MAX_VALUE;
-			bufferPool = networkBufferPool.createBufferPool(partition.getNumberOfSubpartitions() * 4,
-				maxNumberOfMemorySegments * 4);
+			bufferPool = networkBufferPool.createBufferPool(partition.getNumberOfSubpartitions(),
+				maxNumberOfMemorySegments);
 			partition.registerBufferPool(bufferPool);
 
 			resultPartitionManager.registerResultPartition(partition);

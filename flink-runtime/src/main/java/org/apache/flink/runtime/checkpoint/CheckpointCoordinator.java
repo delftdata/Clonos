@@ -1247,8 +1247,23 @@ public class CheckpointCoordinator {
 	//  Periodic scheduling of checkpoints
 	// --------------------------------------------------------------------------------------------
 
-	public void startCheckpointScheduler() {
+	//An alias for startCheckpointScheduler for readability
+	public void restartBackoffCheckpointScheduler(){
 		synchronized (lock) {
+			internalUnsafeStartCheckpointScheduler(2 * baseInterval);
+		}
+	}
+
+	public void startCheckpointScheduler() {
+
+		synchronized (lock) {
+			long initialDelay = ThreadLocalRandom.current().nextLong(
+				minPauseBetweenCheckpointsNanos / 1_000_000L, baseInterval + 1L);
+			internalUnsafeStartCheckpointScheduler(initialDelay);
+		}
+	}
+
+	public void internalUnsafeStartCheckpointScheduler(long initialDelay) {
 			if (shutdown) {
 				throw new IllegalArgumentException("Checkpoint coordinator is shut down");
 			}
@@ -1257,11 +1272,8 @@ public class CheckpointCoordinator {
 			stopCheckpointScheduler();
 
 			periodicScheduling = true;
-			long initialDelay = ThreadLocalRandom.current().nextLong(
-				minPauseBetweenCheckpointsNanos / 1_000_000L, baseInterval + 1L);
 			currentPeriodicTrigger = timer.scheduleAtFixedRate(
 					new ScheduledTrigger(), initialDelay, baseInterval, TimeUnit.MILLISECONDS);
-		}
 	}
 
 	public void stopCheckpointScheduler() {

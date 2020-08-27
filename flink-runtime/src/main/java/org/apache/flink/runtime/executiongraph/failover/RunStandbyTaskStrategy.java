@@ -102,6 +102,12 @@ public class RunStandbyTaskStrategy extends FailoverStrategy {
 			vertexToRecover.getTaskNameWithSubtaskIndex() + ".");
 
 
+		LOG.info("Discarding pending checkpoints unacknowledged by failed task and restarting checkpoint coordinator with backoff");
+		//In order to allow the task to recover while still making progress, we reset the checkpoint coordinator timeout
+		assert this.executionGraph.getCheckpointCoordinator() != null;
+		this.executionGraph.getCheckpointCoordinator().failUnacknowledgedPendingCheckpointsFor(taskExecution.getAttemptId(), new Exception("Task failed and is recovering causally."));
+		this.executionGraph.getCheckpointCoordinator().restartBackoffCheckpointScheduler();
+
 		CompletableFuture<Void> removeSlotsFuture = asyncRemoveFailedSlots(taskExecution);
 
 		//By default, there should already be a standby ready
