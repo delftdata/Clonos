@@ -130,16 +130,11 @@ public class RunStandbyTaskStrategy extends FailoverStrategy {
 
 	private CompletableFuture<Void> composePrepareNewStandby(ExecutionVertex vertexToRecover,
 															 CompletableFuture<Void> removeSlotsFuture) {
-		return removeSlotsFuture.thenComposeAsync((ignored) -> {
+		return removeSlotsFuture.thenComposeAsync((Void) -> {
 			//I believe the compose call should then wait for the addStandbyExecution to complete
 			LOG.info("Adding a new standby execution");
-			try {
-				vertexToRecover.addStandbyExecution().get();
-			} catch (InterruptedException | ExecutionException e) {
-				throw new CompletionException(e);
-			}
-			return CompletableFuture.completedFuture(null);
-		}, callbackExecutor).thenApplyAsync((ignored) -> {
+			return vertexToRecover.addStandbyExecution();
+		}, callbackExecutor).thenComposeAsync((Void) -> {
 			LOG.info("Waiting for standby to be ready");
 			Execution standby = vertexToRecover.getStandbyExecutions().get(0);
 			while (true) {
@@ -155,7 +150,7 @@ public class RunStandbyTaskStrategy extends FailoverStrategy {
 			} catch (Exception e) {
 				throw new CompletionException(e);
 			}
-			return null;
+			return CompletableFuture.completedFuture(null);
 		}, callbackExecutor);
 	}
 
