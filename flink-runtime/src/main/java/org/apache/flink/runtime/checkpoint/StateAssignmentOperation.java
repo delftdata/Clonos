@@ -210,10 +210,8 @@ public class StateAssignmentOperation {
 			} else if (operation == Operation.DISPATCH_STATE_TO_STANDBY_TASK) {
 				ArrayList<Execution> standbyExecutions = executionJobVertex.getTaskVertices()
 					[subTaskIndex].getStandbyExecutions();
-				if (standbyExecutions.isEmpty()) {
-					throw new IllegalStateException("No standby execution to dispatch the state of task " +
-							executionJobVertex.getTaskVertices()[subTaskIndex].getTaskNameWithSubtaskIndex());
-				}
+				if (standbyExecutions.isEmpty())
+					continue; //If task does not have standby, we may be recovering only a subtask
 				executionAttempt = standbyExecutions.get(0);
 			} else {
 				throw new IllegalStateException("Unknown state assignment operation " + operation + '.');
