@@ -31,13 +31,14 @@ import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 import org.apache.flink.shaded.netty4.io.netty.buffer.CompositeByteBuf;
 
 import java.util.Arrays;
+import java.util.stream.Collectors;
 
 public class CausalLogDelta implements NettyMessageWritable {
 
 	long epochID;
 	VertexCausalLogDelta[] vertexCausalLogDeltas;
 
-	public CausalLogDelta(){};
+	public CausalLogDelta(){}
 
 	public CausalLogDelta(long epochID, VertexCausalLogDelta[] vertexCausalLogDeltas){
 		this.epochID = epochID;
@@ -97,9 +98,17 @@ public class CausalLogDelta implements NettyMessageWritable {
 
 	@Override
 	public void readBodyFrom(ByteBuf byteBuf) {
-		for(int i = 0; i < vertexCausalLogDeltas.length; i++){
-			vertexCausalLogDeltas[i].readBodyFrom(byteBuf);
+		for (VertexCausalLogDelta vertexCausalLogDelta : vertexCausalLogDeltas) {
+			vertexCausalLogDelta.readBodyFrom(byteBuf);
 		}
 	}
 
+	@Override
+	public String toString() {
+		return "CausalLogDelta{" +
+			"epochID=" + epochID +
+			", vertexes=[" + Arrays.stream(vertexCausalLogDeltas).map(VertexCausalLogDelta::toString).collect(Collectors.joining(", ")) +
+			"]" +
+			'}';
+	}
 }

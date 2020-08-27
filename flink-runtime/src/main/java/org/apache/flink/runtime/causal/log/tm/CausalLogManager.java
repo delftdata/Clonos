@@ -80,7 +80,7 @@ public class CausalLogManager {
 	public JobCausalLog registerNewJob(JobID jobID, VertexGraphInformation vertexGraphInformation,
 									   int determinantSharingDepth,
 									   ResultPartitionWriter[] resultPartitionsOfLocalVertex, Object lock) {
-		LOG.debug("Registering a new Job {}.", jobID);
+		LOG.info("Registering a new Job {}.", jobID);
 
 		BufferPool taskDeterminantBufferPool = null;
 		try {
@@ -125,6 +125,7 @@ public class CausalLogManager {
 
 	public CausalLogDelta getNextDeterminantsForDownstream(InputChannelID inputChannelID, long epochID) {
 		JobCausalLog log;
+		LOG.debug("Get next determinants for channel {} epoch {}", inputChannelID, epochID);
 		synchronized (inputChannelIDToManagerMap) {
 			log = inputChannelIDToManagerMap.get(inputChannelID);
 			while (log == null) {
@@ -154,6 +155,8 @@ public class CausalLogManager {
 
 	public void processCausalLogDelta(JobID jobID, CausalLogDelta causalLogDelta) {
 		JobCausalLog jobCausalLog;
+		if(LOG.isDebugEnabled())
+			LOG.debug("Process delta for jobid {} from id {}", jobID, causalLogDelta);
 		synchronized (jobIDToManagerMap) {
 			jobCausalLog = jobIDToManagerMap.get(jobID);
 			while (jobCausalLog == null) {
