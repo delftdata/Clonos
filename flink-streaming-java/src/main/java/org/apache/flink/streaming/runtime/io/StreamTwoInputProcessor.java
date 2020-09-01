@@ -243,7 +243,7 @@ public class StreamTwoInputProcessor<IN1, IN2> implements RecordCountTargetForce
 				}
 
 				if (result.isFullRecord()) {
-					if (asyncEventRecordCountTarget != -1 && recordCountProvider.getRecordCount() == asyncEventRecordCountTarget)
+					while(asyncEventRecordCountTarget != -1 && recordCountProvider.getRecordCount() == asyncEventRecordCountTarget)
 						recoveryManager.triggerAsyncEvent();
 					if (currentChannel < numInputChannels1) {
 						StreamElement recordOrWatermark = deserializationDelegate1.getInstance();
@@ -298,7 +298,7 @@ public class StreamTwoInputProcessor<IN1, IN2> implements RecordCountTargetForce
 				}
 			}
 
-			if (asyncEventRecordCountTarget != -1 && recordCountProvider.getRecordCount() == asyncEventRecordCountTarget)
+			while(asyncEventRecordCountTarget != -1 && recordCountProvider.getRecordCount() == asyncEventRecordCountTarget)
 				recoveryManager.triggerAsyncEvent();
 
 			LOG.debug("barrierHandler.getNextNonBlocked().");

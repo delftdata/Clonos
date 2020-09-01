@@ -147,6 +147,11 @@ public class RecoveryManager implements IRecoveryManager {
 		this.recordCountTargetForceable = recordCountTargetForceable;
 	}
 
+	@Override
+	public RecordCountProvider getRecordCountProvider(){
+		return this.recordCountProvider;
+	}
+
 	public void setInputGate(InputGate inputGate) {
 		this.inputGate = inputGate;
 	}

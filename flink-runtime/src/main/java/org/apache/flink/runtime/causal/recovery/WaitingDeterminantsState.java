@@ -167,6 +167,7 @@ public class WaitingDeterminantsState extends AbstractState {
 			DeterminantRequestEvent determinantRequestEvent =
 				new DeterminantRequestEvent(context.vertexGraphInformation.getThisTasksVertexID(),
 					context.epochProvider.getCurrentEpochID());
+			LOG.info("Sending determinant request: {}", determinantRequestEvent );
 			broadcastDeterminantRequest(determinantRequestEvent);
 		}
 	}

@@ -201,7 +201,7 @@ public class StreamInputProcessor<IN> implements RecordCountTargetForceable {
 				if (result.isFullRecord()) {
 					StreamElement recordOrMark = deserializationDelegate.getInstance();
 
-					if (asyncEventRecordCountTarget != -1 && recordCountProvider.getRecordCount() == asyncEventRecordCountTarget)
+					while(asyncEventRecordCountTarget != -1 && recordCountProvider.getRecordCount() == asyncEventRecordCountTarget)
 						recoveryManager.triggerAsyncEvent();
 
 					if (recordOrMark.isWatermark()) {
@@ -242,7 +242,7 @@ public class StreamInputProcessor<IN> implements RecordCountTargetForceable {
 
 			//Note this ensures that if the first thing that happens in an epoch is an async event, then we
 			// recover correctly.
-			if (asyncEventRecordCountTarget != -1 && recordCountProvider.getRecordCount() == asyncEventRecordCountTarget)
+			while(asyncEventRecordCountTarget != -1 && recordCountProvider.getRecordCount() == asyncEventRecordCountTarget)
 				recoveryManager.triggerAsyncEvent();
 
 			final BufferOrEvent bufferOrEvent;

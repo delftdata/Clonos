@@ -20,6 +20,8 @@ package org.apache.flink.streaming.connectors.kafka.internal;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.metrics.MetricGroup;
+import org.apache.flink.runtime.causal.RecordCountProvider;
+import org.apache.flink.runtime.causal.RecordCountTargetForceable;
 import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 import org.apache.flink.streaming.api.functions.AssignerWithPeriodicWatermarks;
 import org.apache.flink.streaming.api.functions.AssignerWithPunctuatedWatermarks;
@@ -54,7 +56,7 @@ import static org.apache.flink.util.Preconditions.checkState;
  * @param <T> The type of elements produced by the fetcher.
  */
 @Internal
-public class Kafka09Fetcher<T> extends AbstractFetcher<T, TopicPartition> {
+public class Kafka09Fetcher<T> extends AbstractFetcher<T, TopicPartition> implements RecordCountTargetForceable {
 
 	private static final Logger LOG = LoggerFactory.getLogger(Kafka09Fetcher.class);
 
@@ -79,6 +81,9 @@ public class Kafka09Fetcher<T> extends AbstractFetcher<T, TopicPartition> {
 	 * Flag to mark the main work loop as alive.
 	 */
 	private volatile boolean running = true;
+
+	private int asyncEventRecordCountTarget;
+	private final RecordCountProvider recordCountProvider;
 
 
 	// ------------------------------------------------------------------------
@@ -132,7 +137,6 @@ public class Kafka09Fetcher<T> extends AbstractFetcher<T, TopicPartition> {
 
 		this.deserializer = deserializer;
 		this.handover = new Handover();
-
 		this.consumerThread = new KafkaConsumerThread(
 			LOG,
 			handover,
@@ -144,6 +148,9 @@ public class Kafka09Fetcher<T> extends AbstractFetcher<T, TopicPartition> {
 			useMetrics,
 			consumerMetricGroup,
 			subtaskMetricGroup);
+		this.recordCountProvider = recoveryManager.getRecordCountProvider();
+		this.asyncEventRecordCountTarget = -1;
+		this.recoveryManager.setRecordCountTargetForceable(this);
 	}
 
 	// ------------------------------------------------------------------------
@@ -179,8 +186,7 @@ public class Kafka09Fetcher<T> extends AbstractFetcher<T, TopicPartition> {
 							running = false;
 							break;
 						}
-						//This short circuits on isRecovering if it is false, hopefully achieving higher performance when running
-						if(isRecovering && (isRecovering = recoveryManager.isReplaying()))
+						while(asyncEventRecordCountTarget != -1 && recordCountProvider.getRecordCount() == asyncEventRecordCountTarget)
 							recoveryManager.triggerAsyncEvent();
 						// emit the actual record. this also updates offset state atomically
 						// and deals with timestamps and watermark generation
@@ -272,5 +278,10 @@ public class Kafka09Fetcher<T> extends AbstractFetcher<T, TopicPartition> {
 
 		// record the work to be committed by the main consumer thread and make sure the consumer notices that
 		consumerThread.setOffsetsToCommit(offsetsToCommit, commitCallback);
+	}
+
+	@Override
+	public void setRecordCountTarget(int target) {
+		this.asyncEventRecordCountTarget = target;
 	}
 }

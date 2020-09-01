@@ -1,7 +1,7 @@
 /*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
- * distributed with this work for additional debugrmation
+ * distributed with this work for additional information
  * regarding copyright ownership.  The ASF licenses this file
  * to you under the Apache License, Version 2.0 (the
  * "License"); you may not use this file except in compliance
@@ -301,7 +301,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 		if (!inflightReplayIterator.hasNext()) {
 			inflightReplayIterator = null;
-			LOG.info("Finished replaying inflight log!");
+			LOG.debug("Finished replaying inflight log!");
 		}
 
 		return new BufferAndBacklog(buffer,
@@ -487,13 +487,13 @@ public class PipelinedSubpartition extends ResultSubpartition {
 	}
 
 	public void requestReplay(long checkpointId, int ignoreMessages) {
-		LOG.info("Replay requested");
+		LOG.debug("Replay requested");
 		synchronized (buffers) {
 			if (inflightReplayIterator != null)
 				inflightReplayIterator.close();
 			inflightReplayIterator = inFlightLog.getInFlightIterator(checkpointId, ignoreMessages);
 			if (inflightReplayIterator != null) {
-				LOG.info("Replay has been requested for pipelined subpartition of id {}, index {}, skipping {} " +
+				LOG.debug("Replay has been requested for pipelined subpartition of id {}, index {}, skipping {} " +
 						"buffers, " +
 						"buffers to replay {}. Setting downstreamFailed to false", this.parent.getPartitionId(),
 					this.index,

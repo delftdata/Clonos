@@ -25,10 +25,7 @@
 
 package org.apache.flink.runtime.causal.recovery;
 
-import org.apache.flink.runtime.causal.CheckpointForceable;
-import org.apache.flink.runtime.causal.DeterminantResponseEvent;
-import org.apache.flink.runtime.causal.ProcessingTimeForceable;
-import org.apache.flink.runtime.causal.RecordCountTargetForceable;
+import org.apache.flink.runtime.causal.*;
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
 import org.apache.flink.runtime.io.network.api.DeterminantRequestEvent;
 import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
@@ -65,6 +62,8 @@ public interface IRecoveryManager {
 	//=======================================
 
 	void setState(State state);
+
+	RecordCountProvider getRecordCountProvider();
 
 	void setInputGate(InputGate inputGate);
 

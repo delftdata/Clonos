@@ -204,27 +204,25 @@ public class ReplayingState extends AbstractState {
 
 	@Override
 	public void triggerAsyncEvent() {
-		while (nextDeterminant instanceof AsyncDeterminant) {
-			AsyncDeterminant asyncDeterminant = (AsyncDeterminant) nextDeterminant;
-			int currentRecordCount = context.recordCountProvider.getRecordCount();
-			if (currentRecordCount > asyncDeterminant.getRecordCount())
-				throw new RuntimeException("Current record count is beyond the determinants record count. Current: " + currentRecordCount + ", determinant: " + asyncDeterminant.getRecordCount());
-			LOG.debug("Current: " + currentRecordCount + ", determinant: " + asyncDeterminant.getRecordCount());
-			if (context.recordCountProvider.getRecordCount() == asyncDeterminant.getRecordCount()) {
-				LOG.debug("We are at the same point in the stream, with record count: {}",
-					asyncDeterminant.getRecordCount());
-				//Prepare next first, because the async event, in being processed, may require determinants
-				//But do not yet recycle the asyncDeterminant, as we must process it first
-				prepareNext();
-				asyncDeterminant.process(context);
-				//Now that we have used it, we may recycle it
-				recycleDeterminant(asyncDeterminant);
-				if (nextDeterminant == null)
-					finishReplaying();
+		AsyncDeterminant asyncDeterminant = (AsyncDeterminant) nextDeterminant;
+		int currentRecordCount = context.recordCountProvider.getRecordCount();
 
-			} else
-				break;
-		}
+		if (currentRecordCount != asyncDeterminant.getRecordCount())
+			throw new RuntimeException("Current record count is not the determinants record count. Current: " + currentRecordCount + ", determinant: " + asyncDeterminant.getRecordCount());
+
+		context.recordCountTargetForceable.setRecordCountTarget(-1);
+		LOG.debug("We are at the same point in the stream, with record count: {}",
+			asyncDeterminant.getRecordCount());
+		//Prepare next first, because the async event, in being processed, may require determinants
+		//But do not yet recycle the asyncDeterminant, as we must process it first
+		prepareNext();
+		asyncDeterminant.process(context);
+		//Now that we have used it, we may recycle it
+		recycleDeterminant(asyncDeterminant);
+		if (nextDeterminant == null)
+			finishReplaying();
+
+
 	}
 
 	private void recycleDeterminant(Determinant determinant) {
@@ -282,7 +280,7 @@ public class ReplayingState extends AbstractState {
 		public void run() {
 			//1. Netty has been told that there is no data.
 			context.numberOfRecoveringSubpartitions.incrementAndGet();
-			if(recoveryBuffer.capacity() > 0) {
+			if (recoveryBuffer.capacity() > 0) {
 				BufferBuiltDeterminant reuse = new BufferBuiltDeterminant();
 				Queue<Determinant>[] subpartCache = new Queue[6];
 				subpartCache[BufferBuiltDeterminant.getTypeTag()] = new ArrayDeque<>();
@@ -293,7 +291,9 @@ public class ReplayingState extends AbstractState {
 					Determinant determinant = determinantEncoder.decodeNext(recoveryBuffer, subpartCache);
 
 					if (!(determinant instanceof BufferBuiltDeterminant))
-						throw new RuntimeException("Subpartition has corrupt recovery buffer, expected buffer built, got: "
+						throw new RuntimeException("Subpartition has corrupt recovery buffer, expected buffer built," +
+							" " +
+							"got: "
 							+ determinant);
 					BufferBuiltDeterminant bufferBuiltDeterminant = (BufferBuiltDeterminant) determinant;
 
