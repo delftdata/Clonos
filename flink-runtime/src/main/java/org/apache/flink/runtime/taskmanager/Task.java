@@ -1514,6 +1514,16 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		}
 	}
 
+	public void ignoreCheckpoint(final long checkpointId) {
+		final AbstractInvokable invokable = this.invokable;
+
+		if (executionState == ExecutionState.RUNNING && invokable != null)
+			invokable.ignoreCheckpoint(checkpointId);
+		else
+			LOG.debug("Ignoring checkpoint commit notification for non-running task {}.", taskNameWithSubtask);
+
+	}
+
 	// ------------------------------------------------------------------------
 
 	/**
@@ -1696,7 +1706,8 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 	}
 
 
-	// ------------------------------------------------------------------------
+
+    // ------------------------------------------------------------------------
 	//  Task cancellation
 	//
 	//  The task cancellation uses in total three threads, as a safety net

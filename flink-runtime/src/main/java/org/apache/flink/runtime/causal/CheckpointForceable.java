@@ -35,4 +35,6 @@ public interface CheckpointForceable {
 		CheckpointMetaData checkpointMetaData,
 		CheckpointOptions checkpointOptions,
 		CheckpointMetrics checkpointMetrics) throws Exception;
+
+	void ignoreCheckpoint(long checkpointId);
 }

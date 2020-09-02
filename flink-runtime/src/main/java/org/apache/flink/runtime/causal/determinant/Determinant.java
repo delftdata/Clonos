@@ -24,7 +24,8 @@ public abstract class Determinant {
 	public static final byte RNG_DETERMINANT_TAG = 2;
 	public static final byte TIMER_TRIGGER_DETERMINANT = 3;
 	public static final byte SOURCE_CHECKPOINT_DETERMINANT = 4;
-	public static final byte BUFFER_BUILT_TAG = 5;
+	public static final byte IGNORE_CHECKPOINT_DETERMINANT = 5;
+	public static final byte BUFFER_BUILT_TAG = 6;
 
 
 	public boolean isOrderDeterminant() {
@@ -76,6 +77,15 @@ public abstract class Determinant {
 		return (SourceCheckpointDeterminant) this;
 	}
 
+
+	public boolean isIgnoreCheckpointDeterminant() {
+		return getClass() == IgnoreCheckpointDeterminant.class;
+	}
+
+	public IgnoreCheckpointDeterminant asIgnoreCheckpointDeterminant(){
+		return (IgnoreCheckpointDeterminant) this;
+	}
+
 	public int getEncodedSizeInBytes(){
 		return Byte.BYTES;
 	}
@@ -91,6 +101,9 @@ public abstract class Determinant {
 			return TIMER_TRIGGER_DETERMINANT;
 		if(this instanceof SourceCheckpointDeterminant)
 			return SOURCE_CHECKPOINT_DETERMINANT;
+		if(this instanceof IgnoreCheckpointDeterminant)
+			return IGNORE_CHECKPOINT_DETERMINANT;
 		return BUFFER_BUILT_TAG;
 	}
+
 }

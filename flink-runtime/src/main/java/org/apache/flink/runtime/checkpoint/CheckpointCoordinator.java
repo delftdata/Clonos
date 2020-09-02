@@ -24,12 +24,7 @@ import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.checkpoint.hooks.MasterHooks;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.execution.ExecutionState;
-import org.apache.flink.runtime.executiongraph.Execution;
-import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
-import org.apache.flink.runtime.executiongraph.ExecutionJobVertex;
-import org.apache.flink.runtime.executiongraph.ExecutionVertex;
-import org.apache.flink.runtime.executiongraph.JobStatusListener;
-import org.apache.flink.runtime.executiongraph.ExecutionGraph;
+import org.apache.flink.runtime.executiongraph.*;
 import org.apache.flink.runtime.executiongraph.failover.RunStandbyTaskStrategy;
 import org.apache.flink.runtime.jobgraph.JobStatus;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
@@ -51,13 +46,7 @@ import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledFuture;
@@ -65,6 +54,7 @@ import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 import static org.apache.flink.runtime.checkpoint.StateAssignmentOperation.Operation.RESTORE_STATE;
 import static org.apache.flink.runtime.checkpoint.StateAssignmentOperation.Operation.DISPATCH_STATE_TO_STANDBY_TASK;
@@ -941,6 +931,24 @@ public class CheckpointCoordinator {
 		}
 	}
 
+	public void rpcIgnoreUnacknowledgedPendingCheckpointsFor(ExecutionVertex vertex, ExecutionAttemptID executionAttemptId, Throwable cause) {
+		synchronized (lock) {
+			Iterator<PendingCheckpoint> pendingCheckpointIterator = pendingCheckpoints.values().iterator();
+
+			while (pendingCheckpointIterator.hasNext()) {
+				final PendingCheckpoint pendingCheckpoint = pendingCheckpointIterator.next();
+				LOG.info("Checking pending: {}", pendingCheckpoint.getCheckpointId());
+
+				if (!pendingCheckpoint.isAcknowledgedBy(executionAttemptId)) {
+					LOG.info("Sending ignore checkpoint rpc for checkpoint {}", pendingCheckpoint.getCheckpointId());
+					pendingCheckpointIterator.remove();
+					rpcIgnoreCheckpoint(vertex, pendingCheckpoint, cause);
+				}
+			}
+		}
+	}
+
+
 	private void rememberRecentCheckpointId(long id) {
 		if (recentPendingCheckpoints.size() >= NUM_GHOST_CHECKPOINT_IDS) {
 			recentPendingCheckpoints.removeFirst();
@@ -1313,6 +1321,7 @@ public class CheckpointCoordinator {
 		}
 	}
 
+
 	// ------------------------------------------------------------------------
 
 	private final class ScheduledTrigger implements Runnable {
@@ -1362,6 +1371,24 @@ public class CheckpointCoordinator {
 		if (!haveMoreRecentPending) {
 			triggerQueuedRequests();
 		}
+	}
+
+	private void rpcIgnoreCheckpoint(ExecutionVertex vertex, PendingCheckpoint pendingCheckpoint, Throwable cause) {
+		assert(Thread.holdsLock(lock));
+		Preconditions.checkNotNull(pendingCheckpoint);
+
+		final long checkpointId = pendingCheckpoint.getCheckpointId();
+
+		final String reason = (cause != null) ? cause.getMessage() : "";
+
+		LOG.info("RPC Cancelling checkpoint {} of job {} because: {}", checkpointId, job, reason);
+
+		List<ExecutionVertex> downstream = vertex.getProducedPartitions().values().stream()
+			.flatMap(x -> x.getConsumers().stream().flatMap(Collection::stream))
+			.map(ExecutionEdge::getTarget).distinct().collect(Collectors.toList());
+
+		downstream.forEach(v -> v.ignoreCheckpoint(pendingCheckpoint.getCheckpointId()));
+
 	}
 
 	/**

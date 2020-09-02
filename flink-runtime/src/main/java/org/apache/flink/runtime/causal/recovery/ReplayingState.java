@@ -87,7 +87,10 @@ public class ReplayingState extends AbstractState {
 	}
 
 	private void setupDeterminantCache() {
-		reuseCache = new Queue[5];
+		reuseCache = new Queue[6];
+		//We use this cache to avoid object creation during replay
+		//We require two determinants of each type because while one is being processed, the next may already be
+		// a determinant of the same type
 
 		reuseCache[OrderDeterminant.getTypeTag()] = new ArrayDeque<>();
 		reuseCache[OrderDeterminant.getTypeTag()].add(new OrderDeterminant());
@@ -108,6 +111,10 @@ public class ReplayingState extends AbstractState {
 		reuseCache[SourceCheckpointDeterminant.getTypeTag()] = new ArrayDeque<>();
 		reuseCache[SourceCheckpointDeterminant.getTypeTag()].add(new SourceCheckpointDeterminant());
 		reuseCache[SourceCheckpointDeterminant.getTypeTag()].add(new SourceCheckpointDeterminant());
+
+		reuseCache[IgnoreCheckpointDeterminant.getTypeTag()] = new ArrayDeque<>();
+		reuseCache[IgnoreCheckpointDeterminant.getTypeTag()].add(new IgnoreCheckpointDeterminant());
+		reuseCache[IgnoreCheckpointDeterminant.getTypeTag()].add(new IgnoreCheckpointDeterminant());
 	}
 
 	public void executeEnter() {
@@ -282,7 +289,7 @@ public class ReplayingState extends AbstractState {
 			context.numberOfRecoveringSubpartitions.incrementAndGet();
 			if (recoveryBuffer.capacity() > 0) {
 				BufferBuiltDeterminant reuse = new BufferBuiltDeterminant();
-				Queue<Determinant>[] subpartCache = new Queue[6];
+				Queue<Determinant>[] subpartCache = new Queue[7];
 				subpartCache[BufferBuiltDeterminant.getTypeTag()] = new ArrayDeque<>();
 				subpartCache[BufferBuiltDeterminant.getTypeTag()].add(reuse);
 				//2. Rebuild in-fligh log and subpartition state

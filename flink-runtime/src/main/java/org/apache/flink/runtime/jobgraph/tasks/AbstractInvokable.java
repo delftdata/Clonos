@@ -271,4 +271,8 @@ public abstract class AbstractInvokable {
 	public void notifyCheckpointComplete(long checkpointId) throws Exception {
 		throw new UnsupportedOperationException(String.format("notifyCheckpointComplete not supported by %s", this.getClass().getName()));
 	}
+
+	public void ignoreCheckpoint(long checkpointId){
+		throw new UnsupportedOperationException(String.format("ignoreCheckpoint not supported by %s", this.getClass().getName()));
+	}
 }

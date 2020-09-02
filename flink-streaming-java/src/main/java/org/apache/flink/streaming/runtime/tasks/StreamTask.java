@@ -24,6 +24,7 @@ import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.core.fs.CloseableRegistry;
 import org.apache.flink.core.fs.FileSystemSafetyNet;
 import org.apache.flink.runtime.causal.*;
+import org.apache.flink.runtime.causal.determinant.IgnoreCheckpointDeterminant;
 import org.apache.flink.runtime.causal.determinant.SourceCheckpointDeterminant;
 import org.apache.flink.runtime.causal.log.job.IJobCausalLog;
 import org.apache.flink.runtime.causal.log.job.JobCausalLog;
@@ -59,6 +60,7 @@ import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.api.graph.StreamEdge;
 import org.apache.flink.streaming.api.operators.*;
+import org.apache.flink.streaming.runtime.io.CheckpointBarrierHandler;
 import org.apache.flink.streaming.runtime.io.RecordWriterOutput;
 import org.apache.flink.streaming.runtime.io.StreamRecordWriter;
 import org.apache.flink.streaming.runtime.partitioner.ConfigurableStreamPartitioner;
@@ -232,7 +234,9 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	private final CausalRandomService randomService;
 	private AtomicLong currentEpochID;
 	private final RecordCountProvider recordCountProvider;
+
 	private SourceCheckpointDeterminant reuseSourceCheckpointDeterminant;
+	private IgnoreCheckpointDeterminant ignoreCheckpointReuseDeterminant;
 
 	// ------------------------------------------------------------------------
 
@@ -322,6 +326,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		currentEpochID = new AtomicLong(0);
 
 		reuseSourceCheckpointDeterminant = new SourceCheckpointDeterminant();
+		ignoreCheckpointReuseDeterminant = new IgnoreCheckpointDeterminant();
 	}
 
 	// ------------------------------------------------------------------------
@@ -754,6 +759,9 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		}
 	}
 
+
+
+
 	public boolean isCausal() {
 		return getJobCausalLog() != null;
 	}
@@ -853,6 +861,32 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 				return false;
 			}
 		}
+	}
+
+	@Override
+	public void ignoreCheckpoint(long checkpointId) {
+
+		synchronized (lock) {
+			if (isRunning) {
+				LOG.info("Ignoring checkpoint, appending determinant and ignoring.");
+				jobCausalLog.appendDeterminant(ignoreCheckpointReuseDeterminant.replace(recordCountProvider.getRecordCount(),checkpointId), currentEpochID.get());
+				CheckpointBarrierHandler handler = getCheckpointBarrierHandler();
+					try {
+						handler.ignoreCheckpoint(checkpointId);
+					} catch (Exception e){
+						LOG.error(e.getMessage());
+						e.printStackTrace();
+					}
+				}
+			}
+
+		// notify the coordinator that we decline this checkpoint
+		getEnvironment().declineCheckpoint(checkpointId, new Exception("Received rpc to cancel"));
+	}
+
+	protected CheckpointBarrierHandler getCheckpointBarrierHandler(){
+		//default implementation
+		throw new UnsupportedOperationException("Method must be overriden by stream task types using a barrier handler!.");
 	}
 
 	public ExecutorService getAsyncOperationsThreadPool() {
@@ -967,6 +1001,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	public void notifyCompletedRestoringCheckpoint(long checkpointId) {
 		this.recoveryManager.notifyStateRestorationComplete(checkpointId);
 	}
+
+
 	// ------------------------------------------------------------------------
 	//  State backend
 	// ------------------------------------------------------------------------

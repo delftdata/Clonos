@@ -22,10 +22,7 @@ import akka.remote.Ack;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.execution.ExecutionState;
-import org.apache.flink.runtime.executiongraph.Execution;
-import org.apache.flink.runtime.executiongraph.ExecutionGraph;
-import org.apache.flink.runtime.executiongraph.ExecutionJobVertex;
-import org.apache.flink.runtime.executiongraph.ExecutionVertex;
+import org.apache.flink.runtime.executiongraph.*;
 import org.apache.flink.runtime.instance.SlotSharingGroupId;
 import org.apache.flink.runtime.jobmaster.EstablishedResourceManagerConnection;
 import org.apache.flink.runtime.jobmaster.SlotRequestId;
@@ -36,6 +33,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -105,7 +103,8 @@ public class RunStandbyTaskStrategy extends FailoverStrategy {
 		LOG.info("Discarding pending checkpoints unacknowledged by failed task and restarting checkpoint coordinator with backoff");
 		//In order to allow the task to recover while still making progress, we reset the checkpoint coordinator timeout
 		assert this.executionGraph.getCheckpointCoordinator() != null;
-		this.executionGraph.getCheckpointCoordinator().failUnacknowledgedPendingCheckpointsFor(taskExecution.getAttemptId(), new Exception("Task failed and is recovering causally."));
+		ExecutionVertex vertex = taskExecution.getVertex();
+		this.executionGraph.getCheckpointCoordinator().rpcIgnoreUnacknowledgedPendingCheckpointsFor(vertex, taskExecution.getAttemptId(), new Exception("Task failed and is recovering causally."));
 		this.executionGraph.getCheckpointCoordinator().restartBackoffCheckpointScheduler();
 
 		CompletableFuture<Void> removeSlotsFuture = asyncRemoveFailedSlots(taskExecution);

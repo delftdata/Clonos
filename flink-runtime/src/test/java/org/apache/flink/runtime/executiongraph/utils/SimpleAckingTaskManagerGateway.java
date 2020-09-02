@@ -179,4 +179,10 @@ public class SimpleAckingTaskManagerGateway implements TaskManagerGateway {
 			return CompletableFuture.completedFuture(Acknowledge.get());
 		}
 	}
+
+	@Override
+	public CompletableFuture<Acknowledge> ignoreCheckpoint(ExecutionAttemptID attemptId, long checkpointId,
+													 Time rpcTimeout) {
+		return FutureUtils.completedExceptionally(new UnsupportedOperationException());
+	}
 }

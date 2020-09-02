@@ -999,4 +999,17 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 	public ArchivedExecutionVertex archive() {
 		return new ArchivedExecutionVertex(this);
 	}
+
+    public void ignoreCheckpoint(long checkpointId) {
+		//TODO all of the code here messing with "current execution" feels fairly unprotected. Should probably introduce a lock.
+
+		try {
+			this.currentExecution.ignoreCheckpointRpcCall(checkpointId).get();
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		} catch (ExecutionException e) {
+			e.printStackTrace();
+		}
+
+	}
 }

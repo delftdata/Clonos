@@ -350,6 +350,10 @@ public class StreamTwoInputProcessor<IN1, IN2> implements RecordCountTargetForce
 		this.asyncEventRecordCountTarget = target;
 	}
 
+	public CheckpointBarrierHandler getCheckpointBarrierHandlers() {
+		return barrierHandler;
+	}
+
 	private class ForwardingValveOutputHandler1 implements StatusWatermarkValve.ValveOutputHandler {
 		private final TwoInputStreamOperator<IN1, IN2, ?> operator;
 		private final Object lock;

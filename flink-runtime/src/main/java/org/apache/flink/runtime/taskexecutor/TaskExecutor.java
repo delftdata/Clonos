@@ -756,6 +756,19 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		}
 	}
 
+	@Override
+	public CompletableFuture<Acknowledge> ignoreCheckpoint(ExecutionAttemptID attemptId, long checkpointId,
+														   Time rpcTimeout) {
+		log.info("Ignore checkpoint {} for {}.", checkpointId, attemptId);
+		final Task task = taskSlotTable.getTask(attemptId);
+		if (task != null)
+			task.ignoreCheckpoint(checkpointId);
+		else
+			log.debug("TaskManager received a ignore checkpoint request for unknown task " + attemptId + '.');
+
+		return CompletableFuture.completedFuture(Acknowledge.get());
+	}
+
 	// ----------------------------------------------------------------------
 	// Slot allocation RPCs
 	// ----------------------------------------------------------------------
@@ -876,6 +889,8 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 			return FutureUtils.completedExceptionally(new FlinkException("The file " + fileType + " is not available on the TaskExecutor."));
 		}
 	}
+
+
 
 	// ----------------------------------------------------------------------
 	// Disconnection RPCs

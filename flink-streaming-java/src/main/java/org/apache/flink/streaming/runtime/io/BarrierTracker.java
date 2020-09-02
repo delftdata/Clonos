@@ -32,6 +32,7 @@ import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.Optional;
 
@@ -139,6 +140,11 @@ public class BarrierTracker implements CheckpointBarrierHandler {
 	public long getAlignmentDurationNanos() {
 		// this one does not do alignment at all
 		return 0L;
+	}
+
+	@Override
+	public void ignoreCheckpoint(long checkpointID) throws IOException {
+
 	}
 
 	private void processBarrier(CheckpointBarrier receivedBarrier, int channelIndex) throws Exception {

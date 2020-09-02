@@ -1749,11 +1749,6 @@ public class ExecutionGraph implements AccessExecutionGraph {
 			// avoiding redundant local failover
 			if (execution.getGlobalModVersion() == globalModVersion) {
 				try {
-					// fail all checkpoints which the failed task has not yet acknowledged
-					if (checkpointCoordinator != null) {
-						checkpointCoordinator.failUnacknowledgedPendingCheckpointsFor(execution.getAttemptId(), ex);
-					}
-
 					failoverStrategy.onTaskFailure(execution, ex);
 				}
 				catch (Throwable t) {

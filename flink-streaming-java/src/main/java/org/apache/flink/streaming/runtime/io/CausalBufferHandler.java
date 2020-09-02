@@ -192,4 +192,9 @@ public class CausalBufferHandler implements CheckpointBarrierHandler {
 	public long getAlignmentDurationNanos() {
 		return wrapped.getAlignmentDurationNanos();
 	}
+
+	@Override
+	public void ignoreCheckpoint(long checkpointID) throws IOException {
+		wrapped.ignoreCheckpoint(checkpointID);
+	}
 }

@@ -287,6 +287,10 @@ public class StreamInputProcessor<IN> implements RecordCountTargetForceable {
 		asyncEventRecordCountTarget = target;
 	}
 
+	public CheckpointBarrierHandler getCheckpointBarrierHandlers() {
+		return this.barrierHandler;
+	}
+
 
 	private class ForwardingValveOutputHandler implements StatusWatermarkValve.ValveOutputHandler {
 		private final OneInputStreamOperator<IN, ?> operator;

@@ -78,6 +78,7 @@ public class RecoveryManager implements IRecoveryManager {
 	CheckpointForceable checkpointForceable;
 	RecordCountTargetForceable recordCountTargetForceable;
 
+
 	public enum SinkRecoveryStrategy {
 		TRANSACTIONAL,
 		KAFKA

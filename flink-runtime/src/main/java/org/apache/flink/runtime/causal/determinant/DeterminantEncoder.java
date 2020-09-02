@@ -61,4 +61,8 @@ public interface DeterminantEncoder {
 	Determinant decodeSourceCheckpointDeterminant(ByteBuf b);
 
 	Determinant decodeSourceCheckpointDeterminant(ByteBuf b, SourceCheckpointDeterminant reuse);
+
+	Determinant decodeIgnoreCheckpointDeterminant(ByteBuf b);
+
+	Determinant decodeIgnoreCheckpointDeterminant(ByteBuf b, IgnoreCheckpointDeterminant reuse);
 }

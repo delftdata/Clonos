@@ -25,6 +25,7 @@ import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.streaming.api.checkpoint.ExternallyInducedSource;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
 import org.apache.flink.streaming.api.operators.StreamSource;
+import org.apache.flink.streaming.runtime.io.CheckpointBarrierHandler;
 import org.apache.flink.util.FlinkException;
 
 /**
@@ -121,5 +122,10 @@ public class SourceStreamTask<OUT, SRC extends SourceFunction<OUT>, OP extends S
 				return isRunning();
 			}
 		}
+	}
+
+	@Override
+	protected CheckpointBarrierHandler getCheckpointBarrierHandler() {
+		return null;
 	}
 }

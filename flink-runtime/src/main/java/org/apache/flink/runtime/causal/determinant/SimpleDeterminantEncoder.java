@@ -40,6 +40,8 @@ public class SimpleDeterminantEncoder implements DeterminantEncoder {
 			return encodeTimerTriggerDeterminant(determinant.asTimerTriggerDeterminant());
 		if (determinant.isSourceCheckpointDeterminant())
 			return encodeSourceCheckpointDeterminant(determinant.asSourceCheckpointDeterminant());
+		if (determinant.isIgnoreCheckpointDeterminant())
+			return encodeIgnoreCheckpointDeterminant(determinant.asIgnoreCheckpointDeterminant());
 		throw new UnknownDeterminantTypeException();
 	}
 
@@ -57,6 +59,8 @@ public class SimpleDeterminantEncoder implements DeterminantEncoder {
 			encodeTimerTriggerDeterminant(determinant.asTimerTriggerDeterminant(), targetBuf);
 		if (determinant.isSourceCheckpointDeterminant())
 			encodeSourceCheckpointDeterminant(determinant.asSourceCheckpointDeterminant(), targetBuf);
+		if (determinant.isIgnoreCheckpointDeterminant())
+			encodeIgnoreCheckpointDeterminant(determinant.asIgnoreCheckpointDeterminant(), targetBuf);
 	}
 
 	@Override
@@ -72,6 +76,7 @@ public class SimpleDeterminantEncoder implements DeterminantEncoder {
 		if (tag == Determinant.BUFFER_BUILT_TAG) return decodeBufferBuiltDeterminant(b);
 		if (tag == Determinant.TIMER_TRIGGER_DETERMINANT) return decodeTimerTriggerDeterminant(b);
 		if (tag == Determinant.SOURCE_CHECKPOINT_DETERMINANT) return decodeSourceCheckpointDeterminant(b);
+		if (tag == Determinant.IGNORE_CHECKPOINT_DETERMINANT) return decodeIgnoreCheckpointDeterminant(b);
 		throw new CorruptDeterminantArrayException();
 	}
 
@@ -88,6 +93,7 @@ public class SimpleDeterminantEncoder implements DeterminantEncoder {
 		if (tag == Determinant.BUFFER_BUILT_TAG) return decodeBufferBuiltDeterminant(b, (BufferBuiltDeterminant) determinantCache[tag].poll());
 		if (tag == Determinant.TIMER_TRIGGER_DETERMINANT) return decodeTimerTriggerDeterminant(b, (TimerTriggerDeterminant) determinantCache[tag].poll());
 		if (tag == Determinant.SOURCE_CHECKPOINT_DETERMINANT) return decodeSourceCheckpointDeterminant(b, (SourceCheckpointDeterminant) determinantCache[tag].poll());
+		if (tag == Determinant.IGNORE_CHECKPOINT_DETERMINANT) return decodeIgnoreCheckpointDeterminant(b, (IgnoreCheckpointDeterminant) determinantCache[tag].poll());
 		throw new CorruptDeterminantArrayException();
 	}
 
@@ -262,6 +268,33 @@ public class SimpleDeterminantEncoder implements DeterminantEncoder {
 			b.readBytes(ref);
 		}
 		return reuse.replace(recCount, checkpoint, ts, CheckpointType.values()[typeOrd], ref);
+
+	}
+
+	private void encodeIgnoreCheckpointDeterminant(IgnoreCheckpointDeterminant det, ByteBuf buf) {
+		buf.writeByte(Determinant.IGNORE_CHECKPOINT_DETERMINANT);
+		buf.writeInt(det.getRecordCount());
+		buf.writeLong(det.getCheckpointID());
+	}
+
+	private byte[] encodeIgnoreCheckpointDeterminant(IgnoreCheckpointDeterminant det) {
+		// tag (1), rec count (4), checkpoint (8)
+		byte[] bytes = new byte[det.getEncodedSizeInBytes()];
+		ByteBuf buf = Unpooled.wrappedBuffer(bytes);
+		encodeIgnoreCheckpointDeterminant(det, buf);
+		return bytes;
+	}
+
+	@Override
+	public Determinant decodeIgnoreCheckpointDeterminant(ByteBuf b) {
+		return decodeIgnoreCheckpointDeterminant(b, new IgnoreCheckpointDeterminant());
+	}
+
+	@Override
+	public Determinant decodeIgnoreCheckpointDeterminant(ByteBuf b, IgnoreCheckpointDeterminant reuse) {
+		int recCount = b.readInt();
+		long checkpoint = b.readLong();
+		return reuse.replace(recCount, checkpoint);
 
 	}
 }

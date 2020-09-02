@@ -121,6 +121,18 @@ object TaskMessages {
   case class TaskInFinalState(executionID: ExecutionAttemptID)
     extends TaskMessage
 
+  /**
+   * Informs task that it should ignore any barriers regarding the provided
+   * checkpoint id. This causes the task to unblock the connections, but not
+   * emit a cancel checkpoint marker.
+   *
+   * @param attemptID The standby task's execution attempt ID.
+   * @param checkpointID The checkpoint to ignore from now on
+   */
+  case class IgnoreCheckpoint(
+                                         attemptID: ExecutionAttemptID,
+                                         checkpointID: Long)
+    extends TaskMessage
 
   // --------------------------------------------------------------------------
   //  Updates to Intermediate Results

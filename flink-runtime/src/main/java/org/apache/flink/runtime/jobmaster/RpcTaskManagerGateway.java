@@ -172,4 +172,10 @@ public class RpcTaskManagerGateway implements TaskManagerGateway {
 			cause,
 			timeout);
 	}
+
+	@Override
+	public CompletableFuture<Acknowledge> ignoreCheckpoint(ExecutionAttemptID attemptId, long checkpointId,
+														   Time rpcTimeout) {
+		return taskExecutorGateway.ignoreCheckpoint(attemptId, checkpointId, rpcTimeout);
+	}
 }

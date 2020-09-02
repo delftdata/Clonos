@@ -416,6 +416,68 @@ public class BarrierBuffer implements CheckpointBarrierHandler {
 		notifyAbort(checkpointId, new CheckpointDeclineOnCancellationBarrierException());
 	}
 
+
+	@Override
+	public void ignoreCheckpoint(long checkpointID) throws IOException {
+		// fast path for single channel cases
+		if (totalNumberOfInputChannels == 1) {
+			if (checkpointID > currentCheckpointId) {
+				// new checkpoint
+				currentCheckpointId = checkpointID;
+			}
+			return;
+		}
+
+		// -- general code path for multiple input channels --
+
+		if (numBarriersReceived > 0) {
+			// this is only true if some alignment is in progress and nothing was canceled
+
+			if (checkpointID == currentCheckpointId) {
+				// cancel this alignment
+				if (LOG.isDebugEnabled()) {
+					LOG.debug("Checkpoint {} ignored, aborting alignment", checkpointID);
+				}
+
+				releaseBlocksAndResetBarriers();
+			} else if (checkpointID > currentCheckpointId) {
+				// we canceled the next which also cancels the current
+				LOG.warn("Received ignore request for checkpoint {} before completing current checkpoint {}. " +
+					"Skipping current checkpoint.", checkpointID, currentCheckpointId);
+
+				// this stops the current alignment
+				releaseBlocksAndResetBarriers();
+
+				// the next checkpoint starts as canceled
+				currentCheckpointId = checkpointID;
+				startOfAlignmentTimestamp = 0L;
+				latestAlignmentDurationNanos = 0L;
+
+			}
+
+			// else: ignore trailing (cancellation) barrier from an earlier checkpoint (obsolete now)
+
+		} else if (checkpointID > currentCheckpointId) {
+			// first barrier of a new checkpoint is directly a cancellation
+
+			// by setting the currentCheckpointId to this checkpoint while keeping the numBarriers
+			// at zero means that no checkpoint barrier can start a new alignment
+			currentCheckpointId = checkpointID;
+
+			startOfAlignmentTimestamp = 0L;
+			latestAlignmentDurationNanos = 0L;
+
+			if (LOG.isDebugEnabled()) {
+				LOG.debug("Checkpoint {} ignored, skipping alignment", checkpointID);
+			}
+
+		}
+
+		// else: trailing barrier from either
+		//   - a previous (subsumed) checkpoint
+		//   - the current checkpoint if it was already canceled
+	}
+
 	private void notifyAbort(long checkpointId, CheckpointDeclineException cause) throws Exception {
 		if (toNotifyOnCheckpoint != null) {
 			toNotifyOnCheckpoint.abortCheckpointOnBarrier(checkpointId, cause);
@@ -500,6 +562,7 @@ public class BarrierBuffer implements CheckpointBarrierHandler {
 		}
 	}
 
+
 	/**
 	 * Releases the blocks on all channels and resets the barrier count.
 	 * Makes sure the just written data is the next to be consumed.
@@ -569,6 +632,8 @@ public class BarrierBuffer implements CheckpointBarrierHandler {
 			return System.nanoTime() - start;
 		}
 	}
+
+
 
 	// ------------------------------------------------------------------------
 	// Utilities

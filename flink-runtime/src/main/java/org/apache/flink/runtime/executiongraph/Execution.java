@@ -1349,6 +1349,19 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 		return toReturn;
 	}
 
+	public CompletableFuture<Acknowledge> ignoreCheckpointRpcCall(long checkpointId) {
+		final LogicalSlot slot = assignedResource;
+		if (slot != null) {
+			final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
+			CompletableFuture<Acknowledge> cancelResult = FutureUtils.retry(
+				() -> taskManagerGateway.ignoreCheckpoint(attemptId, checkpointId, rpcTimeout),
+				NUM_CANCEL_CALL_TRIES,
+				executor);
+			return cancelResult;
+		}
+
+		return CompletableFuture.completedFuture(Acknowledge.get());
+	}
 
 	private void sendFailIntermediateResultPartitionsRpcCall() {
 		final LogicalSlot slot = assignedResource;
