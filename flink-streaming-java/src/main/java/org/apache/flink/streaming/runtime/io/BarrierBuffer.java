@@ -86,6 +86,7 @@ public class BarrierBuffer implements CheckpointBarrierHandler {
 	 * unlimited.
 	 */
 	private final long maxBufferedBytes;
+	private final Object lock;
 
 	/**
 	 * The sequence of buffers/events that has been unblocked and must now be consumed before
@@ -144,7 +145,7 @@ public class BarrierBuffer implements CheckpointBarrierHandler {
 	 * @throws IOException Thrown, when the spilling to temp files cannot be initialized.
 	 */
 	public BarrierBuffer(InputGate inputGate, BufferBlocker bufferBlocker) throws IOException {
-		this(inputGate, bufferBlocker, -1);
+		this(inputGate, bufferBlocker, -1, new Object());
 	}
 
 	/**
@@ -159,7 +160,7 @@ public class BarrierBuffer implements CheckpointBarrierHandler {
 	 * @param maxBufferedBytes The maximum bytes to be buffered before the checkpoint aborts.
 	 * @throws IOException Thrown, when the spilling to temp files cannot be initialized.
 	 */
-	public BarrierBuffer(InputGate inputGate, BufferBlocker bufferBlocker, long maxBufferedBytes) throws IOException {
+	public BarrierBuffer(InputGate inputGate, BufferBlocker bufferBlocker, long maxBufferedBytes, Object checkpointLock) throws IOException {
 		checkArgument(maxBufferedBytes == -1 || maxBufferedBytes > 0);
 
 		this.inputGate = inputGate;
@@ -169,8 +170,10 @@ public class BarrierBuffer implements CheckpointBarrierHandler {
 
 		this.bufferBlocker = checkNotNull(bufferBlocker);
 		this.queuedBuffered = new ArrayDeque<BufferOrEventSequence>();
+		this.lock = checkpointLock;
 
 	}
+
 
 
 	// ------------------------------------------------------------------------
@@ -208,7 +211,10 @@ public class BarrierBuffer implements CheckpointBarrierHandler {
 			}
 
 			BufferOrEvent bufferOrEvent = next.get();
-			Optional<BufferOrEvent> maybeBufferOrEventToForward = processBufferOrEvent(bufferOrEvent);
+			Optional<BufferOrEvent> maybeBufferOrEventToForward;
+			synchronized (lock) {
+				 maybeBufferOrEventToForward = processBufferOrEvent(bufferOrEvent);
+			}
 
 			if (maybeBufferOrEventToForward.isPresent()) {
 				return maybeBufferOrEventToForward.get();

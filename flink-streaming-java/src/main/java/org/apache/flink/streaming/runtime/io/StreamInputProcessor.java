@@ -245,8 +245,7 @@ public class StreamInputProcessor<IN> implements RecordCountTargetForceable {
 			while(asyncEventRecordCountTarget != -1 && recordCountProvider.getRecordCount() == asyncEventRecordCountTarget)
 				recoveryManager.triggerAsyncEvent();
 
-			final BufferOrEvent bufferOrEvent;
-			bufferOrEvent = barrierHandler.getNextNonBlocked();
+			final BufferOrEvent bufferOrEvent = barrierHandler.getNextNonBlocked();
 			if (bufferOrEvent != null) {
 				if (bufferOrEvent.isBuffer()) {
 					currentChannel = bufferOrEvent.getChannelIndex();
