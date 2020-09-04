@@ -31,6 +31,8 @@ import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -46,14 +48,14 @@ public class StandbyState extends AbstractState {
 
 	//Concurrent sets with notifications received before the WaitConnectionsState
 	//These may happen when we do not use highly available standby tasks
-	private ConcurrentMap<EarlyNewInputChannelNotification, Boolean> inputChannelNotifications;
-	private ConcurrentMap<EarlyNewOutputChannelNotification, Boolean> outputChannelNotifications;
+	private Set<EarlyNewInputChannelNotification> inputChannelNotifications;
+	private Set<EarlyNewOutputChannelNotification> outputChannelNotifications;
 
 	public StandbyState(RecoveryManager context) {
 		super(context);
 
-		this.inputChannelNotifications = new ConcurrentHashMap<>();
-		this.outputChannelNotifications = new ConcurrentHashMap<>();
+		this.inputChannelNotifications = new HashSet<>();
+		this.outputChannelNotifications = new HashSet<>();
 		for(PipelinedSubpartition ps : context.subpartitionTable.values())
 			ps.setIsRecoveringSubpartitionInFlightState(true);
 	}
@@ -71,23 +73,23 @@ public class StandbyState extends AbstractState {
 		context.setState(newState);
 
 		// Notify state of save notifications
-		for(EarlyNewInputChannelNotification i : inputChannelNotifications.keySet()){
+		for(EarlyNewInputChannelNotification i : inputChannelNotifications){
 			newState.notifyNewInputChannel(i.getRemoteInputChannel(), i.getConsumedSubpartitionIndex(), i.getNumBuffersRemoved());
 		}
-		for(EarlyNewOutputChannelNotification o : outputChannelNotifications.keySet()){
+		for(EarlyNewOutputChannelNotification o : outputChannelNotifications){
 			newState.notifyNewOutputChannel(o.getIntermediateResultPartitionID(), o.subpartitionIndex);
 		}
 	}
 
 	@Override
 	public void notifyNewInputChannel(RemoteInputChannel remoteInputChannel, int consumedSubpartitionIndex, int numBuffersRemoved){
-		this.inputChannelNotifications.put(new EarlyNewInputChannelNotification(remoteInputChannel, consumedSubpartitionIndex, numBuffersRemoved), Boolean.TRUE);
+		this.inputChannelNotifications.add(new EarlyNewInputChannelNotification(remoteInputChannel, consumedSubpartitionIndex, numBuffersRemoved));
 
 	}
 
 	@Override
 	public void notifyNewOutputChannel(IntermediateResultPartitionID intermediateResultPartitionID, int subpartitionIndex){
-		this.outputChannelNotifications.put(new EarlyNewOutputChannelNotification(intermediateResultPartitionID, subpartitionIndex), Boolean.TRUE);
+		this.outputChannelNotifications.add(new EarlyNewOutputChannelNotification(intermediateResultPartitionID, subpartitionIndex));
 	}
 
 	@Override
