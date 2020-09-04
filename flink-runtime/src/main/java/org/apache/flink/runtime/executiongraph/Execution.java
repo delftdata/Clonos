@@ -848,14 +848,12 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 							partitionId, partitionLocation, updateConsumersOnFailover);
 					LOG.debug("New InputChannelDeploymentDescriptor " + descriptor + " for updating consumer " + consumer + ".");
 
-					LOG.info("Before update partition rpc");
 					consumer.sendUpdatePartitionInfoRpcCall(
 						Collections.singleton(
 							new PartitionInfo(
 								partition.getIntermediateResult().getId(),
 								descriptor)));
 
-					LOG.info("After update partition rpc");
 				}
 				// ----------------------------------------------------------------
 				// Consumer is scheduled or deploying => cache input channel
