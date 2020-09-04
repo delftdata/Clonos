@@ -39,20 +39,20 @@ public final class NetworkBufferBasedContiguousUpstreamThreadCausalLog extends N
 	public void processUpstreamCausalLogDelta(ThreadLogDelta causalLogDelta, long epochID) {
 
 		int determinantSize = causalLogDelta.getDeltaSize();
-		if (determinantSize > 0) {
-			int offsetFromEpoch = causalLogDelta.getOffsetFromEpoch();
-
-			readLock.lock();
-			try {
+		readLock.lock();
+		try {
+			if (determinantSize > 0) {
+				int deltaOffsetFromEpoch = causalLogDelta.getOffsetFromEpoch();
 				synchronized (buf) {
 					int writeIndex = writerIndex.get();
-					EpochStartOffset epochStartOffset = epochStartOffsets.computeIfAbsent(epochID, k -> new EpochStartOffset(k, writeIndex));
+					EpochStartOffset epochStartOffset = epochStartOffsets.computeIfAbsent(epochID,
+						k -> new EpochStartOffset(k, writeIndex));
 
 					int currentLogicalOffsetFromEpoch = writeIndex - epochStartOffset.getOffset();
 
-					int numNewDeterminants = (offsetFromEpoch + determinantSize) - currentLogicalOffsetFromEpoch;
+					int numNewDeterminants = (deltaOffsetFromEpoch + determinantSize) - currentLogicalOffsetFromEpoch;
 
-					if(numNewDeterminants > 0) {
+					if (numNewDeterminants > 0) {
 
 						while (notEnoughSpaceFor(numNewDeterminants))
 							addComponent();
@@ -64,10 +64,10 @@ public final class NetworkBufferBasedContiguousUpstreamThreadCausalLog extends N
 						writerIndex.addAndGet(numNewDeterminants);
 					}
 				}
-
-			} finally {
-				readLock.unlock();
 			}
+
+		} finally {
+			readLock.unlock();
 		}
 	}
 }

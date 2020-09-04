@@ -228,7 +228,7 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 
 	private void writeAndFlushNextMessageIfPossible(final Channel channel) throws IOException {
 		if (fatalError || !channel.isWritable()) {
-			LOG.warn("Fatal error ({}) or channel not writable.", fatalError);
+			LOG.debug("Fatal error ({}) or channel not writable.", fatalError);
 			return;
 		}
 

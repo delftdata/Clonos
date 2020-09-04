@@ -38,15 +38,15 @@ public final class NetworkBufferBasedContiguousLocalThreadCausalLog extends Netw
 		this.encoder = encoder;
 	}
 
-	// A local log has a single producer, thus we do not need to synchronize accesses.
+	// A local log has a single producer, thus we do not need to synchronize writes, but we still need to synchronize
+	// with checkpoint completions.
 	// writerIndex is used to control visibility for consumers, by only making available bytes that are fully written.
 	@Override
 	public void appendDeterminant(Determinant determinant, long epochID) {
 		int determinantEncodedSize = determinant.getEncodedSizeInBytes();
 		readLock.lock();
 		try {
-			int writeIndex = writerIndex.get();
-			epochStartOffsets.computeIfAbsent(epochID, k -> new EpochStartOffset(k, writeIndex));
+			epochStartOffsets.computeIfAbsent(epochID, k -> new EpochStartOffset(k, writerIndex.get()));
 			while (notEnoughSpaceFor(determinantEncodedSize))
 				addComponent();
 

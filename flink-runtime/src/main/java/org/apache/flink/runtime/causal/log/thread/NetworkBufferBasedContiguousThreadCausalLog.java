@@ -131,8 +131,6 @@ public class NetworkBufferBasedContiguousThreadCausalLog implements ThreadCausal
 			if (currentConsumerEpochID != epochID) {
 				if (currentConsumerEpochID > epochID)
 					throw new RuntimeException("Consumer went backwards!");
-				//if (currentConsumerEpochID + 1 != epochID)
-				//	throw new RuntimeException("Consumer skipped an epoch!");
 				consumerOffset.epochStart = epochStartOffset;
 				consumerOffset.offset = 0;
 			}
@@ -144,11 +142,8 @@ public class NetworkBufferBasedContiguousThreadCausalLog implements ThreadCausal
 
 			if(numBytesToSend == 0)
 				update = Unpooled.EMPTY_BUFFER;
-			else {
+			else
 				update = makeDeltaUnsafe(buf, physicalConsumerOffset, numBytesToSend);
-				//update = Unpooled.directBuffer(numBytesToSend, numBytesToSend);
-				//update.writeBytes(buf, physicalConsumerOffset, numBytesToSend);
-			}
 
 			ThreadLogDelta toReturn = new ThreadLogDelta(update, consumerOffset.getOffset());
 			consumerOffset.setOffset(consumerOffset.getOffset() + numBytesToSend);

@@ -162,7 +162,6 @@ public class PipelinedSubpartition extends ResultSubpartition {
 	}
 
 	public void bypassDeterminantRequest(BufferConsumer bufferConsumer) {
-		LOG.debug("Trying to acquire lock to add determinantRequest");
 		synchronized (buffers) {
 			LOG.debug("Acquired lock to Add determinantRequest buffer consumer");
 			determinantRequests.add(bufferConsumer);
@@ -262,7 +261,6 @@ public class PipelinedSubpartition extends ResultSubpartition {
 			return null;
 		}
 
-		LOG.debug("Attempt to obtain buffers lock to check for determinant requests");
 		synchronized (buffers) {
 			LOG.debug("Obtained buffers lock to check for determinant requests");
 			if (!determinantRequests.isEmpty()) {
@@ -396,7 +394,8 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 	private boolean _nextBufferIsEvent() {
 		assert Thread.holdsLock(buffers);
-
+		if(inflightReplayIterator != null)
+			return inflightReplayIterator.hasNext() && !inflightReplayIterator.peekNext().isBuffer();
 		return !buffers.isEmpty() && !buffers.peekFirst().isBuffer();
 	}
 
@@ -414,6 +413,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 	@Override
 	public PipelinedSubpartitionView createReadView(BufferAvailabilityListener availabilityListener) throws IOException {
+		LOG.info("Acquire lock to CREATE READ VIEW");
 		synchronized (buffers) {
 			checkState(!isReleased);
 
@@ -430,6 +430,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 
 		}
+		LOG.info("recman =? {}, isRunning? {}", recoveryManager == null, recoveryManager != null && recoveryManager.isRunning());
 		//If we are recovering, when we conclude, we must notify of data availability.
 		if (recoveryManager == null || recoveryManager.isRunning()) {
 			notifyDataAvailable();
@@ -483,7 +484,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 	@Override
 	public int unsynchronizedGetNumberOfQueuedBuffers() {
 		// since we do not synchronize, the size may actually be lower than 0!
-		return Math.max(buffers.size(), 0);
+		return Math.max(buffers.size() + (inflightReplayIterator != null ? inflightReplayIterator.numberRemaining() : 0 ), 0);
 	}
 
 	public void requestReplay(long checkpointId, int ignoreMessages) {
@@ -522,11 +523,13 @@ public class PipelinedSubpartition extends ResultSubpartition {
 		assert Thread.holdsLock(buffers);
 
 		if (buffers.size() == 1 && buffers.peekLast().isFinished()) {
+			if(inflightReplayIterator != null)
+				return 1 + inflightReplayIterator.numberRemaining();
 			return 1;
 		}
 
 		// We assume that only last buffer is not finished.
-		return Math.max(0, buffers.size() - 1);
+		return Math.max(0, buffers.size() + (inflightReplayIterator != null ? inflightReplayIterator.numberRemaining() : 0) - 1);
 	}
 
 	public void buildAndLogBuffer(int bufferSize) {
