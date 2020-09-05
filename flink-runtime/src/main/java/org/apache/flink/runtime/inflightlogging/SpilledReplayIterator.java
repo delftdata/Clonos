@@ -118,7 +118,7 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 	@Override
 	public Buffer next() {
 		Buffer buffer = null;
-		while (!consumerCursor.behind(producerCursor));
+		while (!consumerCursor.behind(producerCursor)) ;
 		try {
 
 			buffer = consumerCursor.getCurrentBuffer();
@@ -142,7 +142,7 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 	@Override
 	public Buffer peekNext() {
 		Buffer buffer = null;
-		while (!consumerCursor.behind(producerCursor));
+		while (!consumerCursor.behind(producerCursor)) ;
 		try {
 			LOG.debug("Call to peek. Cursor {}", consumerCursor);
 			buffer = consumerCursor.getCurrentBuffer();
@@ -165,7 +165,7 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 		//buffers we will need
 		try {
 			while (consumerCursor.hasNext()) {
-				while (!consumerCursor.behind(producerCursor));
+				while (!consumerCursor.behind(producerCursor)) ;
 				Buffer buffer = consumerCursor.getCurrentBuffer();
 				if (buffer.asByteBuf().refCnt() == 0)
 					buffer = readyBuffersPerEpoch.get(consumerCursor.getCurrentEpoch()).take();

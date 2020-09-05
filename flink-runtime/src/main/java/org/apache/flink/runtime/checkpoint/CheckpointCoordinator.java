@@ -1391,6 +1391,10 @@ public class CheckpointCoordinator {
 		}
 	}
 
+	public Object getCheckpointLock() {
+		return lock;
+	}
+
 
 	// ------------------------------------------------------------------------
 

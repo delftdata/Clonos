@@ -129,7 +129,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 		this.causalLoggingManager = causalLoggingManager;
 	}
 
-	public InFlightLog getInFlightLog(){
+	public InFlightLog getInFlightLog() {
 		return inFlightLog;
 	}
 
@@ -219,7 +219,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 			}
 
 			inFlightLog.close();
-			if(inflightReplayIterator != null)
+			if (inflightReplayIterator != null)
 				inflightReplayIterator.close();
 
 
@@ -284,7 +284,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 				buf = getReplayedBufferUnsafe();
 			} else {
 				LOG.debug("We are not replaying, get buffer from consumers");
-				buf =  getBufferFromQueuedBufferConsumersUnsafe();
+				buf = getBufferFromQueuedBufferConsumersUnsafe();
 			}
 		}
 		return buf;
@@ -296,7 +296,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 		long epoch = inflightReplayIterator.getEpoch();
 		Buffer buffer = inflightReplayIterator.next();
 
-
+		int numBuffersInBacklog = getBuffersInBacklog() + inflightReplayIterator.numberRemaining();
 		if (!inflightReplayIterator.hasNext()) {
 			inflightReplayIterator = null;
 			LOG.debug("Finished replaying inflight log!");
@@ -304,18 +304,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 		return new BufferAndBacklog(buffer,
 			inflightReplayIterator != null || isAvailableUnsafe(),
-			getBuffersInBacklog() + (inflightReplayIterator != null ? inflightReplayIterator.numberRemaining() :
-				0),
-			_recoveryNextBufferIsEvent(), epoch);
-	}
-
-	private boolean _recoveryNextBufferIsEvent() {
-		boolean isNextAnEvent;
-		if (inflightReplayIterator != null && inflightReplayIterator.hasNext())
-			isNextAnEvent = !inflightReplayIterator.peekNext().isBuffer();
-		else
-			isNextAnEvent = _nextBufferIsEvent();
-		return isNextAnEvent;
+			numBuffersInBacklog, _nextBufferIsEvent(), epoch);
 	}
 
 	private BufferAndBacklog getBufferFromQueuedBufferConsumersUnsafe() {
@@ -394,7 +383,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 	private boolean _nextBufferIsEvent() {
 		assert Thread.holdsLock(buffers);
-		if(inflightReplayIterator != null)
+		if (inflightReplayIterator != null)
 			return inflightReplayIterator.hasNext() && !inflightReplayIterator.peekNext().isBuffer();
 		return !buffers.isEmpty() && !buffers.peekFirst().isBuffer();
 	}
@@ -413,7 +402,6 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 	@Override
 	public PipelinedSubpartitionView createReadView(BufferAvailabilityListener availabilityListener) throws IOException {
-		LOG.info("Acquire lock to CREATE READ VIEW");
 		synchronized (buffers) {
 			checkState(!isReleased);
 
@@ -430,7 +418,6 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 
 		}
-		LOG.info("recman =? {}, isRunning? {}", recoveryManager == null, recoveryManager != null && recoveryManager.isRunning());
 		//If we are recovering, when we conclude, we must notify of data availability.
 		if (recoveryManager == null || recoveryManager.isRunning()) {
 			notifyDataAvailable();
@@ -484,7 +471,8 @@ public class PipelinedSubpartition extends ResultSubpartition {
 	@Override
 	public int unsynchronizedGetNumberOfQueuedBuffers() {
 		// since we do not synchronize, the size may actually be lower than 0!
-		return Math.max(buffers.size() + (inflightReplayIterator != null ? inflightReplayIterator.numberRemaining() : 0 ), 0);
+		return Math.max(buffers.size() + (inflightReplayIterator != null ? inflightReplayIterator.numberRemaining() :
+			0), 0);
 	}
 
 	public void requestReplay(long checkpointId, int ignoreMessages) {
@@ -523,13 +511,14 @@ public class PipelinedSubpartition extends ResultSubpartition {
 		assert Thread.holdsLock(buffers);
 
 		if (buffers.size() == 1 && buffers.peekLast().isFinished()) {
-			if(inflightReplayIterator != null)
+			if (inflightReplayIterator != null)
 				return 1 + inflightReplayIterator.numberRemaining();
 			return 1;
 		}
 
 		// We assume that only last buffer is not finished.
-		return Math.max(0, buffers.size() + (inflightReplayIterator != null ? inflightReplayIterator.numberRemaining() : 0) - 1);
+		return Math.max(0, buffers.size() + (inflightReplayIterator != null ?
+			inflightReplayIterator.numberRemaining() : 0) - 1);
 	}
 
 	public void buildAndLogBuffer(int bufferSize) {

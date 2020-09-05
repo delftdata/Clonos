@@ -103,6 +103,7 @@ public class RunStandbyTaskStrategy extends FailoverStrategy {
 		LOG.debug("Discarding pending checkpoints unacknowledged by failed task and restarting checkpoint coordinator with backoff");
 		//In order to allow the task to recover while still making progress, we reset the checkpoint coordinator timeout
 		assert this.executionGraph.getCheckpointCoordinator() != null;
+		Object checkpointLock = executionGraph.getCheckpointCoordinator().getCheckpointLock();
 		ExecutionVertex vertex = taskExecution.getVertex();
 		callbackExecutor.execute(() -> {
 			this.executionGraph.getCheckpointCoordinator().rpcIgnoreUnacknowledgedPendingCheckpointsFor(vertex, taskExecution.getAttemptId(), new Exception("Task failed and is recovering causally."));
@@ -123,7 +124,9 @@ public class RunStandbyTaskStrategy extends FailoverStrategy {
 		//the necessary steps first
 		standbyReady.thenAcceptAsync((Void) -> {
 			LOG.info("Running the standby execution.");
-			vertexToRecover.runStandbyExecution();
+			synchronized (checkpointLock) {
+				vertexToRecover.runStandbyExecution();
+			}
 			LOG.info("Done requesting standby execution");
 		}, callbackExecutor);
 
