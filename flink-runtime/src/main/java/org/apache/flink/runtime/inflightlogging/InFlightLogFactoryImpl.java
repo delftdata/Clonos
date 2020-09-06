@@ -48,17 +48,26 @@ public class InFlightLogFactoryImpl implements InFlightLogFactory {
 			case SPILLABLE:
 				BufferPool recoveryBufferPool = null;
 				try {
-					recoveryBufferPool = networkBufferPool.createBufferPool(config.getNumberOfRecoveryBuffers(), config.getNumberOfRecoveryBuffers());
+					recoveryBufferPool = networkBufferPool.createBufferPool(config.getNumberOfRecoveryBuffers(),
+						config.getNumberOfRecoveryBuffers());
 				} catch (IOException e) {
 					throw new RuntimeException(e);
 				}
-				return new SpillableSubpartitionInFlightLogger(ioManager, config.getSpillPolicy(),
-					config.getPolicyIsSynchronous(), config.getAvailabilityPolicyFillFactor(),
-					config.getInFlightLogSleepTime(), recoveryBufferPool);
+
+				if(config.getPolicyIsAsynchronousPartitionBased())
+					return new SpillableSubpartitionInFlightLogger(ioManager, recoveryBufferPool);
+				else
+					return new SpillableSubpartitionInFlightLogger(ioManager, recoveryBufferPool, config.getSynchronousSpillPolicy());
+
 			case IN_MEMORY:
 			default:
 				return new InMemorySubpartitionInFlightLogger();
 		}
+	}
+
+	@Override
+	public InFlightLogConfig getInFlightLogConfig() {
+		return config;
 	}
 
 }

@@ -306,9 +306,12 @@ public class ReplayingState extends AbstractState {
 
 					LOG.debug("Requesting to build and log buffer with {} bytes",
 						bufferBuiltDeterminant.getNumberOfBytes());
-					pipelinedSubpartition.buildAndLogBuffer(bufferBuiltDeterminant.getNumberOfBytes());
+					try {
+						pipelinedSubpartition.buildAndLogBuffer(bufferBuiltDeterminant.getNumberOfBytes());
+					} catch (InterruptedException e) {
+							return;
+					}
 					subpartCache[BufferBuiltDeterminant.getTypeTag()].add(reuse);
-
 				}
 			}
 			LOG.info("Done recovering pipelined subpartition");

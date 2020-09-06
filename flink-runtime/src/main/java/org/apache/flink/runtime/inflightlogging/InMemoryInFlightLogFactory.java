@@ -31,4 +31,9 @@ public class InMemoryInFlightLogFactory implements InFlightLogFactory{
 	public InFlightLog build() {
 		return new InMemorySubpartitionInFlightLogger();
 	}
+
+	@Override
+	public InFlightLogConfig getInFlightLogConfig() {
+		return null;
+	}
 }

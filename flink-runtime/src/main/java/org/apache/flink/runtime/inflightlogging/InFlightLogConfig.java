@@ -28,11 +28,13 @@ package org.apache.flink.runtime.inflightlogging;
 import org.apache.flink.configuration.ConfigOption;
 import org.apache.flink.configuration.ConfigOptions;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.runtime.io.network.partition.ResultPartition;
+import org.apache.hadoop.yarn.webapp.hamlet.Hamlet;
 
 import java.io.Serializable;
 import java.util.Map;
 import java.util.function.Consumer;
-import java.util.function.Predicate;
+import java.util.function.Function;
 
 public class InFlightLogConfig implements Serializable {
 
@@ -55,7 +57,8 @@ public class InFlightLogConfig implements Serializable {
 	public static final ConfigOption<Integer> IN_FLIGHT_LOG_SPILL_NUM_RECOVERY_BUFFERS = ConfigOptions
 		.key("taskmanager.inflight.spill.num-recovery-buffers")
 		.defaultValue(50)
-		.withDescription("The number of buffers each pipelined subpartition reserves for reading spilled buffers and sending downstream");
+		.withDescription("The number of buffers each pipelined subpartition reserves for reading spilled buffers and " +
+			"sending downstream");
 
 	public static final ConfigOption<Long> IN_FLIGHT_LOG_SPILL_SLEEP = ConfigOptions
 		.key("taskmanager.inflight.spill.sleep")
@@ -70,16 +73,16 @@ public class InFlightLogConfig implements Serializable {
 
 	private final Configuration config;
 
-	public boolean getPolicyIsSynchronous() {
+	public boolean getPolicyIsAsynchronousPartitionBased() {
 		String policy = config.getString(IN_FLIGHT_LOG_SPILL_POLICY);
 
 		switch (policy) {
 			case "eager":
-				return true;
 			case "epoch":
+				return false;
 			case "availability":
 			default:
-				return false;
+				return true;
 		}
 
 	}
@@ -107,7 +110,7 @@ public class InFlightLogConfig implements Serializable {
 	}
 
 
-	public Consumer<SpillableSubpartitionInFlightLogger> getSpillPolicy() {
+	public Consumer<SpillableSubpartitionInFlightLogger> getSynchronousSpillPolicy() {
 		String policy = config.getString(IN_FLIGHT_LOG_SPILL_POLICY);
 
 		switch (policy) {
@@ -117,11 +120,23 @@ public class InFlightLogConfig implements Serializable {
 				return epochPolicy;
 			case "availability":
 			default:
-				return availabilityPolicy;
+				throw new RuntimeException("Requested synchronous spill policy for asynchronous global policy");
 		}
 	}
 
-	public int getNumberOfRecoveryBuffers(){
+	public Function<ResultPartition, Boolean> getAsynchronousGlobalSpillPolicy() {
+		String policy = config.getString(IN_FLIGHT_LOG_SPILL_POLICY);
+
+		switch (policy) {
+			case "availability":
+				return availabilityPolicy;
+			case "eager":
+			case "epoch":
+			default:
+				throw new RuntimeException("Requested asynchronous spill policy for synchronous policy");
+		}
+	}
+	public int getNumberOfRecoveryBuffers() {
 		return config.getInteger(IN_FLIGHT_LOG_SPILL_NUM_RECOVERY_BUFFERS);
 	}
 
@@ -139,14 +154,10 @@ public class InFlightLogConfig implements Serializable {
 				e.flushAllUnflushed();
 	};
 
-	public static Consumer<SpillableSubpartitionInFlightLogger> availabilityPolicy = log -> {
-		if (log.isPoolAvailabilityLow())
-			for (SpillableSubpartitionInFlightLogger.Epoch e : log.getSlicedLog().values())
-				e.flushAllUnflushed();
-	};
+
 
 	public static Consumer<SpillableSubpartitionInFlightLogger> epochPolicy = log -> {
-		if(log.getSlicedLog().size() != 0) {
+		if (log.getSlicedLog().size() >= 2) {
 			long lastKey = log.getSlicedLog().lastKey();
 			for (Map.Entry<Long, SpillableSubpartitionInFlightLogger.Epoch> e : log.getSlicedLog().entrySet()) {
 				if (e.getKey() < lastKey && e.getValue().hasNeverBeenFlushed())
@@ -155,11 +166,14 @@ public class InFlightLogConfig implements Serializable {
 		}
 	};
 
+
+	public static Function<ResultPartition, Boolean> availabilityPolicy = ResultPartition::isPoolAvailabilityLow;
+
 	@Override
 	public String toString() {
 		return "InFlightLogConfig{"
 			+ "type: " + getType()
-			+ ", policy: " + getSpillPolicy()
+			+ ", policy: " +config.getString(IN_FLIGHT_LOG_SPILL_POLICY)
 			+ ", fill-factor: " + getAvailabilityPolicyFillFactor()
 			+ "}";
 	}
