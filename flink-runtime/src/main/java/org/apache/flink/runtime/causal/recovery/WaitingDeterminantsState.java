@@ -72,7 +72,8 @@ public class WaitingDeterminantsState extends AbstractState {
 
 		//If determinant sharing depth is 0, then we are not recovering causally, we can skip to the next state
 		if (context.determinantSharingDepth == 0) {
-			gotToReplayingState();
+			numResponsesExpected = 0;
+			maybeGoToReplayingState();
 			return;
 		}
 
@@ -80,7 +81,8 @@ public class WaitingDeterminantsState extends AbstractState {
 		if (!context.vertexGraphInformation.hasDownstream()) {
 			//With the transactional strategy, all determinants are dropped and we immediately switch to replaying
 			if (RecoveryManager.sinkRecoveryStrategy == RecoveryManager.SinkRecoveryStrategy.TRANSACTIONAL) {
-				gotToReplayingState();
+				numResponsesExpected = 0;
+				maybeGoToReplayingState();
 				return;
 			}
 			//This strategy (not implemented yet), will obtain a single message from kafka, containing determinants
@@ -106,13 +108,13 @@ public class WaitingDeterminantsState extends AbstractState {
 				delta.merge(e.getVertexCausalLogDelta());
 			}
 
-			if (numResponsesReceived == numResponsesExpected) {
-				gotToReplayingState();
-			}
+			maybeGoToReplayingState();
+
 
 		} else
 			super.notifyDeterminantResponseEvent(e);
 	}
+
 
 	@Override
 	public void notifyNewInputChannel(RemoteInputChannel inputChannel, int channelIndex, int numBuffersRemoved) {
@@ -138,6 +140,12 @@ public class WaitingDeterminantsState extends AbstractState {
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
+	}
+
+	@Override
+	public void notifyStateRestorationComplete(long checkpointId) {
+		super.notifyStateRestorationComplete(checkpointId);
+		maybeGoToReplayingState();
 	}
 
 	private void sendInFlightLogReplayRequests() {
@@ -172,12 +180,11 @@ public class WaitingDeterminantsState extends AbstractState {
 		}
 	}
 
-	private void gotToReplayingState() {
-		while (context.isRestoringState())
-			LOG.info("Ready to replay, but waiting for restore state to finish"); //spin waiting
-		LOG.info("Received all determinants, transitioning to Replaying state!");
-
-		context.setState(new ReplayingState(context, delta));
+	private void maybeGoToReplayingState() {
+		if (numResponsesReceived == numResponsesExpected && !context.isRestoringState()) {
+			LOG.info("Received all determinants, transitioning to Replaying state!");
+			context.setState(new ReplayingState(context, delta));
+		}
 	}
 
 }
