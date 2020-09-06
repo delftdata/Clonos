@@ -202,6 +202,8 @@ public class PipelinedSubpartition extends ResultSubpartition {
 				if (!isRecoveringSubpartitionInFlightState.get())
 					maybeNotifyDataAvailable();
 			}
+			if(isRecoveringSubpartitionInFlightState.get())
+				buffers.notifyAll();
 		}
 		LOG.debug("Done adding buffer consumer");
 
@@ -521,67 +523,74 @@ public class PipelinedSubpartition extends ResultSubpartition {
 			inflightReplayIterator.numberRemaining() : 0) - 1);
 	}
 
-	public void buildAndLogBuffer(int bufferSize) {
+	public void buildAndLogBuffer(int bufferSize) throws InterruptedException {
 		LOG.debug("building buffer and discarding result");
-		while (true) {
-			synchronized (buffers) {
-
+		synchronized (buffers) {
+			while (true) {
 				BufferConsumer consumer = buffers.peek();
 
-				if (consumer == null)
+				//No consumer ready
+				if (consumer == null) {
+					buffers.wait();
 					continue;
+				}
 
-				if (consumer.isFinished()) {
-					if (consumer.getUnreadBytes() > 0) {
-						if (consumer.getUnreadBytes() < bufferSize) {
-							String msg = "Size of finished bufferConsumer ( unread: " + consumer.getUnreadBytes() +
-								"," +
-								" written: " + consumer.getWrittenBytes() + ") does not match" +
-								" " +
-								"size of recovery request to build buffer ( " + bufferSize + " ).";
-							LOG.debug("Exception:" + msg);
-							throw new RuntimeException(msg);
-						}
-					} else {
-						buffers.pop().close();
-						checkpointIds.pop();
-						continue;
-					}
+				//Empty consumer (No dataflow between checkpoints)
+				if (consumer.isFinished() && consumer.getUnreadBytes() <= 0) {
+					buffers.pop().close();
+					checkpointIds.pop();
+					buffers.wait();
+					continue;
+				}
+
+				// Erroneous state, consumer is finished without enough data, throw exception
+				if (consumer.isFinished() && consumer.getUnreadBytes() > 0 && consumer.getUnreadBytes() < bufferSize) {
+					String msg = "Size of finished bufferConsumer ( unread: " + consumer.getUnreadBytes() +
+						", written: " + consumer.getWrittenBytes() +
+						") does not match size of recovery request to build buffer ( " + bufferSize + " ).";
+					LOG.debug("Exception:" + msg);
+					throw new RuntimeException(msg);
 				}
 				//If there is enough data in consumer for building the correct buffer
 				if (consumer.getUnreadBytes() >= bufferSize) {
-					LOG.debug("There are enough bytes to build the requested buffer!");
-					long checkpointId = checkpointIds.peek();
-
-					//This assumes that the input buffers which are before this close in the determinant log have
-					// been
-					// fully processed, thus the bufferconsumer will have this amount of data.
-					causalLoggingManager.appendSubpartitionDeterminant(
-						reuseBufferBuiltDeterminant.replace(bufferSize), currentEpochID,
-						this.parent.getPartitionId().getPartitionId(), this.index);
-					Buffer buffer = consumer.build(bufferSize);
-
-
-					checkState(consumer.isFinished() || buffers.size() == 1,
-						"When there are multiple buffers, an unfinished bufferConsumer can not be at the head of" +
-							" " +
-							"the buffers queue.");
-
-					if (buffers.size() == 1) {
-						// turn off flushRequested flag if we drained all of the available data
-						flushRequested = false;
-					}
-
-
-					updateStatistics(buffer);
-					inFlightLog.log(buffer, currentEpochID);
-					buffer.recycleBuffer(); //It is not sent downstream, so we must recycle it here.
-					//We do this after the determinant because a checkpoint x belongs to epoch x-1
-					if (checkpointId != -1)
-						currentEpochID = checkpointId;
+					buildRequestedBuffer(bufferSize, consumer);
 					break;
 				}
+
+				buffers.wait();
 			}
 		}
+	}
+
+	private void buildRequestedBuffer(int bufferSize, BufferConsumer consumer) {
+		LOG.debug("There are enough bytes to build the requested buffer!");
+		long checkpointId = checkpointIds.peek();
+
+		//This assumes that the input buffers which are before this close in the determinant log have
+		// been
+		// fully processed, thus the bufferconsumer will have this amount of data.
+		causalLoggingManager.appendSubpartitionDeterminant(
+			reuseBufferBuiltDeterminant.replace(bufferSize), currentEpochID,
+			this.parent.getPartitionId().getPartitionId(), this.index);
+		Buffer buffer = consumer.build(bufferSize);
+
+
+		checkState(consumer.isFinished() || buffers.size() == 1,
+			"When there are multiple buffers, an unfinished bufferConsumer can not be at the head of" +
+				" " +
+				"the buffers queue.");
+
+		if (buffers.size() == 1) {
+			// turn off flushRequested flag if we drained all of the available data
+			flushRequested = false;
+		}
+
+
+		updateStatistics(buffer);
+		inFlightLog.log(buffer, currentEpochID);
+		buffer.recycleBuffer(); //It is not sent downstream, so we must recycle it here.
+		//We do this after the determinant because a checkpoint x belongs to epoch x-1
+		if (checkpointId != -1)
+			currentEpochID = checkpointId;
 	}
 }
