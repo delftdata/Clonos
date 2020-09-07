@@ -183,7 +183,9 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 				long inFlightLogFlusherThreadSleepTime = inFlightLogConfig.getInFlightLogSleepTime();
 				if (inFlightLogFactory.getInFlightLogConfig().getPolicyIsAsynchronousPartitionBased()) {
 					inFlightLogFlusherRunnable = new FlushRunnable(this, inFlightLogConfig.getAsynchronousGlobalSpillPolicy(), inFlightLogFlusherThreadSleepTime);
-					new Thread(inFlightLogFlusherRunnable).start();
+					Thread t = new Thread(inFlightLogFlusherRunnable);
+					t.setDaemon(true);
+					t.start();
 				}
 				break;
 

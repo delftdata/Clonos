@@ -140,6 +140,7 @@ public class ReplayingState extends AbstractState {
 
 			Thread t = new SubpartitionRecoveryThread(recoveryBuffer, subpartition, context, cell.getRowKey(),
 				cell.getColumnKey());
+			t.setDaemon(true);
 			recoveryThreads.add(t);
 
 			LOG.info("Created recovery thread for Partition {} subpartition index {} with buffer {}", cell.getRowKey(),
