@@ -157,7 +157,6 @@ public abstract class FlinkKafkaConsumerBase<T> extends RichParallelSourceFuncti
 	/** Timestamp to determine startup offsets; only relevant when startup mode is {@link StartupMode#TIMESTAMP}. */
 	private Long startupOffsetsTimestamp;
 
-	private boolean isStandby = false;
 	// ------------------------------------------------------------------------
 	//  runtime state (used individually by each parallel subtask)
 	// ------------------------------------------------------------------------
@@ -490,7 +489,7 @@ public abstract class FlinkKafkaConsumerBase<T> extends RichParallelSourceFuncti
 					// restored partitions that should not be subscribed by this subtask
 					if (KafkaTopicPartitionAssigner.assign(
 						restoredStateEntry.getKey(), getRuntimeContext().getNumberOfParallelSubtasks())
-							== getRuntimeContext().getIndexOfThisSubtask() || isStandby) {
+							== getRuntimeContext().getIndexOfThisSubtask()) {
 						subscribedPartitionsToStartOffsets.put(restoredStateEntry.getKey(), restoredStateEntry.getValue());
 					}
 				} else {
@@ -644,7 +643,6 @@ public abstract class FlinkKafkaConsumerBase<T> extends RichParallelSourceFuncti
 			sourceContext.markAsTemporarilyIdle();
 		}
 
-		LOG.info("Is recoveryManager null? {}", ((StreamingRuntimeContext)getRuntimeContext()).getRecoveryManager());
 
 		// from this point forward:
 		//   - 'snapshotState' will draw offsets from the fetcher,
@@ -817,7 +815,6 @@ public abstract class FlinkKafkaConsumerBase<T> extends RichParallelSourceFuncti
 				restoredState.put(kafkaOffset.f0, kafkaOffset.f1);
 			}
 
-			isStandby = true;
 			LOG.info("Setting restore state in the FlinkKafkaConsumer: {}", restoredState);
 		} else {
 			LOG.info("No restore state for FlinkKafkaConsumer.");
