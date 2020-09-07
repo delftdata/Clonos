@@ -744,10 +744,10 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 				if (receivedBuffers.isEmpty())
 					break;
 				else
-					LOG.info("There is still data to be processed, waiting.");
+					LOG.info("There are still {} buffers to be processed, waiting.", receivedBuffers.size());
 			}
 			try {
-				Thread.sleep(1l);
+				Thread.sleep(100L);
 			} catch (InterruptedException e) {
 				e.printStackTrace();
 			}
