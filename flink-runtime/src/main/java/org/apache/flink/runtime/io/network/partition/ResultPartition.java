@@ -370,7 +370,8 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 					LOG.error("Error during release of result subpartition: " + t.getMessage(), t);
 				}
 			}
-			inFlightLogFlusherRunnable.stop();
+			if(inFlightLogFlusherRunnable != null)
+				inFlightLogFlusherRunnable.stop();
 		}
 	}
 
@@ -522,7 +523,7 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 
 	public boolean isPoolAvailabilityLow() {
 		float availability = computePoolAvailability();
-		LOG.debug("Is pool availability low? {} < {} ? Pool: {} ", availability, availabilityFillFactor,
+		LOG.info("Poll Availability: {} < {} ? Pool: {} ", availability, availabilityFillFactor,
 				bufferPool);
 		return availability < availabilityFillFactor;
 	}
@@ -561,7 +562,6 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 		public void run() {
 			while (running) {
 				try {
-					LOG.debug("Test flush policy");
 					if (flushPolicy.apply(this.toMonitor)) {
 						for (SpillableSubpartitionInFlightLogger inFlightLogger : inFlightLoggers)
 							inFlightLogger.flushAllUnflushed();
