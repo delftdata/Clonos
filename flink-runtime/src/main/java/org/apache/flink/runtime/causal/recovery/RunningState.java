@@ -30,6 +30,8 @@ import org.apache.flink.runtime.causal.VertexID;
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
 import org.apache.flink.runtime.io.network.api.DeterminantRequestEvent;
 import org.apache.flink.runtime.io.network.partition.PipelinedSubpartition;
+import org.apache.flink.runtime.io.network.partition.consumer.RemoteInputChannel;
+import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -80,6 +82,19 @@ public class RunningState extends AbstractState {
 			context.inputGate.getInputChannel(channelRequestArrivedFrom).sendTaskEvent(responseEvent);
 		} catch (IOException | InterruptedException ex) {
 			ex.printStackTrace();
+		}
+	}
+
+	@Override
+	public void notifyNewInputChannel(RemoteInputChannel inputChannel, int consumedSubpartitionIndex,
+									  int numBuffersRemoved){
+		if(context.determinantSharingDepth == 0) {
+			//TODO We need to reset the deserializers
+			SingleInputGate singleInputGate = inputChannel.getInputGate();
+			int channelIndex = inputChannel.getChannelIndex();
+
+			context.invokable.resetInputChannelDeserializer(singleInputGate, channelIndex);
+
 		}
 	}
 

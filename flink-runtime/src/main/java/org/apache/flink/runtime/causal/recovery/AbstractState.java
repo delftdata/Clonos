@@ -78,7 +78,7 @@ public abstract class AbstractState implements State {
 	@Override
 	public void notifyStateRestorationStart(long checkpointId) {
 		LOG.info("Started restoring state of checkpoint {}", checkpointId);
-		this.context.incompleteStateRestorations.put(checkpointId, true);
+		this.context.incompleteStateRestorations.add(checkpointId);
 		if (checkpointId > context.epochProvider.getCurrentEpochID())
 			context.epochProvider.setCurrentEpochID(checkpointId);
 
@@ -100,17 +100,15 @@ public abstract class AbstractState implements State {
 		RecoveryManager.UnansweredDeterminantRequest udr =
 			context.unansweredDeterminantRequests.get(e.getVertexCausalLogDelta().getVertexId());
 		if (udr != null) {
-			synchronized (udr.getLock()) {
-				udr.incResponsesReceived();
-				udr.getVertexCausalLogDelta().merge(e.getVertexCausalLogDelta());
-				if (udr.getNumResponsesReceived() == context.vertexGraphInformation.getNumberOfDirectDownstreamNeighbours()) {
-					context.unansweredDeterminantRequests.remove(e.getVertexCausalLogDelta().getVertexId());
-					try {
-						context.inputGate.getInputChannel(udr.getRequestingChannel()).sendTaskEvent(new DeterminantResponseEvent(udr.vertexCausalLogDelta));
-						//TODO udr.getVertexCausalLogDelta().release();
-					} catch (IOException | InterruptedException ex) {
-						ex.printStackTrace();
-					}
+			udr.incResponsesReceived();
+			udr.getVertexCausalLogDelta().merge(e.getVertexCausalLogDelta());
+			if (udr.getNumResponsesReceived() == context.vertexGraphInformation.getNumberOfDirectDownstreamNeighbours()) {
+				context.unansweredDeterminantRequests.remove(e.getVertexCausalLogDelta().getVertexId());
+				try {
+					context.inputGate.getInputChannel(udr.getRequestingChannel()).sendTaskEvent(new DeterminantResponseEvent(udr.vertexCausalLogDelta));
+					//TODO udr.getVertexCausalLogDelta().release();
+				} catch (IOException | InterruptedException ex) {
+					ex.printStackTrace();
 				}
 			}
 		} else

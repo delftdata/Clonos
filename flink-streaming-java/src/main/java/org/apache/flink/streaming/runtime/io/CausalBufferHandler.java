@@ -197,4 +197,9 @@ public class CausalBufferHandler implements CheckpointBarrierHandler {
 	public void ignoreCheckpoint(long checkpointID) throws IOException {
 		wrapped.ignoreCheckpoint(checkpointID);
 	}
+
+	@Override
+	public void unblockChannelIfBlocked(int absoluteChannelIndex) {
+		this.wrapped.unblockChannelIfBlocked(absoluteChannelIndex);
+	}
 }

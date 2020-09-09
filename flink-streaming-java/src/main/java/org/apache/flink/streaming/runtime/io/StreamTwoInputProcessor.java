@@ -80,6 +80,7 @@ public class StreamTwoInputProcessor<IN1, IN2> implements RecordCountTargetForce
 
 	private static final Logger LOG = LoggerFactory.getLogger(StreamTwoInputProcessor.class);
 
+	private final InputGate inputGate;
 	private final RecordDeserializer<DeserializationDelegate<StreamElement>>[] recordDeserializers;
 
 	private RecordDeserializer<DeserializationDelegate<StreamElement>> currentRecordDeserializer;
@@ -155,7 +156,7 @@ public class StreamTwoInputProcessor<IN1, IN2> implements RecordCountTargetForce
 			WatermarkGauge input2WatermarkGauge,
 			RecordWriterOutput<?>[] recordWriterOutputs) throws IOException {
 
-		final InputGate inputGate = InputGateUtil.createInputGate(inputGates1, inputGates2);
+		inputGate = InputGateUtil.createInputGate(inputGates1, inputGates2);
 
 		if (inputGate instanceof SingleInputGate) {
 			this.taskName = ((SingleInputGate) inputGate).getTaskName();
@@ -354,6 +355,7 @@ public class StreamTwoInputProcessor<IN1, IN2> implements RecordCountTargetForce
 		return barrierHandler;
 	}
 
+
 	private class ForwardingValveOutputHandler1 implements StatusWatermarkValve.ValveOutputHandler {
 		private final TwoInputStreamOperator<IN1, IN2, ?> operator;
 		private final Object lock;
@@ -440,5 +442,13 @@ public class StreamTwoInputProcessor<IN1, IN2> implements RecordCountTargetForce
 				throw new RuntimeException("Exception occurred while processing valve output stream status: ", e);
 			}
 		}
+	}
+
+
+	public void resetInputChannelDeserializer(InputGate gate, int channelIndex) {
+		int absoluteChannelIndex = this.inputGate.getAbsoluteChannelIndex(gate, channelIndex);
+
+		recordDeserializers[absoluteChannelIndex].clear();
+		barrierHandler.unblockChannelIfBlocked(absoluteChannelIndex);
 	}
 }

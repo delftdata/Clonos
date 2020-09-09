@@ -95,6 +95,7 @@ public class StreamInputProcessor<IN> implements RecordCountTargetForceable {
 	 */
 	private StatusWatermarkValve statusWatermarkValve;
 
+	private final InputGate inputGate;
 	/**
 	 * Number of input channels the valve needs to handle.
 	 */
@@ -123,6 +124,7 @@ public class StreamInputProcessor<IN> implements RecordCountTargetForceable {
 
 	private int asyncEventRecordCountTarget;
 
+
 	@SuppressWarnings("unchecked")
 	public StreamInputProcessor(
 		SingleInputGate[] inputGates,
@@ -142,7 +144,7 @@ public class StreamInputProcessor<IN> implements RecordCountTargetForceable {
 		asyncEventRecordCountTarget = -1;
 
 		this.recordCountProvider = checkpointedTask.getRecordCountProvider();
-		InputGate inputGate = InputGateUtil.createInputGate(inputGates);
+		inputGate = InputGateUtil.createInputGate(inputGates);
 		checkpointedTask.getRecoveryManager().setInputGate(inputGate);
 
 		this.barrierHandler = InputProcessorUtil.createCheckpointBarrierHandler(
@@ -291,6 +293,7 @@ public class StreamInputProcessor<IN> implements RecordCountTargetForceable {
 	}
 
 
+
 	private class ForwardingValveOutputHandler implements StatusWatermarkValve.ValveOutputHandler {
 		private final OneInputStreamOperator<IN, ?> operator;
 		private final Object lock;
@@ -325,4 +328,11 @@ public class StreamInputProcessor<IN> implements RecordCountTargetForceable {
 		}
 	}
 
+	public void resetInputChannelDeserializer(InputGate gate, int channelIndex) {
+		int absoluteChannelIndex = this.inputGate.getAbsoluteChannelIndex(gate, channelIndex);
+
+		recordDeserializers[absoluteChannelIndex].clear();
+		barrierHandler.unblockChannelIfBlocked(absoluteChannelIndex);
+
+	}
 }

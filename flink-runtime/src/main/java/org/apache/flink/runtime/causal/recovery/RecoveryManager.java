@@ -38,6 +38,7 @@ import org.apache.flink.runtime.io.network.partition.ResultSubpartition;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.io.network.partition.consumer.RemoteInputChannel;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
+import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -51,6 +52,8 @@ public class RecoveryManager implements IRecoveryManager {
 
 	private static final Logger LOG = LoggerFactory.getLogger(RecoveryManager.class);
 
+	final AbstractInvokable invokable;
+
 	public final VertexGraphInformation vertexGraphInformation;
 	final CompletableFuture<Void> readyToReplayFuture;
 	final JobCausalLog jobCausalLog;
@@ -60,7 +63,7 @@ public class RecoveryManager implements IRecoveryManager {
 
 	Table<IntermediateResultPartitionID, Integer, InFlightLogRequestEvent> unansweredInFlighLogRequests;
 
-	final ConcurrentMap<Long, Boolean> incompleteStateRestorations;
+	final Set<Long> incompleteStateRestorations;
 
 	State currentState;
 
@@ -86,17 +89,18 @@ public class RecoveryManager implements IRecoveryManager {
 
 	public AtomicInteger numberOfRecoveringSubpartitions;
 
-	public RecoveryManager(EpochProvider epochProvider, JobCausalLog jobCausalLog,
+	public RecoveryManager(AbstractInvokable invokable, EpochProvider epochProvider, JobCausalLog jobCausalLog,
 						   CompletableFuture<Void> readyToReplayFuture, VertexGraphInformation vertexGraphInformation,
 						   RecordCountProvider recordCountProvider, CheckpointForceable checkpointForceable,
 						   ResultPartition[] partitions, int determinantSharingDepth) {
+		this.invokable = invokable;
 		this.jobCausalLog = jobCausalLog;
 		this.readyToReplayFuture = readyToReplayFuture;
 		this.vertexGraphInformation = vertexGraphInformation;
 
 		this.unansweredDeterminantRequests = new ConcurrentHashMap<>();
 
-		this.incompleteStateRestorations = new ConcurrentHashMap<>();
+		this.incompleteStateRestorations = new HashSet<>();
 
 		setPartitions(partitions);
 
@@ -206,10 +210,6 @@ public class RecoveryManager implements IRecoveryManager {
 		this.currentState.notifyInFlightLogRequestEvent(e);
 	}
 
-	@Override
-	public synchronized void triggerAsyncEvent() {
-		this.currentState.triggerAsyncEvent();
-	}
 
 
 	@Override
@@ -263,11 +263,15 @@ public class RecoveryManager implements IRecoveryManager {
 		return currentState.replayNextTimestamp();
 	}
 
+	@Override
+	public synchronized void triggerAsyncEvent() {
+		this.currentState.triggerAsyncEvent();
+	}
+
 	public static class UnansweredDeterminantRequest {
 		private int numResponsesReceived;
 		private int requestingChannel;
 		private DeterminantRequestEvent event;
-		private final Object lock;
 
 		/**
 		 * The delta we are going to return. Starts empty, but is progressively merged with downstream deltas.
@@ -278,7 +282,6 @@ public class RecoveryManager implements IRecoveryManager {
 			this.numResponsesReceived = 0;
 			this.requestingChannel = requestingChannel;
 			this.event = event;
-			lock = new Object();
 			vertexCausalLogDelta = new VertexCausalLogDelta(event.getFailedVertex());
 		}
 
@@ -303,9 +306,6 @@ public class RecoveryManager implements IRecoveryManager {
 			return event;
 		}
 
-		public Object getLock() {
-			return lock;
-		}
 	}
 
 

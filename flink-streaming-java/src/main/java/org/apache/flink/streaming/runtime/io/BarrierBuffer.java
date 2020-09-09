@@ -484,6 +484,19 @@ public class BarrierBuffer implements CheckpointBarrierHandler {
 		//   - the current checkpoint if it was already canceled
 	}
 
+	@Override
+	public void unblockChannelIfBlocked(int absoluteChannelIndex) {
+		if (blockedChannels[absoluteChannelIndex]) {
+			blockedChannels[absoluteChannelIndex] = false;
+
+			numBarriersReceived--;
+
+			if (LOG.isDebugEnabled()) {
+				LOG.debug("Forced to unblock channel " + absoluteChannelIndex);
+			}
+		}
+	}
+
 	private void notifyAbort(long checkpointId, CheckpointDeclineException cause) throws Exception {
 		if (toNotifyOnCheckpoint != null) {
 			toNotifyOnCheckpoint.abortCheckpointOnBarrier(checkpointId, cause);

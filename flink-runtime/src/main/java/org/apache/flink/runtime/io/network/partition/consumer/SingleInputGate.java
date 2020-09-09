@@ -191,8 +191,6 @@ public class SingleInputGate implements InputGate {
 	/** History of released remote channels to check before updating the current channel. */
 	private final Map<IntermediateResultPartitionID, List<ConnectionID>> releasedRemoteChannels = new HashMap<>();
 
-	/* Whether the input gate belongs to a standby task. */
-	private boolean isStandby;
 
 	private InputChannel[] inputChannelArray;
 
@@ -232,7 +230,6 @@ public class SingleInputGate implements InputGate {
 		this.taskActions = checkNotNull(taskActions);
 		this.isCreditBased = isCreditBased;
 
-		this.isStandby = ((Task) taskActions).getIsStandby();
 	}
 
 	// ------------------------------------------------------------------------
@@ -532,8 +529,7 @@ public class SingleInputGate implements InputGate {
 				try {
 					newChannel.requestSubpartition(consumedSubpartitionIndex);
 					requestedPartitionsFlag.set(true);
-					if(isStandby)
-						recoveryManager.notifyNewInputChannel((RemoteInputChannel) newChannel, consumedSubpartitionIndex, ((RemoteInputChannel)current).getNumberOfBuffersRemoved());
+					recoveryManager.notifyNewInputChannel((RemoteInputChannel) newChannel, consumedSubpartitionIndex, ((RemoteInputChannel)current).getNumberOfBuffersRemoved());
 				} catch (IOException e) {
 					LOG.error("{}: Request subpartition or send task event for input channel {} failed. Ignoring failure and sending fail trigger for producer (chances are it is dead).",
 						owningTaskName, newChannel, e);

@@ -147,6 +147,11 @@ public class BarrierTracker implements CheckpointBarrierHandler {
 
 	}
 
+	@Override
+	public void unblockChannelIfBlocked(int absoluteChannelIndex) {
+
+	}
+
 	private void processBarrier(CheckpointBarrier receivedBarrier, int channelIndex) throws Exception {
 		final long barrierId = receivedBarrier.getId();
 
