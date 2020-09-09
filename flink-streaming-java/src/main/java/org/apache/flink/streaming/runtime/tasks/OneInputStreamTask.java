@@ -131,4 +131,9 @@ public class OneInputStreamTask<IN, OUT> extends StreamTask<OUT, OneInputStreamO
 	protected CheckpointBarrierHandler getCheckpointBarrierHandler() {
 		return inputProcessor.getCheckpointBarrierHandlers();
 	}
+
+	@Override
+	public void resetInputChannelDeserializer(InputGate gate, int channelIndex){
+		 inputProcessor.resetInputChannelDeserializer(gate, channelIndex);
+	}
 }

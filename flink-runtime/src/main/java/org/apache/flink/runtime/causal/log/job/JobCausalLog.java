@@ -99,6 +99,8 @@ public class JobCausalLog implements IJobCausalLog {
 	public void appendDeterminant(Determinant determinant, long epochID) {
 		assert (Thread.holdsLock(lock));
 		LOG.debug("Appending determinant {}", determinant);
+		if(determinantSharingDepth == 0)
+			return;
 		localCausalLog.appendDeterminant(
 			determinant,
 			epochID
@@ -111,6 +113,8 @@ public class JobCausalLog implements IJobCausalLog {
 											  int subpartitionIndex) {
 		LOG.debug("Appending determinant {} for epochID {} to intermediateDataSetID {} subpartition {}", determinant,
 			epochID, intermediateResultPartitionID, subpartitionIndex);
+		if(determinantSharingDepth == 0)
+			return;
 		localCausalLog.appendSubpartitionDeterminants(
 			determinant,
 			epochID,

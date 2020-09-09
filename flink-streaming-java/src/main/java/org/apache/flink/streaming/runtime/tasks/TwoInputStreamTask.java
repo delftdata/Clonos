@@ -138,4 +138,10 @@ public class TwoInputStreamTask<IN1, IN2, OUT> extends StreamTask<OUT, TwoInputS
 	protected CheckpointBarrierHandler getCheckpointBarrierHandler() {
 		return inputProcessor.getCheckpointBarrierHandlers();
 	}
+
+
+	@Override
+	public void resetInputChannelDeserializer(InputGate gate, int channelIndex){
+		this.inputProcessor.resetInputChannelDeserializer(gate, channelIndex);
+	}
 }
