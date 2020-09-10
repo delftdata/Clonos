@@ -29,6 +29,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 
 import java.util.concurrent.CompletableFuture;
 import org.apache.flink.annotation.VisibleForTesting;
+import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 
 /**
  * This is the abstract base class for every task that can be executed by a TaskManager.
@@ -274,5 +275,9 @@ public abstract class AbstractInvokable {
 
 	public void ignoreCheckpoint(long checkpointId){
 		throw new UnsupportedOperationException(String.format("ignoreCheckpoint not supported by %s", this.getClass().getName()));
+	}
+
+	public void resetInputChannelDeserializer(InputGate gate, int channelIndex){
+		throw new UnsupportedOperationException(String.format("resetInputChannelDeserializer not supported by %s", this.getClass().getName()));
 	}
 }
