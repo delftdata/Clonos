@@ -148,6 +148,10 @@ public class BarrierBuffer implements CheckpointBarrierHandler {
 		this(inputGate, bufferBlocker, -1, new Object());
 	}
 
+	public BarrierBuffer(InputGate inputGate, BufferBlocker bufferBlocker, long maxBufferedBytes) throws IOException {
+		this(inputGate, bufferBlocker, maxBufferedBytes, new Object());
+	}
+
 	/**
 	 * Creates a new checkpoint stream aligner.
 	 *
