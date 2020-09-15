@@ -295,6 +295,15 @@ public class TaskManagerOptions {
 				"In credit-based flow control mode, this indicates how many credits are exclusive in each input channel. It should be" +
 				" configured at least 2 for good performance. 1 buffer is for receiving in-flight data in the subpartition and 1 buffer is" +
 				" for parallel serialization.");
+	/**
+	 * Number of network buffers to use for each outgoing channel (subpartition).
+	 *
+	 * <p>Reasoning: Extra buffers are needed per channel to ensure in-flight logging has time to spill
+	 */
+	public static final ConfigOption<Integer> SENDER_EXTRA_NETWORK_BUFFERS_PER_CHANNEL =
+		key("taskmanager.network.memory.sender-extra-buffers-per-channel")
+			.defaultValue(8)
+			.withDescription("Extra buffers each sender has per channel");
 
 	/**
 	 * Number of extra network buffers to use for each outgoing/incoming gate (result partition/input gate).
@@ -308,6 +317,17 @@ public class TaskManagerOptions {
 				" help relieve back-pressure caused by unbalanced data distribution among the subpartitions. This value should be" +
 				" increased in case of higher round trip times between nodes and/or larger number of machines in the cluster.");
 
+	/**
+	 * Number of extra network buffers to use for each outgoing gate (result partition).
+	 */
+	public static final ConfigOption<Integer> SENDER_EXTRA_NETWORK_EXTRA_BUFFERS_PER_GATE =
+		key("taskmanager.network.memory.sender-extra-floating-buffers-per-gate")
+			.defaultValue(92)
+			.withDescription("Number of extra network buffers to use for each outgoing (result partition)." +
+				" In credit-based flow control mode, this indicates how many floating credits are shared among all the input channels." +
+				" The floating buffers are distributed based on backlog (real-time output buffers in the subpartition) feedback, and can" +
+				" help relieve back-pressure caused by unbalanced data distribution among the subpartitions. This value should be" +
+				" increased in case of higher round trip times between nodes and/or larger number of machines in the cluster.");
 
 	/**
 	 * Minimum backoff for partition requests of input channels.

@@ -757,6 +757,8 @@ public class SingleInputGateTest {
 			maxBackoff,
 			buffersPerChannel,
 			extraNetworkBuffersPerGate,
+			8,
+			92,
 			enableCreditBasedFlowControl,0);
 	}
 

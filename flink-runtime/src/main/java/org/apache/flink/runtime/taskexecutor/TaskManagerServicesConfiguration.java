@@ -387,6 +387,11 @@ public class TaskManagerServicesConfiguration {
 		int extraBuffersPerGate = configuration.getInteger(
 			TaskManagerOptions.NETWORK_EXTRA_BUFFERS_PER_GATE);
 
+		int senderExtraBuffersPerChannel = configuration.getInteger(
+			TaskManagerOptions.SENDER_EXTRA_NETWORK_BUFFERS_PER_CHANNEL);
+		int senderExtraBuffersPerGate = configuration.getInteger(
+			TaskManagerOptions.SENDER_EXTRA_NETWORK_EXTRA_BUFFERS_PER_GATE);
+
 		return new NetworkEnvironmentConfiguration(
 			networkBufFraction,
 			networkBufMin,
@@ -397,6 +402,8 @@ public class TaskManagerServicesConfiguration {
 			maxRequestBackoff,
 			buffersPerChannel,
 			extraBuffersPerGate,
+			senderExtraBuffersPerChannel,
+			senderExtraBuffersPerGate,
 			nettyConfig);
 	}
 

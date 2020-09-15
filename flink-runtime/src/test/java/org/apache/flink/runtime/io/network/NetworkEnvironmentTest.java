@@ -95,6 +95,8 @@ public class NetworkEnvironmentTest {
 			0,
 			2,
 			8,
+			8,
+			92,
 			enableCreditBasedFlowControl,0);
 
 		// result partitions
@@ -212,6 +214,8 @@ public class NetworkEnvironmentTest {
 			0,
 			2,
 			8,
+			8,
+			92,
 			enableCreditBasedFlowControl,0);
 
 		final ConnectionManager connManager = createDummyConnectionManager();

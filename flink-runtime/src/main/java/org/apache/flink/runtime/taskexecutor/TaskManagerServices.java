@@ -482,6 +482,8 @@ public class TaskManagerServices {
 			networkEnvironmentConfiguration.partitionRequestMaxBackoff(),
 			networkEnvironmentConfiguration.networkBuffersPerChannel(),
 			networkEnvironmentConfiguration.floatingNetworkBuffersPerGate(),
+			networkEnvironmentConfiguration.senderExtraNetworkBuffersPerChannel(),
+			networkEnvironmentConfiguration.senderExtraFloatingNetworkBuffersPerGate(),
 			enableCreditBased, nettyConfig.getNumDeterminantBuffersPerTask());
 	}
 

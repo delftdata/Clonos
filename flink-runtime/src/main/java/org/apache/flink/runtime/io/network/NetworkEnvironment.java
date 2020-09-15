@@ -99,6 +99,10 @@ public class NetworkEnvironment {
 	 */
 	private final int extraNetworkBuffersPerGate;
 
+	private final int senderExtraNetworkBuffersPerChannel;
+
+	private final int senderExtraNetworkBuffersPerGate;
+
 	private final boolean enableCreditBased;
 
 
@@ -121,6 +125,8 @@ public class NetworkEnvironment {
 		int partitionRequestMaxBackoff,
 		int networkBuffersPerChannel,
 		int extraNetworkBuffersPerGate,
+		int senderExtraNetworkBuffersPerChannel,
+		int senderExtraNetworkBuffersPerGate,
 		boolean enableCreditBased, int numDeterminantBuffersPerTask) {
 
 		this.networkBufferPool = checkNotNull(networkBufferPool);
@@ -140,6 +146,8 @@ public class NetworkEnvironment {
 		isShutdown = false;
 		this.networkBuffersPerChannel = networkBuffersPerChannel;
 		this.extraNetworkBuffersPerGate = extraNetworkBuffersPerGate;
+		this.senderExtraNetworkBuffersPerChannel = senderExtraNetworkBuffersPerChannel;
+		this.senderExtraNetworkBuffersPerGate = senderExtraNetworkBuffersPerGate;
 
 		this.enableCreditBased = enableCreditBased;
 
@@ -148,8 +156,18 @@ public class NetworkEnvironment {
 
 	}
 
-	public NetworkEnvironment(NetworkBufferPool bufferPool, NettyConnectionManager nettyConnectionManager, ResultPartitionManager resultPartitionManager, TaskEventDispatcher taskEventDispatcher, KvStateRegistry kvStateRegistry, KvStateServer kvStateServer, KvStateClientProxy kvStateClientProxy, IOMode sync, Integer partitionRequestInitialBackoff, Integer partitionRequestMaxBackoff, Integer networkBuffersPerChannel, Integer extraNetworkBuffersPerGate, boolean enableCreditBased) {
-		this(bufferPool, null, nettyConnectionManager, resultPartitionManager, taskEventDispatcher, kvStateRegistry, kvStateServer, kvStateClientProxy, sync, partitionRequestInitialBackoff,  partitionRequestMaxBackoff, networkBuffersPerChannel, extraNetworkBuffersPerGate, enableCreditBased, 0);
+	public NetworkEnvironment(NetworkBufferPool bufferPool, NettyConnectionManager nettyConnectionManager,
+							  ResultPartitionManager resultPartitionManager, TaskEventDispatcher taskEventDispatcher,
+							  KvStateRegistry kvStateRegistry, KvStateServer kvStateServer,
+							  KvStateClientProxy kvStateClientProxy, IOMode sync,
+							  Integer partitionRequestInitialBackoff, Integer partitionRequestMaxBackoff,
+							  Integer networkBuffersPerChannel, Integer extraNetworkBuffersPerGate,
+							  Integer senderExtraNetworkBuffersPerChannel, Integer senderExtraNetworkBuffersPerGate,
+							  boolean enableCreditBased) {
+		this(bufferPool, null, nettyConnectionManager, resultPartitionManager, taskEventDispatcher, kvStateRegistry,
+			kvStateServer, kvStateClientProxy, sync, partitionRequestInitialBackoff, partitionRequestMaxBackoff,
+			networkBuffersPerChannel, extraNetworkBuffersPerGate, senderExtraNetworkBuffersPerChannel,
+			senderExtraNetworkBuffersPerGate, enableCreditBased, 0);
 	}
 
 	// --------------------------------------------------------------------------------------------
@@ -240,8 +258,8 @@ public class NetworkEnvironment {
 
 		try {
 			int maxNumberOfMemorySegments = partition.getPartitionType().isBounded() ?
-				partition.getNumberOfSubpartitions() * networkBuffersPerChannel +
-					extraNetworkBuffersPerGate : Integer.MAX_VALUE;
+				partition.getNumberOfSubpartitions() * (networkBuffersPerChannel + senderExtraNetworkBuffersPerChannel) +
+					extraNetworkBuffersPerGate + senderExtraNetworkBuffersPerGate : Integer.MAX_VALUE;
 			bufferPool = networkBufferPool.createBufferPool(partition.getNumberOfSubpartitions(),
 				maxNumberOfMemorySegments);
 			partition.registerBufferPool(bufferPool);
