@@ -137,6 +137,9 @@ public class CausalGraphUtils {
 			Tuple2<Integer,JobVertex> distAndToExplore = unexploredUpstream.pop();
 			JobVertex toExplore = distAndToExplore.f1;
 
+
+
+			//TODO this dont work if not all subtasks are related to this parallel instance
 			for (int i = 0; i < toExplore.getParallelism(); i++) {
 				VertexID vertexID = computeVertexId(sortedJobVertexes, toExplore.getID(), i);
 				distances.put(vertexID, distAndToExplore.f0);

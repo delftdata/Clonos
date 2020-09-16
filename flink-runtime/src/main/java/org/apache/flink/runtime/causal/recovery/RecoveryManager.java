@@ -308,5 +308,13 @@ public class RecoveryManager implements IRecoveryManager {
 
 	}
 
+	public int getNumberOfDirectDownstreamNeighbourVertexes(){
+		return subpartitionTable.size();
+	}
+
+	public int getNumberOfDirectUpstreamNeighbourVertexes(){
+		return inputGate.getNumberOfInputChannels();
+	}
+
 
 }

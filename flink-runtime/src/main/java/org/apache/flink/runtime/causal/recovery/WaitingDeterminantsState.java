@@ -68,7 +68,7 @@ public class WaitingDeterminantsState extends AbstractState {
 		sendInFlightLogReplayRequests();
 
 		//By default, we should expect as many determinant responses as we have downstream neighbours
-		numResponsesExpected = context.vertexGraphInformation.getNumberOfDirectDownstreamNeighbours();
+		numResponsesExpected = context.getNumberOfDirectDownstreamNeighbourVertexes();
 
 		//If determinant sharing depth is 0, then we are not recovering causally, we can skip to the next state
 		if (context.determinantSharingDepth == 0) {

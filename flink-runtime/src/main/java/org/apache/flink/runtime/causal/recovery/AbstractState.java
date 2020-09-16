@@ -102,7 +102,7 @@ public abstract class AbstractState implements State {
 		if (udr != null) {
 			udr.incResponsesReceived();
 			udr.getVertexCausalLogDelta().merge(e.getVertexCausalLogDelta());
-			if (udr.getNumResponsesReceived() == context.vertexGraphInformation.getNumberOfDirectDownstreamNeighbours()) {
+			if (udr.getNumResponsesReceived() == context.getNumberOfDirectDownstreamNeighbourVertexes()) {
 				context.unansweredDeterminantRequests.remove(e.getVertexCausalLogDelta().getVertexId());
 				try {
 					context.inputGate.getInputChannel(udr.getRequestingChannel()).sendTaskEvent(new DeterminantResponseEvent(udr.vertexCausalLogDelta));

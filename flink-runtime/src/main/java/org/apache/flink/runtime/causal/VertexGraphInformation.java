@@ -36,7 +36,7 @@ public class VertexGraphInformation {
 
 	private final List<VertexID> upstreamVertexes;
 	private final List<VertexID> downstreamVertexes;
-	private final int numberOfDirectDownstreamNeighbours;
+	//private final int numberOfDirectDownstreamNeighbours;
 	private final List<JobVertex> sortedJobVertexes;
 	private final boolean hasUpstream;
 	private final boolean hasDownstream;
@@ -66,7 +66,7 @@ public class VertexGraphInformation {
 
 		this.upstreamVertexes = _getUpstreamVertexes();
 		this.downstreamVertexes = _getDownstreamVertexes();
-		this.numberOfDirectDownstreamNeighbours = _getNumberOfDirectDownstreamNeighbours();
+		//this.numberOfDirectDownstreamNeighbours = _getNumberOfDirectDownstreamNeighbours();
 		this.hasDownstream = _hasDownstream();
 		this.hasUpstream = _hasUpstream();
 
@@ -90,12 +90,12 @@ public class VertexGraphInformation {
 		return distancesToVertex.entrySet().stream().filter(e -> e.getValue() > 0).map(Map.Entry::getKey).collect(Collectors.toList());
 	}
 
-	public int getNumberOfDirectDownstreamNeighbours() {
-		return this.numberOfDirectDownstreamNeighbours;
-	}
-	public int _getNumberOfDirectDownstreamNeighbours() {
-		return (int) distancesToVertex.values().stream().filter(v -> v == 1).count();
-	}
+	//public int getNumberOfDirectDownstreamNeighbours() {
+	//	return this.numberOfDirectDownstreamNeighbours;
+	//}
+	//public int _getNumberOfDirectDownstreamNeighbours() {
+	//	return (int) distancesToVertex.values().stream().filter(v -> v == 1).count();
+	//}
 
 	public boolean hasUpstream(){
 		return this.hasUpstream;
