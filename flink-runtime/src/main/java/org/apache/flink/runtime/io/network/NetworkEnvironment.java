@@ -255,14 +255,20 @@ public class NetworkEnvironment {
 	@VisibleForTesting
 	public void setupPartition(ResultPartition partition) throws IOException {
 		BufferPool bufferPool = null;
+		BufferPool inFlightBufferPool = null;
 
 		try {
 			int maxNumberOfMemorySegments = partition.getPartitionType().isBounded() ?
-				partition.getNumberOfSubpartitions() * (networkBuffersPerChannel + senderExtraNetworkBuffersPerChannel) +
-					extraNetworkBuffersPerGate + senderExtraNetworkBuffersPerGate : Integer.MAX_VALUE;
+				partition.getNumberOfSubpartitions() * networkBuffersPerChannel  +
+					extraNetworkBuffersPerGate : Integer.MAX_VALUE;
 			bufferPool = networkBufferPool.createBufferPool(partition.getNumberOfSubpartitions(),
 				maxNumberOfMemorySegments);
 			partition.registerBufferPool(bufferPool);
+
+			int inFlightMaxNumberOfMemorySegments = senderExtraNetworkBuffersPerChannel * partition.getNumberOfSubpartitions() + senderExtraNetworkBuffersPerGate;
+
+			inFlightBufferPool = networkBufferPool.createBufferPool(inFlightMaxNumberOfMemorySegments, inFlightMaxNumberOfMemorySegments);
+			partition.registerInFlightBufferPool(inFlightBufferPool);
 
 			resultPartitionManager.registerResultPartition(partition);
 		} catch (Throwable t) {

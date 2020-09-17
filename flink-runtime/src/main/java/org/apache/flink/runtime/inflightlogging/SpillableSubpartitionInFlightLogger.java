@@ -28,6 +28,8 @@ package org.apache.flink.runtime.inflightlogging;
 import org.apache.flink.runtime.io.disk.iomanager.*;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferPool;
+import org.apache.flink.runtime.io.network.buffer.BufferRecycler;
+import org.apache.flink.runtime.io.network.buffer.FreeingBufferRecycler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -51,33 +53,61 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 	private final IOManager ioManager;
 
 	private final Object flushLock = new Object();
-	private final Consumer<SpillableSubpartitionInFlightLogger> flushPolicy;
+	private final Consumer<SpillableSubpartitionInFlightLogger> synchronousFlushPolicy;
+
+	private BufferPool inFlightBufferPool;
 	private final BufferPool recoveryBufferPool;
 
 	private final AtomicBoolean isReplaying;
 
 	public SpillableSubpartitionInFlightLogger(IOManager ioManager, BufferPool recoveryBufferPool){
-		this(ioManager, recoveryBufferPool, null);
+		this(ioManager,  recoveryBufferPool, null);
 	}
 
-	public SpillableSubpartitionInFlightLogger(IOManager ioManager, BufferPool recoveryBufferPool,
-											   Consumer<SpillableSubpartitionInFlightLogger> flushPolicy) {
+	public SpillableSubpartitionInFlightLogger(IOManager ioManager,  BufferPool recoveryBufferPool,
+											   Consumer<SpillableSubpartitionInFlightLogger> synchronousFlushPolicy) {
 		this.ioManager = ioManager;
 		this.recoveryBufferPool = recoveryBufferPool;
 
 		this.slicedLog = new TreeMap<>();
 		this.isReplaying = new AtomicBoolean(false);
-		this.flushPolicy = flushPolicy;
+		this.synchronousFlushPolicy = synchronousFlushPolicy;
 	}
 
 
 	@Override
-	public void log(Buffer buffer, long epochID) {
+	public void registerBufferPool(BufferPool bufferPool) {
+		LOG.debug("Registered inFlightBufferPool: {}", bufferPool);
+		this.inFlightBufferPool = bufferPool;
+	}
+
+	@Override
+	public void log(Buffer buffer, long epochID, boolean isFinished) {
 		synchronized (flushLock) {
+
+			if(isFinished && buffer.getRecycler() != FreeingBufferRecycler.INSTANCE && buffer.getMaxCapacity() == inFlightBufferPool.getMemorySegmentSize()){
+				BufferRecycler owner = buffer.getRecycler();
+				buffer.setRecycler(inFlightBufferPool);
+				Buffer replacement = null;
+
+				try {
+					replacement = inFlightBufferPool.requestBuffer();
+					while(replacement == null) {
+						flushLock.wait(100);
+						replacement = inFlightBufferPool.requestBuffer();
+					}
+				}catch (Exception e){
+					e.printStackTrace();
+				}
+
+				replacement.setRecycler(owner);
+				replacement.recycleBuffer(); //Buffer goes into partitionBufferPool
+			}
+
 			Epoch epoch = slicedLog.computeIfAbsent(epochID, k -> new Epoch(createNewWriter(k), k));
 			epoch.append(buffer);
-			if (flushPolicy != null && !isReplaying.get())
-				flushPolicy.accept(this);
+			if (synchronousFlushPolicy != null && !isReplaying.get())
+				synchronousFlushPolicy.accept(this);
 		}
 		LOG.debug("Logged a new buffer for epoch {} with refcnt {} and size {}", epochID, buffer.asByteBuf().refCnt(),
 			buffer.getSize());
@@ -105,6 +135,7 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 
 	@Override
 	public InFlightLogIterator<Buffer> getInFlightIterator(long epochID, int ignoreBuffers) {
+		LOG.info("Creating InFlightLog iterator for epochID {} and skipping {} buffers", epochID, ignoreBuffers);
 		SortedMap<Long, Epoch> logToReplay;
 		this.isReplaying.set(true);
 		synchronized (flushLock) {
@@ -133,6 +164,7 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 	public void flushAllUnflushed(){
 		if(isReplaying.get())
 			return;
+
 		synchronized (flushLock){
 			for (Epoch e : slicedLog.values())
 				e.flushAllUnflushed();

@@ -185,7 +185,6 @@ public class PipelinedSubpartition extends ResultSubpartition {
 				return false;
 			}
 
-			LOG.debug("adding buffer consumer");
 			// Add the bufferConsumer and update the stats
 			buffers.add(bufferConsumer);
 			updateStatistics(bufferConsumer);
@@ -256,23 +255,26 @@ public class PipelinedSubpartition extends ResultSubpartition {
 	@Nullable
 	BufferAndBacklog pollBuffer() {
 
-		LOG.debug("Call to pollBuffer");
 
 		if (downstreamFailed.get()) {
 			LOG.debug("Polling for next buffer, but downstream is still failed.");
 			return null;
 		}
 
+		BufferAndBacklog bufferAndBacklog = null;
 		synchronized (buffers) {
-			LOG.debug("Obtained buffers lock to check for determinant requests");
 			if (!determinantRequests.isEmpty()) {
 				LOG.debug("We have a determinant request to send");
 				BufferConsumer consumer = determinantRequests.poll();
 				Buffer buffer = consumer.build();
 				consumer.close();
-				return new BufferAndBacklog(buffer, true, 0, false);
+				int numBuffersInBacklog = getBuffersInBacklog() + (inflightReplayIterator != null ? inflightReplayIterator.numberRemaining() : 0);
+				bufferAndBacklog = new BufferAndBacklog(buffer,inflightReplayIterator != null || isAvailableUnsafe(),
+					numBuffersInBacklog + (inflightReplayIterator != null ? inflightReplayIterator.numberRemaining(): 0), _nextBufferIsEvent(), currentEpochID);
 			}
 		}
+		if(bufferAndBacklog != null)
+			return bufferAndBacklog;
 
 		if (isRecoveringSubpartitionInFlightState.get()) {
 			LOG.debug("We are still recovering this subpartition, cannot return a buffer yet.");
@@ -304,14 +306,17 @@ public class PipelinedSubpartition extends ResultSubpartition {
 			LOG.debug("Finished replaying inflight log!");
 		}
 
-		return new BufferAndBacklog(buffer,
+		BufferAndBacklog bufferAndBacklog = new BufferAndBacklog(buffer,
 			inflightReplayIterator != null || isAvailableUnsafe(),
-			numBuffersInBacklog, _nextBufferIsEvent(), epoch);
+			numBuffersInBacklog + (inflightReplayIterator != null ? inflightReplayIterator.numberRemaining(): 0), _nextBufferIsEvent(), epoch);
+
+		return bufferAndBacklog;
 	}
 
 	private BufferAndBacklog getBufferFromQueuedBufferConsumersUnsafe() {
 		Buffer buffer = null;
 		long checkpointId = 0;
+		boolean isFinished = false;
 
 		if (buffers.isEmpty()) {
 			flushRequested = false;
@@ -335,6 +340,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 			}
 
 			if (bufferConsumer.isFinished()) {
+				isFinished = true;
 				buffers.pop().close();
 				checkpointIds.pop();
 				decreaseBuffersInBacklogUnsafe(bufferConsumer.isBuffer());
@@ -359,7 +365,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 			, currentEpochID, this.parent.getPartitionId().getPartitionId(), this.index);
 
 		updateStatistics(buffer);
-		inFlightLog.log(buffer, currentEpochID);
+		inFlightLog.log(buffer, currentEpochID, isFinished);
 		BufferAndBacklog result = new BufferAndBacklog(buffer, isAvailableUnsafe(), getBuffersInBacklog(),
 			_nextBufferIsEvent(), currentEpochID);
 		//We do this after the determinant and sending the BufferAndBacklog because a checkpoint x belongs to
@@ -378,15 +384,18 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 
 	boolean nextBufferIsEvent() {
+		boolean result = false;
 		synchronized (buffers) {
-			return _nextBufferIsEvent();
+			result = _nextBufferIsEvent();
 		}
+
+		return result;
 	}
 
 	private boolean _nextBufferIsEvent() {
 		assert Thread.holdsLock(buffers);
 		if (inflightReplayIterator != null)
-			return inflightReplayIterator.hasNext() && !inflightReplayIterator.peekNext().isBuffer();
+			return !inflightReplayIterator.peekNext().isBuffer();
 		return !buffers.isEmpty() && !buffers.peekFirst().isBuffer();
 	}
 
@@ -432,9 +441,11 @@ public class PipelinedSubpartition extends ResultSubpartition {
 	}
 
 	public boolean isAvailable() {
+		boolean result;
 		synchronized (buffers) {
-			return isAvailableUnsafe();
+			result = isAvailableUnsafe();
 		}
+		return result;
 	}
 
 	private boolean isAvailableUnsafe() {
@@ -524,14 +535,14 @@ public class PipelinedSubpartition extends ResultSubpartition {
 	}
 
 	public void buildAndLogBuffer(int bufferSize) throws InterruptedException {
-		LOG.debug("building buffer and discarding result");
+		LOG.debug("building buffer of size {} and discarding result", bufferSize);
 		synchronized (buffers) {
 			while (true) {
 				BufferConsumer consumer = buffers.peek();
 
 				//No consumer ready
 				if (consumer == null) {
-					buffers.wait();
+					buffers.wait(5);
 					continue;
 				}
 
@@ -539,7 +550,6 @@ public class PipelinedSubpartition extends ResultSubpartition {
 				if (consumer.isFinished() && consumer.getUnreadBytes() <= 0) {
 					buffers.pop().close();
 					checkpointIds.pop();
-					buffers.wait();
 					continue;
 				}
 
@@ -557,9 +567,15 @@ public class PipelinedSubpartition extends ResultSubpartition {
 					break;
 				}
 
-				buffers.wait();
+				if (consumer.isFinished() && consumer.getUnreadBytes() <= 0) {
+					buffers.pop().close();
+					checkpointIds.pop();
+				}
+
+				buffers.wait(5);
 			}
 		}
+		LOG.debug("Done building and discarding bufer of size {}",  bufferSize);
 	}
 
 	private void buildRequestedBuffer(int bufferSize, BufferConsumer consumer) {
@@ -587,7 +603,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 
 		updateStatistics(buffer);
-		inFlightLog.log(buffer, currentEpochID);
+		inFlightLog.log(buffer, currentEpochID, true);
 		buffer.recycleBuffer(); //It is not sent downstream, so we must recycle it here.
 		//We do this after the determinant because a checkpoint x belongs to epoch x-1
 		if (checkpointId != -1)

@@ -30,12 +30,18 @@ public class InMemorySubpartitionInFlightLogger implements InFlightLog {
 	private static final Logger LOG = LoggerFactory.getLogger(InMemorySubpartitionInFlightLogger.class);
 
 	private final SortedMap<Long, List<Buffer>> slicedLog;
+	private BufferPool inFlightBufferPool;
 
 	public InMemorySubpartitionInFlightLogger() {
 		slicedLog = new TreeMap<>();
 	}
 
-	public synchronized void log(Buffer buffer, long epochID) {
+	@Override
+	public void registerBufferPool(BufferPool bufferPool) {
+		this.inFlightBufferPool = bufferPool;
+	}
+
+	public synchronized void log(Buffer buffer, long epochID, boolean isFinished) {
 		List<Buffer> epochLog = slicedLog.computeIfAbsent(epochID, k -> new LinkedList<>());
 		epochLog.add(buffer.retainBuffer());
 		LOG.debug("Logged a new buffer for epoch {}", epochID);

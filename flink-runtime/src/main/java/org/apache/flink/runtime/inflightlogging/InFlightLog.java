@@ -31,10 +31,12 @@ import org.apache.flink.runtime.state.CheckpointListener;
 /*/
 public interface InFlightLog extends CheckpointListener {
 
+	void registerBufferPool(BufferPool bufferPool);
+
 	/**
 	 * Appends the provided buffer to the log slice of the provided epochID
 	 */
-	void log(Buffer buffer, long epochID);
+	void log(Buffer buffer, long epochID, boolean isFinished);
 
 
 

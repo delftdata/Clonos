@@ -4,7 +4,7 @@
  *
  *  * Licensed to the Apache Software Foundation (ASF) under one
  *  * or more contributor license agreements.  See the NOTICE file
- *  * distributed with this work for additional debugrmation
+ *  * distributed with this work for additional information
  *  * regarding copyright ownership.  The ASF licenses this file
  *  * to you under the Apache License, Version 2.0 (the
  *  * "License"); you may not use this file except in compliance
@@ -62,6 +62,8 @@ import java.util.stream.Collectors;
 public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 	private static final Logger LOG = LoggerFactory.getLogger(SpilledReplayIterator.class);
 
+	private final Object subpartitionLock;
+
 
 	//The queues to contain buffers	which are asynchronously read
 	private ConcurrentMap<Long, LinkedBlockingDeque<Buffer>> readyBuffersPerEpoch;
@@ -78,9 +80,11 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 								 BufferPool recoveryBufferPool,
 								 IOManager ioManager, Object subpartitionLock, int ignoreBuffers,
 								 AtomicBoolean isReplaying) {
-		LOG.debug("SpilledReplayIterator created");
-		LOG.debug("State of in-flight log: { {} }",
-			logToReplay.entrySet().stream().map(e -> e.getKey() + "->" + e.getValue()).collect(Collectors.joining(",")));
+		if(LOG.isDebugEnabled()) {
+			LOG.debug("SpilledReplayIterator created");
+			LOG.debug("State of in-flight log: { {} }",
+				logToReplay.entrySet().stream().map(e -> e.getKey() + "->" + e.getValue()).collect(Collectors.joining(",")));
+		}
 		this.consumerCursor = new EpochCursor(logToReplay);
 		this.producerCursor = new EpochCursor(logToReplay);
 		this.isReplaying = isReplaying;
@@ -90,7 +94,7 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 			consumerCursor.next();
 			producerCursor.next();
 		}
-
+		this.subpartitionLock = subpartitionLock;
 
 		readyBuffersPerEpoch = new ConcurrentHashMap<>(logToReplay.keySet().size());
 		//Initialize the queues
@@ -147,10 +151,12 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 			LOG.debug("Call to peek. Cursor {}", consumerCursor);
 			buffer = consumerCursor.getCurrentBuffer();
 			if (buffer.asByteBuf().refCnt() == 0) {//Producer will increase refCnt if flush not complete when
-				// processed
-				buffer = readyBuffersPerEpoch.get(consumerCursor.getCurrentEpoch()).take();
-				//After peeking push it back
-				readyBuffersPerEpoch.get(consumerCursor.getCurrentEpoch()).putFirst(buffer);
+				synchronized (subpartitionLock) {
+					// processed
+					buffer = readyBuffersPerEpoch.get(consumerCursor.getCurrentEpoch()).take();
+					//After peeking push it back
+					readyBuffersPerEpoch.get(consumerCursor.getCurrentEpoch()).putFirst(buffer);
+				}
 			}
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
@@ -188,7 +194,6 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 		//The position in the log of the producer
 		private final EpochCursor producerCursor;
 		private final Object subpartitionLock;
-		private final SortedMap<Long, SpillableSubpartitionInFlightLogger.Epoch> logToReplay;
 
 		private BufferPool recoveryBufferPool;
 		private Map<Long, BufferFileReader> epochReaders;
@@ -199,7 +204,6 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 			BufferPool recoveryBufferPool,
 			ConcurrentMap<Long, LinkedBlockingDeque<Buffer>> readyDataBuffersPerEpoch,
 			Object subpartitionLock, EpochCursor producerCursor) {
-			this.logToReplay = logToReplay;
 			this.subpartitionLock = subpartitionLock;
 			this.recoveryBufferPool = recoveryBufferPool;
 			this.producerCursor = producerCursor;
@@ -217,7 +221,7 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 
 		@Override
 		public void run() {
-			LOG.debug("Replay Producer thread starting");
+			LOG.info("Replay Producer thread starting");
 			try {
 				while (producerCursor.hasNext()) {
 					synchronized (subpartitionLock) {
@@ -229,7 +233,7 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 								LOG.debug("Buffer for cursor {}, is in memory", producerCursor);
 								buffer.retainBuffer();
 							} else {
-								LOG.debug("Buffer for cursor {}, is on disk. Buffer pool state: {}", producerCursor,
+								LOG.debug("Buffer for cursor {}, is on disk.\n Buffer pool state: {}", producerCursor,
 									recoveryBufferPool);
 								Buffer bufferToReadInto = recoveryBufferPool.requestBuffer();
 								if (bufferToReadInto == null) //no buffer available, release lock and try again
@@ -240,7 +244,7 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 							producerCursor.next();
 						}
 					}
-					Thread.sleep(5);
+					Thread.sleep(10);
 				}
 
 				//close will wait for all requests to complete before closing
@@ -273,7 +277,7 @@ public class SpilledReplayIterator extends InFlightLogIterator<Buffer> {
 		@Override
 		public void requestFailed(Buffer buffer, IOException e) {
 			String msg = "Read of buffer failed during replay with error: " + e.getMessage();
-			LOG.debug("Error: " + msg);
+			LOG.info("Error: " + msg);
 			logAndThrowAsRuntimeException(e);
 		}
 	}

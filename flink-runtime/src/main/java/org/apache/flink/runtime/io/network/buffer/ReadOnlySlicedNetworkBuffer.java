@@ -24,6 +24,7 @@ import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBufAllocator;
 import org.apache.flink.shaded.netty4.io.netty.buffer.ReadOnlyByteBuf;
 import org.apache.flink.shaded.netty4.io.netty.buffer.SlicedByteBuf;
+import org.apache.flink.shaded.netty4.io.netty.util.IllegalReferenceCountException;
 
 import java.nio.ByteBuffer;
 import java.nio.ReadOnlyBufferException;
@@ -109,6 +110,11 @@ public final class ReadOnlySlicedNetworkBuffer extends ReadOnlyByteBuf implement
 	@Override
 	public BufferRecycler getRecycler() {
 		return getBuffer().getRecycler();
+	}
+
+	@Override
+	public void setRecycler(BufferRecycler recycler) {
+		getBuffer().setRecycler(recycler);
 	}
 
 	@Override

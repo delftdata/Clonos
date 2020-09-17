@@ -72,11 +72,11 @@ public class InFlightLogTest {
 
 				Buffer buffer = new NetworkBuffer(MemorySegmentFactory.allocateUnpooledSegment(64),
 					FreeingBufferRecycler.INSTANCE);
-				log.log(buffer, epoch);
+				log.log(buffer, epoch, true);
 			}
 			Buffer buffer = new NetworkBuffer(MemorySegmentFactory.allocateUnpooledSegment(64),
 				FreeingBufferRecycler.INSTANCE);
-			log.log(buffer, epoch);
+			log.log(buffer, epoch, true);
 
 		}
 	}
@@ -88,12 +88,12 @@ public class InFlightLogTest {
 
 					Buffer buffer = new NetworkBuffer(MemorySegmentFactory.allocateUnpooledSegment(64),
 						FreeingBufferRecycler.INSTANCE);
-					log.log(buffer, epoch);
+					log.log(buffer, epoch, true);
 				}
 			}
 			Buffer buffer = new NetworkBuffer(MemorySegmentFactory.allocateUnpooledSegment(64),
 				FreeingBufferRecycler.INSTANCE);
-			log.log(buffer, epoch);
+			log.log(buffer, epoch, true);
 
 		}
 	}

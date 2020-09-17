@@ -128,6 +128,8 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 
 	private BufferPool bufferPool;
 
+	private BufferPool inFlightBufferPool;
+
 	private boolean hasNotifiedPipelinedConsumers;
 
 	private boolean isFinished;
@@ -222,6 +224,12 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 			bufferPool.setBufferPoolOwner(this);
 		}
 
+	}
+
+	public void registerInFlightBufferPool(BufferPool inFlightBufferPool) {
+		this.inFlightBufferPool = inFlightBufferPool;
+		for(ResultSubpartition subpartition : subpartitions)
+			((PipelinedSubpartition)subpartition).getInFlightLog().registerBufferPool(inFlightBufferPool);
 	}
 
 	public JobID getJobId() {
@@ -375,7 +383,6 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 		}
 	}
 
-
 	public void sendFailConsumerTrigger(int subpartitionIndex, Throwable cause) {
 		LOG.info("Task {} sends fail consumer trigger for result partition {} subpartition {} and release its " +
 			"buffers" +
@@ -520,18 +527,17 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 		}
 	}
 
-
 	public boolean isPoolAvailabilityLow() {
 		float availability = computePoolAvailability();
 		LOG.info("Poll Availability: {} < {} ? Pool: {} ", availability, availabilityFillFactor,
-				bufferPool);
+				inFlightBufferPool);
 		return availability < availabilityFillFactor;
 	}
 
 	private float computePoolAvailability() {
-		if (bufferPool == null)
+		if (inFlightBufferPool == null)
 			return 1;
-		return 1 - ((float) bufferPool.bestEffortGetNumOfUsedBuffers()) / bufferPool.getNumBuffers();
+		return 1 - ((float) inFlightBufferPool.bestEffortGetNumOfUsedBuffers()) / inFlightBufferPool.getNumBuffers();
 	}
 
 	private static class FlushRunnable implements Runnable {
