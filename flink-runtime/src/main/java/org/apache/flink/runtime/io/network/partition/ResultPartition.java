@@ -41,6 +41,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.nio.channels.Pipe;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -183,8 +184,8 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 				InFlightLogConfig inFlightLogConfig = inFlightLogFactory.getInFlightLogConfig();
 				availabilityFillFactor = inFlightLogConfig.getAvailabilityPolicyFillFactor();
 				long inFlightLogFlusherThreadSleepTime = inFlightLogConfig.getInFlightLogSleepTime();
-				if (inFlightLogFactory.getInFlightLogConfig().getPolicyIsAsynchronousPartitionBased()) {
-					inFlightLogFlusherRunnable = new FlushRunnable(this, inFlightLogConfig.getAsynchronousGlobalSpillPolicy(), inFlightLogFlusherThreadSleepTime);
+				if (inFlightLogFactory.getInFlightLogConfig().getSpillPolicy() == InFlightLogConfig.Policy.AVAILABILITY) {
+					inFlightLogFlusherRunnable = new FlushRunnable(this, inFlightLogFlusherThreadSleepTime);
 					Thread t = new Thread(inFlightLogFlusherRunnable);
 					t.setDaemon(true);
 					t.start();
@@ -543,19 +544,16 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 	private static class FlushRunnable implements Runnable {
 
 		private final List<SpillableSubpartitionInFlightLogger> inFlightLoggers;
-		private final Function<ResultPartition, Boolean> flushPolicy;
 		private final long flusherSleep;
 		private boolean running;
 		private ResultPartition toMonitor;
 
 		public FlushRunnable(ResultPartition toMonitor,
-							 Function<ResultPartition, Boolean> flushPolicy,
 							 long flusherSleep) {
 			this.toMonitor = toMonitor;
 			this.inFlightLoggers = Arrays.stream(toMonitor.getResultSubpartitions())
 					.map(s -> (SpillableSubpartitionInFlightLogger) ((PipelinedSubpartition) s).getInFlightLog())
 					.collect(Collectors.toList());
-			this.flushPolicy = flushPolicy;
 			this.flusherSleep = flusherSleep;
 			this.running = true;
 		}
@@ -568,10 +566,9 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 		public void run() {
 			while (running) {
 				try {
-					if (flushPolicy.apply(this.toMonitor)) {
+					if (toMonitor.isPoolAvailabilityLow())
 						for (SpillableSubpartitionInFlightLogger inFlightLogger : inFlightLoggers)
 							inFlightLogger.flushAllUnflushed();
-					}
 
 					Thread.sleep(flusherSleep);
 				} catch (InterruptedException e) {

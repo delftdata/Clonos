@@ -73,23 +73,13 @@ public class InFlightLogConfig implements Serializable {
 
 	private final Configuration config;
 
-	public boolean getPolicyIsAsynchronousPartitionBased() {
-		String policy = config.getString(IN_FLIGHT_LOG_SPILL_POLICY);
-
-		switch (policy) {
-			case "eager":
-			case "epoch":
-				return false;
-			case "availability":
-			default:
-				return true;
-		}
-
-	}
-
 
 	public enum Type {
 		IN_MEMORY, SPILLABLE
+	}
+
+	public enum Policy {
+		EAGER, AVAILABILITY
 	}
 
 
@@ -110,32 +100,19 @@ public class InFlightLogConfig implements Serializable {
 	}
 
 
-	public Consumer<SpillableSubpartitionInFlightLogger> getSynchronousSpillPolicy() {
+	public Policy getSpillPolicy() {
 		String policy = config.getString(IN_FLIGHT_LOG_SPILL_POLICY);
 
 		switch (policy) {
 			case "eager":
-				return eagerPolicy;
-			case "epoch":
-				return epochPolicy;
+				return Policy.EAGER;
 			case "availability":
+				return Policy.AVAILABILITY;
 			default:
 				throw new RuntimeException("Requested synchronous spill policy for asynchronous global policy");
 		}
 	}
 
-	public Function<ResultPartition, Boolean> getAsynchronousGlobalSpillPolicy() {
-		String policy = config.getString(IN_FLIGHT_LOG_SPILL_POLICY);
-
-		switch (policy) {
-			case "availability":
-				return availabilityPolicy;
-			case "eager":
-			case "epoch":
-			default:
-				throw new RuntimeException("Requested asynchronous spill policy for synchronous policy");
-		}
-	}
 	public int getNumberOfRecoveryBuffers() {
 		return config.getInteger(IN_FLIGHT_LOG_SPILL_NUM_RECOVERY_BUFFERS);
 	}
@@ -148,26 +125,7 @@ public class InFlightLogConfig implements Serializable {
 		return config.getLong(IN_FLIGHT_LOG_SPILL_SLEEP);
 	}
 
-	public static Consumer<SpillableSubpartitionInFlightLogger> eagerPolicy = log -> {
-		if (log.getSlicedLog().size() != 0)
-			for (SpillableSubpartitionInFlightLogger.Epoch e : log.getSlicedLog().values())
-				e.flushAllUnflushed();
-	};
 
-
-
-	public static Consumer<SpillableSubpartitionInFlightLogger> epochPolicy = log -> {
-		if (log.getSlicedLog().size() >= 2) {
-			long lastKey = log.getSlicedLog().lastKey();
-			for (Map.Entry<Long, SpillableSubpartitionInFlightLogger.Epoch> e : log.getSlicedLog().entrySet()) {
-				if (e.getKey() < lastKey && e.getValue().hasNeverBeenFlushed())
-					e.getValue().flushAllUnflushed();
-			}
-		}
-	};
-
-
-	public static Function<ResultPartition, Boolean> availabilityPolicy = ResultPartition::isPoolAvailabilityLow;
 
 	@Override
 	public String toString() {

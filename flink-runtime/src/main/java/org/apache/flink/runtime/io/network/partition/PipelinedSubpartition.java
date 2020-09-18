@@ -27,6 +27,7 @@ import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferConsumer;
 
+import org.apache.flink.runtime.io.network.buffer.BufferPool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -95,6 +96,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 	private AtomicBoolean isRecoveringSubpartitionInFlightState;
 
 	private BufferBuiltDeterminant reuseBufferBuiltDeterminant;
+
 
 	PipelinedSubpartition(int index, ResultPartition parent) {
 		this(index, parent, null);
@@ -197,12 +199,18 @@ public class PipelinedSubpartition extends ResultSubpartition {
 			if (finish) {
 				isFinished = true;
 				flush();
-			} else {
-				if (!isRecoveringSubpartitionInFlightState.get())
-					maybeNotifyDataAvailable();
+			} else if (!isRecoveringSubpartitionInFlightState.get()){
+				maybeNotifyDataAvailable();
 			}
-			if(isRecoveringSubpartitionInFlightState.get())
+
+			if(downstreamFailed.get() || inflightReplayIterator != null){
+				BufferPool inFlightLogBufferPool = inFlightLog.getInFlightBufferPool();
+				InFlightLoggingUtil.exchangeOwnership(bufferConsumer.getBackingBuffer(), inFlightLogBufferPool, null, false);
+			}
+
+			if (isRecoveringSubpartitionInFlightState.get())
 				buffers.notifyAll();
+
 		}
 		LOG.debug("Done adding buffer consumer");
 
@@ -247,34 +255,40 @@ public class PipelinedSubpartition extends ResultSubpartition {
 	}
 
 	public void sendFailConsumerTrigger(Throwable cause) {
-		LOG.debug("Sending fail consumer trigger. Setting downstream failed to true");
+		LOG.info("Sending fail consumer trigger for Partition {} subpartition {} ", parent.getPartitionId(), index);
 		downstreamFailed.set(true);
+		
+		synchronized (buffers) {
+			BufferPool inFlightLogBufferPool = inFlightLog.getInFlightBufferPool();
+			for(BufferConsumer bufferConsumer : buffers) {
+				InFlightLoggingUtil.exchangeOwnership(bufferConsumer.getBackingBuffer(), inFlightLogBufferPool, null, false);
+			}
+		}
+		
 		parent.sendFailConsumerTrigger(index, cause);
 	}
 
 	@Nullable
 	BufferAndBacklog pollBuffer() {
 
-
 		if (downstreamFailed.get()) {
 			LOG.debug("Polling for next buffer, but downstream is still failed.");
 			return null;
 		}
 
-		BufferAndBacklog bufferAndBacklog = null;
 		synchronized (buffers) {
 			if (!determinantRequests.isEmpty()) {
 				LOG.debug("We have a determinant request to send");
 				BufferConsumer consumer = determinantRequests.poll();
 				Buffer buffer = consumer.build();
 				consumer.close();
-				int numBuffersInBacklog = getBuffersInBacklog() + (inflightReplayIterator != null ? inflightReplayIterator.numberRemaining() : 0);
-				bufferAndBacklog = new BufferAndBacklog(buffer,inflightReplayIterator != null || isAvailableUnsafe(),
-					numBuffersInBacklog + (inflightReplayIterator != null ? inflightReplayIterator.numberRemaining(): 0), _nextBufferIsEvent(), currentEpochID);
+				int numBuffersInBacklog = getBuffersInBacklog() + (inflightReplayIterator != null ?
+					inflightReplayIterator.numberRemaining() : 0);
+				return new BufferAndBacklog(buffer, inflightReplayIterator != null || isAvailableUnsafe(),
+					numBuffersInBacklog + (inflightReplayIterator != null ? inflightReplayIterator.numberRemaining() :
+						0), _nextBufferIsEvent(), currentEpochID);
 			}
 		}
-		if(bufferAndBacklog != null)
-			return bufferAndBacklog;
 
 		if (isRecoveringSubpartitionInFlightState.get()) {
 			LOG.debug("We are still recovering this subpartition, cannot return a buffer yet.");
@@ -303,14 +317,13 @@ public class PipelinedSubpartition extends ResultSubpartition {
 		int numBuffersInBacklog = getBuffersInBacklog() + inflightReplayIterator.numberRemaining();
 		if (!inflightReplayIterator.hasNext()) {
 			inflightReplayIterator = null;
-			LOG.debug("Finished replaying inflight log!");
+			LOG.info("Finished replaying inflight log!");
 		}
 
-		BufferAndBacklog bufferAndBacklog = new BufferAndBacklog(buffer,
+		return new BufferAndBacklog(buffer,
 			inflightReplayIterator != null || isAvailableUnsafe(),
-			numBuffersInBacklog + (inflightReplayIterator != null ? inflightReplayIterator.numberRemaining(): 0), _nextBufferIsEvent(), epoch);
-
-		return bufferAndBacklog;
+			numBuffersInBacklog + (inflightReplayIterator != null ? inflightReplayIterator.numberRemaining() : 0),
+			_nextBufferIsEvent(), epoch);
 	}
 
 	private BufferAndBacklog getBufferFromQueuedBufferConsumersUnsafe() {
@@ -567,15 +580,10 @@ public class PipelinedSubpartition extends ResultSubpartition {
 					break;
 				}
 
-				if (consumer.isFinished() && consumer.getUnreadBytes() <= 0) {
-					buffers.pop().close();
-					checkpointIds.pop();
-				}
-
 				buffers.wait(5);
 			}
 		}
-		LOG.debug("Done building and discarding bufer of size {}",  bufferSize);
+		LOG.debug("Done building and discarding bufer of size {}", bufferSize);
 	}
 
 	private void buildRequestedBuffer(int bufferSize, BufferConsumer consumer) {
@@ -609,4 +617,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 		if (checkpointId != -1)
 			currentEpochID = checkpointId;
 	}
+
+
+
 }

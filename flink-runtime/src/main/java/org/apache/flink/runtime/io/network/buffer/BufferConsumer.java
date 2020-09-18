@@ -78,6 +78,10 @@ public class BufferConsumer implements Closeable {
 		this.currentReaderPosition = currentReaderPosition;
 	}
 
+	public Buffer getBackingBuffer(){
+		return buffer;
+	}
+
 	public boolean isFinished() {
 		return writerPosition.isFinished();
 	}

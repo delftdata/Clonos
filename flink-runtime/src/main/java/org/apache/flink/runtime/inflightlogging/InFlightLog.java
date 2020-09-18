@@ -50,4 +50,6 @@ public interface InFlightLog extends CheckpointListener {
     void destroyBufferPools();
 
 	void close();
+
+	BufferPool getInFlightBufferPool();
 }

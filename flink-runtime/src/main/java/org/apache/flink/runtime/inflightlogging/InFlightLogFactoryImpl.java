@@ -54,10 +54,10 @@ public class InFlightLogFactoryImpl implements InFlightLogFactory {
 					throw new RuntimeException(e);
 				}
 
-				if(config.getPolicyIsAsynchronousPartitionBased())
-					return new SpillableSubpartitionInFlightLogger(ioManager, recoveryBufferPool);
+				if(config.getSpillPolicy() == InFlightLogConfig.Policy.EAGER)
+					return new SpillableSubpartitionInFlightLogger(ioManager, recoveryBufferPool, true);
 				else
-					return new SpillableSubpartitionInFlightLogger(ioManager, recoveryBufferPool, config.getSynchronousSpillPolicy());
+					return new SpillableSubpartitionInFlightLogger(ioManager, recoveryBufferPool, false);
 
 			case IN_MEMORY:
 			default:

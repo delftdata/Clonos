@@ -93,6 +93,11 @@ public class InMemorySubpartitionInFlightLogger implements InFlightLog {
 				b.recycleBuffer();
 	}
 
+	@Override
+	public BufferPool getInFlightBufferPool() {
+		return inFlightBufferPool;
+	}
+
 	private void increaseReferenceCountsUnsafe(Long epochID) {
 		for (List<Buffer> epoch : slicedLog.tailMap(epochID).values())
 			for (Buffer buffer : epoch)
