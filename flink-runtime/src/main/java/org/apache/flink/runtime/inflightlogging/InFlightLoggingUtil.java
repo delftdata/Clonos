@@ -32,7 +32,7 @@ import org.apache.flink.runtime.io.network.buffer.FreeingBufferRecycler;
 
 public class InFlightLoggingUtil {
 
-	public static void exchangeOwnership(Buffer buffer, BufferPool inFlightBufferPool, Object lock, boolean blocking){
+	public static boolean exchangeOwnership(Buffer buffer, BufferPool inFlightBufferPool, Object lock, boolean blocking){
 
 		if(buffer.getRecycler() != FreeingBufferRecycler.INSTANCE){
 			BufferRecycler owner = buffer.getRecycler();
@@ -43,7 +43,7 @@ public class InFlightLoggingUtil {
 
 				while(replacement == null) {
 					if(!blocking)
-						return;
+						return false;
 					lock.wait(100);
 					replacement = inFlightBufferPool.requestBuffer();
 				}
@@ -55,5 +55,6 @@ public class InFlightLoggingUtil {
 			replacement.setRecycler(owner);
 			replacement.recycleBuffer();
 		}
+		return true;
 	}
 }

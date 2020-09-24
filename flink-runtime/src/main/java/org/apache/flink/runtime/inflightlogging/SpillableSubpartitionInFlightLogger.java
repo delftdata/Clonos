@@ -28,15 +28,12 @@ package org.apache.flink.runtime.inflightlogging;
 import org.apache.flink.runtime.io.disk.iomanager.*;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferPool;
-import org.apache.flink.runtime.io.network.buffer.BufferRecycler;
-import org.apache.flink.runtime.io.network.buffer.FreeingBufferRecycler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Consumer;
 
 /**
  * An inflight logger that periodically flushed available buffers according to a policy.
@@ -60,6 +57,8 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 
 	private final AtomicBoolean isReplaying;
 
+	private SpilledReplayIterator currentIterator;
+
 	public SpillableSubpartitionInFlightLogger(IOManager ioManager,  BufferPool recoveryBufferPool,
 											   boolean eagerlySpill) {
 		this.ioManager = ioManager;
@@ -67,6 +66,7 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 
 		this.slicedLog = new TreeMap<>();
 		this.isReplaying = new AtomicBoolean(false);
+		this.currentIterator = null;
 		this.eagerlySpill = eagerlySpill;
 	}
 
@@ -80,13 +80,16 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 	@Override
 	public void log(Buffer buffer, long epochID, boolean isFinished) {
 		synchronized (flushLock) {
-			if(isFinished)
+			if(isFinished) {
 				InFlightLoggingUtil.exchangeOwnership(buffer, inFlightBufferPool, flushLock, true);
+			}
 
 			Epoch epoch = slicedLog.computeIfAbsent(epochID, k -> new Epoch(createNewWriter(k), k));
 			epoch.append(buffer);
-			if (eagerlySpill && !isReplaying.get())
+			if (eagerlySpill)
 				flushAllUnflushed();
+			if(isReplaying.get())
+				currentIterator.notifyNewBufferAdded(epochID);
 		}
 		LOG.debug("Logged a new buffer for epoch {} with refcnt {} and size {}", epochID, buffer.asByteBuf().refCnt(),
 			buffer.getSize());
@@ -122,8 +125,9 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 			if (logToReplay.size() == 0)
 				return null;
 
-			return new SpilledReplayIterator(logToReplay, recoveryBufferPool, ioManager, flushLock, ignoreBuffers,
+			this.currentIterator = new SpilledReplayIterator(logToReplay, recoveryBufferPool, ioManager, flushLock, ignoreBuffers,
 				isReplaying);
+			return currentIterator;
 		}
 
 	}
@@ -148,8 +152,6 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 
 	public void flushAllUnflushed(){
 		synchronized (flushLock){
-			if(isReplaying.get())
-				return;
 			for (Epoch e : slicedLog.values())
 				e.flushAllUnflushed();
 		}
@@ -273,7 +275,7 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 				writer.clearRequestQueue();
 				writer.closeAndDelete();
 				for (Buffer buffer : epochBuffers) {
-					if (buffer.asByteBuf().refCnt() != 0)
+					if (!buffer.isRecycled())
 						buffer.recycleBuffer(); // release the buffers left over
 
 				}

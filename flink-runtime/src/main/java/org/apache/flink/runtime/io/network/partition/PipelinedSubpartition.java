@@ -27,7 +27,6 @@ import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferConsumer;
 
-import org.apache.flink.runtime.io.network.buffer.BufferPool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -142,7 +141,9 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 	public void notifyCheckpointComplete(long checkpointId) throws Exception {
 		LOG.debug("PipelinedSubpartition notified of checkpoint {} completion", checkpointId);
-		this.inFlightLog.notifyCheckpointComplete(checkpointId);
+		synchronized (buffers) {
+			this.inFlightLog.notifyCheckpointComplete(checkpointId);
+		}
 	}
 
 
@@ -203,13 +204,10 @@ public class PipelinedSubpartition extends ResultSubpartition {
 				maybeNotifyDataAvailable();
 			}
 
-			if(downstreamFailed.get() || inflightReplayIterator != null){
-				BufferPool inFlightLogBufferPool = inFlightLog.getInFlightBufferPool();
-				InFlightLoggingUtil.exchangeOwnership(bufferConsumer.getBackingBuffer(), inFlightLogBufferPool, null, false);
-			}
-
 			if (isRecoveringSubpartitionInFlightState.get())
 				buffers.notifyAll();
+			else if(downstreamFailed.get() || inflightReplayIterator != null)
+				sendFinishedBuffersToInFlightLog();
 
 		}
 		LOG.debug("Done adding buffer consumer");
@@ -255,17 +253,28 @@ public class PipelinedSubpartition extends ResultSubpartition {
 	}
 
 	public void sendFailConsumerTrigger(Throwable cause) {
-		LOG.info("Sending fail consumer trigger for Partition {} subpartition {} ", parent.getPartitionId(), index);
+		LOG.debug("Sending fail consumer trigger for Partition {} subpartition {} ", parent.getPartitionId(), index);
 		downstreamFailed.set(true);
-		
+
 		synchronized (buffers) {
-			BufferPool inFlightLogBufferPool = inFlightLog.getInFlightBufferPool();
-			for(BufferConsumer bufferConsumer : buffers) {
-				InFlightLoggingUtil.exchangeOwnership(bufferConsumer.getBackingBuffer(), inFlightLogBufferPool, null, false);
+			//If we are  not ourselves recovering
+			if (!isRecoveringSubpartitionInFlightState.get())
+				sendFinishedBuffersToInFlightLog();
+		}
+
+		parent.sendFailConsumerTrigger(index, cause);
+	}
+
+	private void sendFinishedBuffersToInFlightLog() {
+		synchronized (buffers) {
+			while(buffers.size() > 1){
+				//Send the buffer through the inflight log
+				BufferAndBacklog bnb = getBufferFromQueuedBufferConsumersUnsafe();
+				if(bnb != null)
+					bnb.buffer().recycleBuffer();
+
 			}
 		}
-		
-		parent.sendFailConsumerTrigger(index, cause);
 	}
 
 	@Nullable
@@ -298,10 +307,10 @@ public class PipelinedSubpartition extends ResultSubpartition {
 		BufferAndBacklog buf;
 		synchronized (buffers) {
 			if (inflightReplayIterator != null) {
-				LOG.debug("We are replaying, get inflight logs next buffer");
+				LOG.debug("We are replaying index {}, get inflight logs next buffer", index);
 				buf = getReplayedBufferUnsafe();
 			} else {
-				LOG.debug("We are not replaying, get buffer from consumers");
+				LOG.debug("We are not replaying index {}, get buffer from consumers", index);
 				buf = getBufferFromQueuedBufferConsumersUnsafe();
 			}
 		}
@@ -317,7 +326,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 		int numBuffersInBacklog = getBuffersInBacklog() + inflightReplayIterator.numberRemaining();
 		if (!inflightReplayIterator.hasNext()) {
 			inflightReplayIterator = null;
-			LOG.info("Finished replaying inflight log!");
+			LOG.debug("Finished replaying inflight log!");
 		}
 
 		return new BufferAndBacklog(buffer,
@@ -376,9 +385,9 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 		causalLoggingManager.appendSubpartitionDeterminant(reuseBufferBuiltDeterminant.replace(buffer.readableBytes())
 			, currentEpochID, this.parent.getPartitionId().getPartitionId(), this.index);
+		inFlightLog.log(buffer, currentEpochID, isFinished);
 
 		updateStatistics(buffer);
-		inFlightLog.log(buffer, currentEpochID, isFinished);
 		BufferAndBacklog result = new BufferAndBacklog(buffer, isAvailableUnsafe(), getBuffersInBacklog(),
 			_nextBufferIsEvent(), currentEpochID);
 		//We do this after the determinant and sending the BufferAndBacklog because a checkpoint x belongs to

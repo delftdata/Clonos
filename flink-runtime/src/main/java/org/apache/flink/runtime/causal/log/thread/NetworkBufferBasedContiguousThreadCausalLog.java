@@ -130,7 +130,7 @@ public class NetworkBufferBasedContiguousThreadCausalLog implements ThreadCausal
 			long currentConsumerEpochID = consumerOffset.getEpochStart().getId();
 			if (currentConsumerEpochID != epochID) {
 				if (currentConsumerEpochID > epochID)
-					throw new RuntimeException("Consumer went backwards!");
+					throw new RuntimeException("Consumer went backwards, current epoch " + currentConsumerEpochID + " requested " + epochID);
 				consumerOffset.epochStart = epochStartOffset;
 				consumerOffset.offset = 0;
 			}
