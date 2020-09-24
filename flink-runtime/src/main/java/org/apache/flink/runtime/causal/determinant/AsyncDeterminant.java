@@ -52,4 +52,8 @@ public abstract class AsyncDeterminant extends Determinant {
 	public int getEncodedSizeInBytes() {
 		return super.getEncodedSizeInBytes() + Integer.BYTES;
 	}
+
+    public void setRecordCount(int recordCount) {
+		this.recordCount = recordCount;
+    }
 }

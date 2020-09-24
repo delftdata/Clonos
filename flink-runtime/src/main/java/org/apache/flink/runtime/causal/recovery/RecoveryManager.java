@@ -28,6 +28,7 @@ package org.apache.flink.runtime.causal.recovery;
 import com.google.common.collect.HashBasedTable;
 import com.google.common.collect.Table;
 import org.apache.flink.runtime.causal.*;
+import org.apache.flink.runtime.causal.determinant.AsyncDeterminant;
 import org.apache.flink.runtime.causal.log.job.JobCausalLog;
 import org.apache.flink.runtime.causal.log.vertex.VertexCausalLogDelta;
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
@@ -81,6 +82,7 @@ public class RecoveryManager implements IRecoveryManager {
 	CheckpointForceable checkpointForceable;
 	RecordCountTargetForceable recordCountTargetForceable;
 
+	List<AsyncDeterminant> rpcRequestsDuringRecovery;
 
 	public enum SinkRecoveryStrategy {
 		TRANSACTIONAL,
@@ -114,6 +116,7 @@ public class RecoveryManager implements IRecoveryManager {
 		this.checkpointForceable = checkpointForceable;
 
 		this.determinantSharingDepth = determinantSharingDepth;
+		this.rpcRequestsDuringRecovery = new LinkedList<>();
 	}
 
 	private void setPartitions(ResultPartition[] partitions) {
@@ -159,6 +162,10 @@ public class RecoveryManager implements IRecoveryManager {
 
 	public void setInputGate(InputGate inputGate) {
 		this.inputGate = inputGate;
+	}
+
+	public void appendRPCRequestDuringRecovery(AsyncDeterminant determinant){
+		this.rpcRequestsDuringRecovery.add(determinant);
 	}
 
 //====================== State Machine Messages ========================================

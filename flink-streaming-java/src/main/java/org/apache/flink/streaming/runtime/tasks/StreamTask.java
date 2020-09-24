@@ -290,10 +290,13 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		SingleInputGate[] inputGates = environment.getContainingTask().getAllInputGates();
 
 		this.jobCausalLog = environment.getCausalLogManager().registerNewJob(this.getEnvironment().getJobID(),
-			vertexGraphInformation, getExecutionConfig().getDeterminantSharingDepth(), getEnvironment().getAllWriters(), getCheckpointLock());
+			vertexGraphInformation, getExecutionConfig().getDeterminantSharingDepth(),
+			getEnvironment().getAllWriters(), getCheckpointLock());
 
-		this.recoveryManager = new RecoveryManager(this,this, jobCausalLog, readyToReplayFuture, vertexGraphInformation,
-			recordCountProvider, this, environment.getContainingTask().getProducedPartitions(), getExecutionConfig().getDeterminantSharingDepth());
+		this.recoveryManager = new RecoveryManager(this, this, jobCausalLog, readyToReplayFuture,
+			vertexGraphInformation,
+			recordCountProvider, this, environment.getContainingTask().getProducedPartitions(),
+			getExecutionConfig().getDeterminantSharingDepth());
 
 		this.timeService = new CausalTimeService(jobCausalLog, recoveryManager, this);
 		this.randomService = new CausalRandomService(jobCausalLog, recoveryManager, this);
@@ -703,8 +706,14 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	public boolean triggerCheckpoint(CheckpointMetaData checkpointMetaData, CheckpointOptions checkpointOptions) throws Exception {
 
 		if (this.recoveryManager.isRecovering() && !this.recoveryManager.vertexGraphInformation.hasUpstream()) {
-			LOG.info("Eagerly reject checkpoint because recovering!");
-			return false;
+			LOG.info("Store trigger checkpoint determinant for later processing because recovering!");
+			recoveryManager.appendRPCRequestDuringRecovery(reuseSourceCheckpointDeterminant.replace(
+				recordCountProvider.getRecordCount(),
+				checkpointMetaData.getCheckpointId(),
+				checkpointMetaData.getTimestamp(),
+				checkpointOptions.getCheckpointType(),
+				checkpointOptions.getTargetLocation().getReferenceBytes()));
+			return true;
 		}
 
 		try {
@@ -758,8 +767,6 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			operatorChain.broadcastCheckpointCancelMarker(checkpointId);
 		}
 	}
-
-
 
 
 	public boolean isCausal() {
@@ -867,26 +874,30 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	public void ignoreCheckpoint(long checkpointId) {
 
 		synchronized (lock) {
-			if (isRunning) {
+			ignoreCheckpointReuseDeterminant.replace(recordCountProvider.getRecordCount(), checkpointId);
+			if (isRunning && recoveryManager.isRunning()) {
 				LOG.info("Ignoring checkpoint, appending determinant and ignoring.");
-				jobCausalLog.appendDeterminant(ignoreCheckpointReuseDeterminant.replace(recordCountProvider.getRecordCount(),checkpointId), currentEpochID.get());
+				jobCausalLog.appendDeterminant(ignoreCheckpointReuseDeterminant, currentEpochID.get());
 				CheckpointBarrierHandler handler = getCheckpointBarrierHandler();
-					try {
-						handler.ignoreCheckpoint(checkpointId);
-					} catch (Exception e){
-						LOG.error(e.getMessage());
-						e.printStackTrace();
-					}
+				try {
+					handler.ignoreCheckpoint(checkpointId);
+				} catch (Exception e) {
+					LOG.error(e.getMessage());
+					e.printStackTrace();
 				}
+				// notify the coordinator that we decline this checkpoint
+				getEnvironment().declineCheckpoint(checkpointId, new Exception("Received rpc to cancel"));
+			} else {
+				recoveryManager.appendRPCRequestDuringRecovery(ignoreCheckpointReuseDeterminant);
 			}
+		}
 
-		// notify the coordinator that we decline this checkpoint
-		getEnvironment().declineCheckpoint(checkpointId, new Exception("Received rpc to cancel"));
 	}
 
-	protected CheckpointBarrierHandler getCheckpointBarrierHandler(){
+	protected CheckpointBarrierHandler getCheckpointBarrierHandler() {
 		//default implementation
-		throw new UnsupportedOperationException("Method must be overriden by stream task types using a barrier handler!.");
+		throw new UnsupportedOperationException("Method must be overriden by stream task types using a barrier " +
+			"handler!.");
 	}
 
 	public ExecutorService getAsyncOperationsThreadPool() {

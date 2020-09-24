@@ -27,6 +27,7 @@ package org.apache.flink.runtime.causal.recovery;
 
 import org.apache.flink.runtime.causal.DeterminantResponseEvent;
 import org.apache.flink.runtime.causal.VertexID;
+import org.apache.flink.runtime.causal.determinant.AsyncDeterminant;
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
 import org.apache.flink.runtime.io.network.api.DeterminantRequestEvent;
 import org.apache.flink.runtime.io.network.partition.PipelinedSubpartition;
@@ -51,6 +52,13 @@ public class RunningState extends AbstractState {
 	@Override
 	public void executeEnter() {
 		context.processingTimeForceable.concludeReplay();
+
+		for(AsyncDeterminant delayedRPCRequest : context.rpcRequestsDuringRecovery){
+			LOG.info("Executing delayed RPC request: {}", delayedRPCRequest);
+			delayedRPCRequest.setRecordCount(context.recordCountProvider.getRecordCount());
+			delayedRPCRequest.process(context);
+		}
+		context.rpcRequestsDuringRecovery.clear();
 	}
 
 	@Override

@@ -73,7 +73,9 @@ public class FailoverStrategyLoader {
 
 				case STANDBY_TASK_RUN_STRATEGY_NAME:
 					final int numStandbyTasksToMaintain = config.getInteger(JobManagerOptions.NUMBER_OF_STANDBY_TASKS_TO_MAINTAIN);
-					return new RunStandbyTaskStrategy.Factory(numStandbyTasksToMaintain);
+					final int checkpointCoordinatorBackoffMultiplier = config.getInteger(JobManagerOptions.CC_BACKOFF_MULT);
+					final long checkpointCoordinatorBackoffBase = config.getLong(JobManagerOptions.CC_BACKOFF_BASE);
+					return new RunStandbyTaskStrategy.Factory(numStandbyTasksToMaintain, checkpointCoordinatorBackoffMultiplier, checkpointCoordinatorBackoffBase);
 
 				default:
 					// we could interpret the parameter as a factory class name and instantiate that
