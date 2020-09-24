@@ -63,19 +63,22 @@ public class RunStandbyTaskStrategy extends FailoverStrategy {
 	private final Executor callbackExecutor;
 
 	private final int numStandbyTasksToMaintain;
+	private final int checkpointCoordinatorBackoffMultiplier;
+	private final long checkpointCoordinatorBackoffBaseMs;
 
 
 	/**
 	 * Creates a new failover strategy that recovers from failures by restarting all tasks
 	 * of the execution graph.
-	 *
-	 * @param executionGraph            The execution graph to handle.
+	 *  @param executionGraph            The execution graph to handle.
 	 * @param numStandbyTasksToMaintain
 	 */
-	public RunStandbyTaskStrategy(ExecutionGraph executionGraph, int numStandbyTasksToMaintain) {
+	public RunStandbyTaskStrategy(ExecutionGraph executionGraph, int numStandbyTasksToMaintain, int checkpointCoordinatorBackoffMultiplier, long checkpointCoordinatorBackoffBaseMs) {
 		this.executionGraph = checkNotNull(executionGraph);
 		this.callbackExecutor = checkNotNull(executionGraph.getFutureExecutor());
 		this.numStandbyTasksToMaintain = numStandbyTasksToMaintain;
+		this.checkpointCoordinatorBackoffMultiplier = checkpointCoordinatorBackoffMultiplier;
+		this.checkpointCoordinatorBackoffBaseMs = checkpointCoordinatorBackoffBaseMs;
 	}
 
 	// ------------------------------------------------------------------------
@@ -107,7 +110,7 @@ public class RunStandbyTaskStrategy extends FailoverStrategy {
 		ExecutionVertex vertex = taskExecution.getVertex();
 		callbackExecutor.execute(() -> {
 			this.executionGraph.getCheckpointCoordinator().rpcIgnoreUnacknowledgedPendingCheckpointsFor(vertex, taskExecution.getAttemptId(), new Exception("Task failed and is recovering causally."));
-			this.executionGraph.getCheckpointCoordinator().restartBackoffCheckpointScheduler();
+			this.executionGraph.getCheckpointCoordinator().restartBackoffCheckpointScheduler(checkpointCoordinatorBackoffMultiplier, checkpointCoordinatorBackoffBaseMs);
 		});
 
 		CompletableFuture<Void> removeSlotsFuture = asyncRemoveFailedSlots(taskExecution);
@@ -250,14 +253,21 @@ public class RunStandbyTaskStrategy extends FailoverStrategy {
 	public static class Factory implements FailoverStrategy.Factory {
 
 		int numStandbyTasksToMaintain;
+		int coordinatorBackoffMultiplier;
+		long coordinatorBackoffBaseMs;
 
 		public Factory(int numStandbyTasksToMaintain) {
+			this(numStandbyTasksToMaintain, 3,10000L);
+		}
+		public Factory(int numStandbyTasksToMaintain, int coordinatorBackoffMultiplier, long coordinatorBackoffBaseMs) {
 			this.numStandbyTasksToMaintain = numStandbyTasksToMaintain;
+			this.coordinatorBackoffMultiplier = coordinatorBackoffMultiplier;
+			this.coordinatorBackoffBaseMs = coordinatorBackoffBaseMs;
 		}
 
 		@Override
 		public FailoverStrategy create(ExecutionGraph executionGraph) {
-			return new RunStandbyTaskStrategy(executionGraph, numStandbyTasksToMaintain);
+			return new RunStandbyTaskStrategy(executionGraph, numStandbyTasksToMaintain, coordinatorBackoffMultiplier, coordinatorBackoffBaseMs);
 		}
 	}
 }

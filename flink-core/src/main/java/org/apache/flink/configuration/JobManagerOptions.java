@@ -113,6 +113,16 @@ public class JobManagerOptions {
 		key("jobmanager.execution.num-standby-tasks")
 			.defaultValue(1)
 			.withDescription("The number of standbytasks to maintain.");
+
+	public static final ConfigOption<Integer> CC_BACKOFF_MULT =
+		key("jobmanager.execution.checkpoint-coordinator-backoff-mult")
+			.defaultValue(3)
+			.withDescription("The multiplier for the base interval of checkpoints to use when recovering causally.");
+
+	public static final ConfigOption<Long> CC_BACKOFF_BASE =
+		key("jobmanager.execution.checkpoint-coordinator-backoff-base")
+			.defaultValue(10000L)
+			.withDescription("The base value to add to the checkpoint backoff checkpoints to use when recovering causally.");
 	/**
 	 * This option specifies the interval in order to trigger a resource manager reconnection if the connection
 	 * to the resource manager has been lost.

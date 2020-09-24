@@ -75,7 +75,6 @@ public class CheckpointCoordinator {
 	 * The number of recent checkpoints whose IDs are remembered
 	 */
 	private static final int NUM_GHOST_CHECKPOINT_IDS = 16;
-	private static final long EMPIRICAL_TIME_TO_LOCAL_RECOVERY_SCHEDULING = 7000L;
 
 	// ------------------------------------------------------------------------
 
@@ -1326,9 +1325,10 @@ public class CheckpointCoordinator {
 	// --------------------------------------------------------------------------------------------
 
 	//An alias for startCheckpointScheduler for readability
-	public void restartBackoffCheckpointScheduler() {
+	public void restartBackoffCheckpointScheduler(int checkpointCoordinatorBackoffMultiplier,
+												  long checkpointCoordinatorBackoffBaseMs) {
 		synchronized (lock) {
-			internalUnsafeStartCheckpointScheduler(2 * baseInterval + EMPIRICAL_TIME_TO_LOCAL_RECOVERY_SCHEDULING); 
+			internalUnsafeStartCheckpointScheduler(checkpointCoordinatorBackoffMultiplier * baseInterval + checkpointCoordinatorBackoffBaseMs);
 		}
 	}
 
@@ -1394,6 +1394,7 @@ public class CheckpointCoordinator {
 	public Object getCheckpointLock() {
 		return lock;
 	}
+
 
 
 	// ------------------------------------------------------------------------
