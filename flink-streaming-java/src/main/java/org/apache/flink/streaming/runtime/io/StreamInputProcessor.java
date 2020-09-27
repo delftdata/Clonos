@@ -178,9 +178,9 @@ public class StreamInputProcessor<IN> implements RecordCountTargetForceable {
 	}
 
 	public boolean processInput() throws Exception {
-		if (isFinished) {
+		if (isFinished)
 			return false;
-		}
+
 		if (numRecordsIn == null) {
 			try {
 				numRecordsIn =
@@ -203,34 +203,30 @@ public class StreamInputProcessor<IN> implements RecordCountTargetForceable {
 				if (result.isFullRecord()) {
 					StreamElement recordOrMark = deserializationDelegate.getInstance();
 
-					while(asyncEventRecordCountTarget != -1 && recordCountProvider.getRecordCount() == asyncEventRecordCountTarget)
-						recoveryManager.triggerAsyncEvent();
-
 					if (recordOrMark.isWatermark()) {
 						synchronized (lock) {
 							recordCountProvider.incRecordCount();
 							// handle watermark
 							statusWatermarkValve.inputWatermark(recordOrMark.asWatermark(), currentChannel);
-							continue;
 						}
+						return true;
 					} else if (recordOrMark.isStreamStatus()) {
 						synchronized (lock) {
 							recordCountProvider.incRecordCount();
 							// handle stream status
 							statusWatermarkValve.inputStreamStatus(recordOrMark.asStreamStatus(), currentChannel);
-							continue;
 						}
+						return true;
 					} else if (recordOrMark.isLatencyMarker()) {
 						synchronized (lock) {
 							recordCountProvider.incRecordCount();
 							// handle latency marker
 							streamOperator.processLatencyMarker(recordOrMark.asLatencyMarker());
-							continue;
 						}
+						return true;
 					} else {
 						// now we can do the actual processing
 						StreamRecord<IN> record = recordOrMark.asRecord();
-						//LOG.info("Record: {}", record);
 						synchronized (lock) {
 							recordCountProvider.incRecordCount();
 							numRecordsIn.inc();
@@ -241,11 +237,6 @@ public class StreamInputProcessor<IN> implements RecordCountTargetForceable {
 					}
 				}
 			}
-
-			//Note this ensures that if the first thing that happens in an epoch is an async event, then we
-			// recover correctly.
-			while(asyncEventRecordCountTarget != -1 && recordCountProvider.getRecordCount() == asyncEventRecordCountTarget)
-				recoveryManager.triggerAsyncEvent();
 
 			final BufferOrEvent bufferOrEvent = barrierHandler.getNextNonBlocked();
 			if (bufferOrEvent != null) {
@@ -267,6 +258,22 @@ public class StreamInputProcessor<IN> implements RecordCountTargetForceable {
 				return false;
 			}
 		}
+	}
+
+	public boolean recover() throws Exception {
+		//While we are recovering
+		//		 	Trigger any asynchronous events that should be triggered at this point
+		//			Process a record
+		while(recoveryManager.isRecovering()) {
+			//Process a few thousand records before querying if still recovering. This is just to go around some design limitations
+			for(int i = 0; i < 10000; i++ ) {
+				while (asyncEventRecordCountTarget != -1 && recordCountProvider.getRecordCount() == asyncEventRecordCountTarget)
+					recoveryManager.triggerAsyncEvent();
+				if (!processInput())
+					return false;
+			}
+		}
+		return true;
 	}
 
 	public void cleanup() throws IOException {

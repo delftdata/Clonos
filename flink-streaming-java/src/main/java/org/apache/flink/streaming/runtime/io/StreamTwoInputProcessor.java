@@ -244,25 +244,31 @@ public class StreamTwoInputProcessor<IN1, IN2> implements RecordCountTargetForce
 				}
 
 				if (result.isFullRecord()) {
-					while(asyncEventRecordCountTarget != -1 && recordCountProvider.getRecordCount() == asyncEventRecordCountTarget)
-						recoveryManager.triggerAsyncEvent();
 					if (currentChannel < numInputChannels1) {
 						StreamElement recordOrWatermark = deserializationDelegate1.getInstance();
 						if (recordOrWatermark.isWatermark()) {
-							statusWatermarkValve1.inputWatermark(recordOrWatermark.asWatermark(), currentChannel);
-							continue;
+							synchronized (lock) {
+								recordCountProvider.incRecordCount();
+								statusWatermarkValve1.inputWatermark(recordOrWatermark.asWatermark(), currentChannel);
+							}
+							return true;
 						} else if (recordOrWatermark.isStreamStatus()) {
-							statusWatermarkValve1.inputStreamStatus(recordOrWatermark.asStreamStatus(), currentChannel);
-							continue;
+							synchronized (lock) {
+								recordCountProvider.incRecordCount();
+								statusWatermarkValve1.inputStreamStatus(recordOrWatermark.asStreamStatus(), currentChannel);
+							}
+							return true;
 						} else if (recordOrWatermark.isLatencyMarker()) {
 							synchronized (lock) {
+								recordCountProvider.incRecordCount();
 								streamOperator.processLatencyMarker1(recordOrWatermark.asLatencyMarker());
 							}
-							continue;
+							return true;
 						}
 						else {
 							StreamRecord<IN1> record = recordOrWatermark.asRecord();
 							synchronized (lock) {
+								recordCountProvider.incRecordCount();
 								numRecordsIn.inc();
 								streamOperator.setKeyContextElement1(record);
 								LOG.debug("{}: Process element no {}: {}.", taskName, numRecordsIn.getCount(), record);
@@ -274,20 +280,28 @@ public class StreamTwoInputProcessor<IN1, IN2> implements RecordCountTargetForce
 					} else {
 						StreamElement recordOrWatermark = deserializationDelegate2.getInstance();
 						if (recordOrWatermark.isWatermark()) {
-							statusWatermarkValve2.inputWatermark(recordOrWatermark.asWatermark(), currentChannel - numInputChannels1);
-							continue;
+							synchronized (lock) {
+								recordCountProvider.incRecordCount();
+								statusWatermarkValve2.inputWatermark(recordOrWatermark.asWatermark(), currentChannel - numInputChannels1);
+							}
+							return true;
 						} else if (recordOrWatermark.isStreamStatus()) {
-							statusWatermarkValve2.inputStreamStatus(recordOrWatermark.asStreamStatus(), currentChannel - numInputChannels1);
-							continue;
+							synchronized (lock) {
+								recordCountProvider.incRecordCount();
+								statusWatermarkValve2.inputStreamStatus(recordOrWatermark.asStreamStatus(), currentChannel - numInputChannels1);
+							}
+							return true;
 						} else if (recordOrWatermark.isLatencyMarker()) {
 							synchronized (lock) {
+								recordCountProvider.incRecordCount();
 								streamOperator.processLatencyMarker2(recordOrWatermark.asLatencyMarker());
 							}
-							continue;
+							return true;
 						}
 						else {
 							StreamRecord<IN2> record = recordOrWatermark.asRecord();
 							synchronized (lock) {
+								recordCountProvider.incRecordCount();
 								numRecordsIn.inc();
 								streamOperator.setKeyContextElement2(record);
 								LOG.debug("{}: Process element no {}: {}.", taskName, numRecordsIn.getCount(), record);
@@ -298,9 +312,6 @@ public class StreamTwoInputProcessor<IN1, IN2> implements RecordCountTargetForce
 					}
 				}
 			}
-
-			while(asyncEventRecordCountTarget != -1 && recordCountProvider.getRecordCount() == asyncEventRecordCountTarget)
-				recoveryManager.triggerAsyncEvent();
 
 			LOG.debug("barrierHandler.getNextNonBlocked().");
 			final BufferOrEvent bufferOrEvent = barrierHandler.getNextNonBlocked();
@@ -329,6 +340,23 @@ public class StreamTwoInputProcessor<IN1, IN2> implements RecordCountTargetForce
 				return false;
 			}
 		}
+	}
+
+	public boolean recover() throws Exception {
+		//While we are recovering
+		//		 	Trigger any asynchronous events that should be triggered at this point
+		//			Process a record
+		while (recoveryManager.isRecovering()) {
+			//Process a few thousand records before querying if still recovering. This is just to go around some
+			// design limitations
+			for (int i = 0; i < 10000; i++) {
+				while (asyncEventRecordCountTarget != -1 && recordCountProvider.getRecordCount() == asyncEventRecordCountTarget)
+					recoveryManager.triggerAsyncEvent();
+				if (!processInput())
+					return false;
+			}
+		}
+		return true;
 	}
 
 	public void cleanup() throws IOException {
