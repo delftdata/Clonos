@@ -29,7 +29,6 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.*;
-import java.util.stream.Collectors;
 
 /**
  * A wrapper around a {@link CheckpointBarrierHandler} which interacts with the
@@ -60,6 +59,10 @@ public class CausalBufferHandler implements CheckpointBarrierHandler {
 
 	private OrderDeterminant reuseOrderDeterminant;
 
+	private boolean isRecovering;
+
+	private final int numInputChannels;
+
 	public CausalBufferHandler(EpochProvider epochProvider,
 							   IJobCausalLog causalLoggingManager,
 							   IRecoveryManager recoveryManager,
@@ -67,6 +70,7 @@ public class CausalBufferHandler implements CheckpointBarrierHandler {
 							   int numInputChannels,
 							   Object checkpointLock) {
 
+		this.numInputChannels = numInputChannels;
 		this.epochProvider = epochProvider;
 		this.causalLoggingManager = causalLoggingManager;
 		this.recoveryManager = recoveryManager;
@@ -77,70 +81,80 @@ public class CausalBufferHandler implements CheckpointBarrierHandler {
 		this.numUnprocessedBuffers = 0;
 		this.lock = checkpointLock;
 		this.reuseOrderDeterminant = new OrderDeterminant();
+		this.isRecovering = recoveryManager.isRecovering();
 	}
 
 
 	@Override
 	public BufferOrEvent getNextNonBlocked() throws Exception {
-		LOG.debug("Call to getNextNonBlocked");
 		BufferOrEvent toReturn = null;
-		if (recoveryManager.isReplaying()) {
-			LOG.debug("We are replaying! Fetching a determinant from the CausalLogManager");
-			byte nextChannel = recoveryManager.replayNextChannel();
-			LOG.debug("Determinant says next channel is {}!", nextChannel);
-			while (true) {
-				if (!bufferedBuffersPerChannel[nextChannel].isEmpty()) {
-					toReturn = bufferedBuffersPerChannel[nextChannel].poll();
-					numUnprocessedBuffers--;
-				} else {
-					toReturn = processUntilFindBufferForChannel(nextChannel);
-				}
 
-				if (toReturn.isEvent() && toReturn.getEvent().getClass() == DeterminantRequestEvent.class) {
-					LOG.debug("Buffer is DeterminantRequest, sending notification");
-					recoveryManager.notifyDeterminantRequestEvent((DeterminantRequestEvent) toReturn.getEvent(),
-						toReturn.getChannelIndex());
-					continue;
-				}
-				LOG.debug("Buffer is valid, forwarding");
-				break;
-			}
+		if (numInputChannels == 1) {
+			//Simple case, when there is only one channel we do not need to store order determinants, nor
+			// do any special replay logic
+			toReturn = getNextNonBlockedNew();
 		} else {
-			LOG.debug("We are not recovering!");
-			while (true) {
-				if (numUnprocessedBuffers != 0) {
-					if (LOG.isDebugEnabled())
-						LOG.debug("Getting an unprocessed buffer from recovery! Unprocessed buffers: {}, " +
-								"bufferedBuffers:" +
-								" " +
-								"{}", numUnprocessedBuffers,
-							"{" + Arrays.asList(bufferedBuffersPerChannel).stream().map(d -> "[" + d.size() + "]").collect(Collectors.joining(", ")) + "}");
-					toReturn = pickUnprocessedBuffer();
-				} else {
-					LOG.debug("Getting a buffer from CheckpointBarrierHandler!");
-					toReturn = wrapped.getNextNonBlocked();
-				}
+			if (isRecovering && (isRecovering = recoveryManager.isReplaying()))
+				toReturn = getNextNonBlockedReplayed();
+			else
+				toReturn = getNextNonBlockedNew();
 
-				if (toReturn.isEvent() && toReturn.getEvent().getClass() == DeterminantRequestEvent.class) {
-					LOG.debug("Buffer is DeterminantRequest, sending notification");
-					recoveryManager.notifyDeterminantRequestEvent((DeterminantRequestEvent) toReturn.getEvent(),
-						toReturn.getChannelIndex());
-					continue;
-				}
-				LOG.debug("Buffer is valid, forwarding");
-				break;
+			//When there is more than one channel we do need to append determinants
+			synchronized (lock) {
+				causalLoggingManager.appendDeterminant(reuseOrderDeterminant.replace((byte) toReturn.getChannelIndex()),
+					epochProvider.getCurrentEpochID());
 			}
 		}
-		LOG.debug("Returning buffer from channel {}", toReturn.getChannelIndex());
-		synchronized (lock) {
-			causalLoggingManager.appendDeterminant(reuseOrderDeterminant.replace((byte) toReturn.getChannelIndex()),
-				epochProvider.getCurrentEpochID());
-		}
 
+		LOG.debug("Returning buffer from channel {}", toReturn.getChannelIndex());
 		return toReturn;
 	}
 
-	private BufferOrEvent pickUnprocessedBuffer() {
+	private BufferOrEvent getNextNonBlockedNew() throws Exception {
+		BufferOrEvent toReturn;
+		while (true) {
+			if (numUnprocessedBuffers != 0)
+				toReturn = pickBufferedUnprocessedBuffer();
+			else
+				toReturn = wrapped.getNextNonBlocked();
+
+			if (toReturn.isEvent() && toReturn.getEvent().getClass() == DeterminantRequestEvent.class) {
+				LOG.debug("Buffer is DeterminantRequest, sending notification");
+				recoveryManager.notifyDeterminantRequestEvent((DeterminantRequestEvent) toReturn.getEvent(),
+					toReturn.getChannelIndex());
+				continue;
+			}
+			LOG.debug("Buffer is valid, forwarding");
+			break;
+		}
+		return toReturn;
+	}
+
+	private BufferOrEvent getNextNonBlockedReplayed() throws Exception {
+		BufferOrEvent toReturn;
+		byte nextChannel = recoveryManager.replayNextChannel();
+		LOG.debug("Determinant says next channel is {}!", nextChannel);
+		while (true) {
+			if (!bufferedBuffersPerChannel[nextChannel].isEmpty()) {
+				toReturn = bufferedBuffersPerChannel[nextChannel].poll();
+				numUnprocessedBuffers--;
+			} else {
+				toReturn = processUntilFindBufferForChannel(nextChannel);
+			}
+
+			if (toReturn.isEvent() && toReturn.getEvent().getClass() == DeterminantRequestEvent.class) {
+				LOG.debug("Buffer is DeterminantRequest, sending notification");
+				recoveryManager.notifyDeterminantRequestEvent((DeterminantRequestEvent) toReturn.getEvent(),
+					toReturn.getChannelIndex());
+				continue;
+			}
+			LOG.debug("Buffer is valid, forwarding");
+			break;
+		}
+		return toReturn;
+	}
+
+	private BufferOrEvent pickBufferedUnprocessedBuffer() {
 		//todo improve runtime complexity
 		for (Queue<BufferOrEvent> queue : bufferedBuffersPerChannel) {
 			if (!queue.isEmpty()) {
