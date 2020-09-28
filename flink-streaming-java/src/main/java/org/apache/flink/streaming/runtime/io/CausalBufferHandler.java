@@ -21,6 +21,7 @@ import org.apache.flink.runtime.causal.EpochProvider;
 import org.apache.flink.runtime.causal.log.job.IJobCausalLog;
 import org.apache.flink.runtime.causal.determinant.OrderDeterminant;
 import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
+import org.apache.flink.runtime.causal.services.BufferOrderService;
 import org.apache.flink.runtime.io.network.api.DeterminantRequestEvent;
 import org.apache.flink.runtime.io.network.partition.consumer.BufferOrEvent;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
@@ -31,10 +32,8 @@ import java.io.IOException;
 import java.util.*;
 
 /**
- * A wrapper around a {@link CheckpointBarrierHandler} which interacts with the
- * {@link org.apache.flink.runtime.causal.recovery.RecoveryManager} and the
- * {@link org.apache.flink.runtime.causal.log.job.JobCausalLog}
- * to ensure correct replay.
+ * A wrapper around a {@link CheckpointBarrierHandler} which uses a {@link CausalBufferOrderService} to ensure
+ * correct ordering of buffers.
  * <p>
  * This wrapper is implemented at this component and not the
  * {@link org.apache.flink.runtime.io.network.partition.consumer.InputGate} since the barriers serve as
@@ -43,25 +42,10 @@ import java.util.*;
  */
 public class CausalBufferHandler implements CheckpointBarrierHandler {
 
-	private static final Logger LOG = LoggerFactory.getLogger(CausalBufferHandler.class);
-	private final IRecoveryManager recoveryManager;
-	private final EpochProvider epochProvider;
 	private final Object lock;
 
-	private IJobCausalLog causalLoggingManager;
-
-	private Queue<BufferOrEvent>[] bufferedBuffersPerChannel;
-
 	private CheckpointBarrierHandler wrapped;
-
-	//This is just to reduce the complexity of going over bufferedBuffersPerChannel
-	private int numUnprocessedBuffers;
-
-	private OrderDeterminant reuseOrderDeterminant;
-
-	private boolean isRecovering;
-
-	private final int numInputChannels;
+	private BufferOrderService bufferOrderService;
 
 	public CausalBufferHandler(EpochProvider epochProvider,
 							   IJobCausalLog causalLoggingManager,
@@ -69,119 +53,22 @@ public class CausalBufferHandler implements CheckpointBarrierHandler {
 							   CheckpointBarrierHandler wrapped,
 							   int numInputChannels,
 							   Object checkpointLock) {
-
-		this.numInputChannels = numInputChannels;
-		this.epochProvider = epochProvider;
-		this.causalLoggingManager = causalLoggingManager;
-		this.recoveryManager = recoveryManager;
 		this.wrapped = wrapped;
-		this.bufferedBuffersPerChannel = new LinkedList[numInputChannels];
-		for (int i = 0; i < numInputChannels; i++)
-			bufferedBuffersPerChannel[i] = new LinkedList<>();
-		this.numUnprocessedBuffers = 0;
 		this.lock = checkpointLock;
-		this.reuseOrderDeterminant = new OrderDeterminant();
-		this.isRecovering = recoveryManager.isRecovering();
+		this.bufferOrderService = new CausalBufferOrderService(recoveryManager, causalLoggingManager, epochProvider, wrapped, numInputChannels);
 	}
 
 
 	@Override
 	public BufferOrEvent getNextNonBlocked() throws Exception {
-		BufferOrEvent toReturn = null;
-
-		if (numInputChannels == 1) {
-			//Simple case, when there is only one channel we do not need to store order determinants, nor
-			// do any special replay logic
-			toReturn = getNextNonBlockedNew();
-		} else {
-			if (isRecovering && (isRecovering = recoveryManager.isReplaying()))
-				toReturn = getNextNonBlockedReplayed();
-			else
-				toReturn = getNextNonBlockedNew();
-
-			//When there is more than one channel we do need to append determinants
-			synchronized (lock) {
-				causalLoggingManager.appendDeterminant(reuseOrderDeterminant.replace((byte) toReturn.getChannelIndex()),
-					epochProvider.getCurrentEpochID());
-			}
-		}
-
-		LOG.debug("Returning buffer from channel {}", toReturn.getChannelIndex());
-		return toReturn;
-	}
-
-	private BufferOrEvent getNextNonBlockedNew() throws Exception {
-		BufferOrEvent toReturn;
-		while (true) {
-			if (numUnprocessedBuffers != 0)
-				toReturn = pickBufferedUnprocessedBuffer();
-			else
-				toReturn = wrapped.getNextNonBlocked();
-
-			if (toReturn.isEvent() && toReturn.getEvent().getClass() == DeterminantRequestEvent.class) {
-				LOG.debug("Buffer is DeterminantRequest, sending notification");
-				recoveryManager.notifyDeterminantRequestEvent((DeterminantRequestEvent) toReturn.getEvent(),
-					toReturn.getChannelIndex());
-				continue;
-			}
-			LOG.debug("Buffer is valid, forwarding");
-			break;
-		}
-		return toReturn;
-	}
-
-	private BufferOrEvent getNextNonBlockedReplayed() throws Exception {
-		BufferOrEvent toReturn;
-		byte nextChannel = recoveryManager.replayNextChannel();
-		LOG.debug("Determinant says next channel is {}!", nextChannel);
-		while (true) {
-			if (!bufferedBuffersPerChannel[nextChannel].isEmpty()) {
-				toReturn = bufferedBuffersPerChannel[nextChannel].poll();
-				numUnprocessedBuffers--;
-			} else {
-				toReturn = processUntilFindBufferForChannel(nextChannel);
-			}
-
-			if (toReturn.isEvent() && toReturn.getEvent().getClass() == DeterminantRequestEvent.class) {
-				LOG.debug("Buffer is DeterminantRequest, sending notification");
-				recoveryManager.notifyDeterminantRequestEvent((DeterminantRequestEvent) toReturn.getEvent(),
-					toReturn.getChannelIndex());
-				continue;
-			}
-			LOG.debug("Buffer is valid, forwarding");
-			break;
-		}
-		return toReturn;
-	}
-
-	private BufferOrEvent pickBufferedUnprocessedBuffer() {
-		//todo improve runtime complexity
-		for (Queue<BufferOrEvent> queue : bufferedBuffersPerChannel) {
-			if (!queue.isEmpty()) {
-				numUnprocessedBuffers--;
-				return queue.poll();
-			}
-		}
-		return null;//unrecheable
-	}
-
-	private BufferOrEvent processUntilFindBufferForChannel(byte channel) throws Exception {
-		LOG.debug("Found no buffered buffers for channel {}. Processing buffers until I find one", channel);
-		while (true) {
-			BufferOrEvent newBufferOrEvent = wrapped.getNextNonBlocked();
-			LOG.debug("Got a new buffer from channel {}", newBufferOrEvent.getChannelIndex());
-			//If this was a BoE for the channel we were looking for, return with it
-			if (newBufferOrEvent.getChannelIndex() == channel) {
-				LOG.debug("It is from the expected channel, returning");
-				return newBufferOrEvent;
-			}
-
-			LOG.debug("It is not from the expected channel, continuing");
-			//Otherwise, append it to the correct queue and try again
-			bufferedBuffersPerChannel[newBufferOrEvent.getChannelIndex()].add(newBufferOrEvent);
-			numUnprocessedBuffers++;
+		//We lock to guarantee that async events don't try to write to the causal log at the same time as the
+		// order service.
+		synchronized (lock){
+			return bufferOrderService.getNextBuffer();
 		}
 	}
+
+
 
 	@Override
 	public void registerCheckpointEventHandler(AbstractInvokable task) {
@@ -195,10 +82,6 @@ public class CausalBufferHandler implements CheckpointBarrierHandler {
 
 	@Override
 	public boolean isEmpty() {
-		for (Queue queue : bufferedBuffersPerChannel)
-			if (!queue.isEmpty())
-				return false;
-
 		return wrapped.isEmpty();
 	}
 

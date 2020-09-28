@@ -30,23 +30,24 @@ import org.apache.flink.runtime.causal.log.job.IJobCausalLog;
 import org.apache.flink.runtime.causal.determinant.RNGDeterminant;
 import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 import org.apache.flink.util.XORShiftRandom;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
-public class CausalRandomService implements RandomService {
+public class CausalRandomService extends AbstractCausalService implements RandomService {
 
-	private IJobCausalLog causalLoggingManager;
-	private IRecoveryManager recoveryManager;
-	private EpochProvider epochProvider;
 
 	//Not thread safe
 	protected final XORShiftRandom rng = new XORShiftRandom();
 
+	//RNG determinant object used to avoid object creation and so garbage collection
 	private RNGDeterminant reuseRNGDeterminant;
 
-	public CausalRandomService(IJobCausalLog causalLoggingManager, IRecoveryManager recoveryManager, EpochProvider epochProvider) {
-		this.causalLoggingManager = causalLoggingManager;
-		this.recoveryManager = recoveryManager;
-		this.epochProvider = epochProvider;
+	private static final Logger LOG = LoggerFactory.getLogger(CausalRandomService.class);
+
+	public CausalRandomService(IJobCausalLog causalLoggingManager, IRecoveryManager recoveryManager,
+							   EpochProvider epochProvider) {
+		super(recoveryManager, causalLoggingManager, epochProvider);
 		this.reuseRNGDeterminant = new RNGDeterminant();
 	}
 
@@ -57,12 +58,23 @@ public class CausalRandomService implements RandomService {
 
 	@Override
 	public int nextInt(int maxExclusive) {
-		if(recoveryManager.isReplaying())
-			 return  recoveryManager.replayRandomInt();
+		int toReturn;
 
-		int generatedNumber = rng.nextInt(maxExclusive);
-		causalLoggingManager.appendDeterminant(reuseRNGDeterminant.replace(generatedNumber),epochProvider.getCurrentEpochID());
-		return generatedNumber;
+		if (isRecovering()) {
+			toReturn = recoveryManager.replayRandomInt();
+			if (LOG.isDebugEnabled())
+				LOG.info("nextInt(): (State: RECOVERING) Replayed random is {}", toReturn);
+		} else {
+			toReturn = rng.nextInt(maxExclusive);
+			if (LOG.isDebugEnabled())
+				LOG.info("nextInt(): (State: RUNNING) Fresh random is {}", toReturn);
+		}
+
+		//Whether we are recovering or not, we append the determinant. If recovering, we still need to restore the
+		// causal log to the pre-failure state.
+		causalLoggingManager.appendDeterminant(reuseRNGDeterminant.replace(toReturn),
+			epochProvider.getCurrentEpochID());
+		return toReturn;
 	}
 
 }

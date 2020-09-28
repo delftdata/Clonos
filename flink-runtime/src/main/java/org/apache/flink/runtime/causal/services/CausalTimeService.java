@@ -33,37 +33,39 @@ import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class CausalTimeService implements TimeService {
+public class CausalTimeService extends AbstractCausalService implements TimeService {
 
-	private final EpochProvider epochProvider;
-	private IJobCausalLog causalLoggingManager;
-	private IRecoveryManager recoveryManager;
+	//Timestamp determinant object used to avoid object creation and so garbage collection
 	private final TimestampDeterminant reuseTimestampDeterminant;
 
 	private static final Logger LOG = LoggerFactory.getLogger(CausalTimeService.class);
 
-	public CausalTimeService(IJobCausalLog causalLoggingManager, IRecoveryManager recoveryManager, EpochProvider epochProvider){
-		this.causalLoggingManager = causalLoggingManager;
-		this.recoveryManager = recoveryManager;
-		this.epochProvider = epochProvider;
+	public CausalTimeService(IJobCausalLog causalLoggingManager, IRecoveryManager recoveryManager,
+							 EpochProvider epochProvider) {
+		super(recoveryManager, causalLoggingManager, epochProvider);
+
 		this.reuseTimestampDeterminant = new TimestampDeterminant();
 	}
 
 	@Override
-	public long currentTimeMillis(){
-		while (!(recoveryManager.isRunning() || recoveryManager.isReplaying()))
-			LOG.debug("Requested timestamp but neither running nor replaying");
-
-
+	public long currentTimeMillis() {
 		long toReturn;
-		if(recoveryManager.isReplaying())
-			toReturn = recoveryManager.replayNextTimestamp();
-		else
-			toReturn = System.currentTimeMillis();
 
-		LOG.debug("Appending time determinant");
-		causalLoggingManager.appendDeterminant(reuseTimestampDeterminant.replace(toReturn), epochProvider.getCurrentEpochID());
-		LOG.debug("We are running, returning a fresh timestamp and recording it.");
+		if (isRecovering()) {
+			toReturn = recoveryManager.replayNextTimestamp();
+			if (LOG.isDebugEnabled())
+				LOG.info("currentTimeMillis(): (State: RECOVERING) Replayed timestamp is {}", toReturn);
+		} else {
+			toReturn = System.currentTimeMillis();
+			if (LOG.isDebugEnabled())
+				LOG.info("currentTimeMillis(): (State: RUNNING) Fresh timestamp is {}", toReturn);
+		}
+
+		//Whether we are recovering or not, we append the determinant. If recovering, we still need to restore the
+		// causal log to the pre-failure state.
+		causalLoggingManager.appendDeterminant(reuseTimestampDeterminant.replace(toReturn),
+			epochProvider.getCurrentEpochID());
+
 		return toReturn;
 	}
 }
