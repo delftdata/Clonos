@@ -26,7 +26,6 @@ import org.apache.flink.core.fs.FileSystemSafetyNet;
 import org.apache.flink.runtime.causal.*;
 import org.apache.flink.runtime.causal.determinant.IgnoreCheckpointDeterminant;
 import org.apache.flink.runtime.causal.determinant.SourceCheckpointDeterminant;
-import org.apache.flink.runtime.causal.log.job.IJobCausalLog;
 import org.apache.flink.runtime.causal.log.job.JobCausalLog;
 import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 import org.apache.flink.runtime.causal.recovery.RecoveryManager;
@@ -227,7 +226,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 	private final List<StreamRecordWriter<SerializationDelegate<StreamRecord<OUT>>>> streamRecordWriters;
 
-	private final JobCausalLog jobCausalLog;
+	private final JobCausalLog causalLog;
 	private final RecoveryManager recoveryManager;
 
 	private final TimeService timeService;
@@ -289,17 +288,17 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 		SingleInputGate[] inputGates = environment.getContainingTask().getAllInputGates();
 
-		this.jobCausalLog = environment.getCausalLogManager().registerNewJob(this.getEnvironment().getJobID(),
+		this.causalLog = environment.getCausalLogManager().registerNewJob(this.getEnvironment().getJobID(),
 			vertexGraphInformation, getExecutionConfig().getDeterminantSharingDepth(),
-			getEnvironment().getAllWriters(), getCheckpointLock());
+			getEnvironment().getAllWriters());
 
-		this.recoveryManager = new RecoveryManager(this, this, jobCausalLog, readyToReplayFuture,
+		this.recoveryManager = new RecoveryManager(this, this, causalLog, readyToReplayFuture,
 			vertexGraphInformation,
 			recordCountProvider, this, environment.getContainingTask().getProducedPartitions(),
 			getExecutionConfig().getDeterminantSharingDepth());
 
-		this.timeService = new CausalTimeService(jobCausalLog, recoveryManager, this);
-		this.randomService = new CausalRandomService(jobCausalLog, recoveryManager, this);
+		this.timeService = new CausalTimeService(causalLog, recoveryManager, this);
+		this.randomService = new CausalRandomService(causalLog, recoveryManager, this);
 
 		this.streamRecordWriters = createStreamRecordWriters(configuration, environment, randomService);
 
@@ -310,7 +309,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 		for (ResultPartition partition : environment.getContainingTask().getProducedPartitions()) {
 			for (ResultSubpartition subpartition : partition.getResultSubpartitions()) {
-				((PipelinedSubpartition) subpartition).setCausalLoggingManager(jobCausalLog);
+				((PipelinedSubpartition) subpartition).setCausalLog(causalLog);
 				((PipelinedSubpartition) subpartition).setRecoveryManager(recoveryManager);
 			}
 			DeterminantResponseEventListener edel =
@@ -382,7 +381,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 					"Time Trigger for " + getName(), getUserCodeClassLoader());
 
 				timerService = new SystemProcessingTimeService(this, getCheckpointLock(), timerThreadFactory,
-					timeService, this, recordCountProvider, jobCausalLog, recoveryManager);
+					timeService, this, recordCountProvider, causalLog, recoveryManager);
 			}
 			recoveryManager.setProcessingTimeService((ProcessingTimeForceable) timerService);
 
@@ -770,11 +769,11 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 
 	public boolean isCausal() {
-		return getJobCausalLog() != null;
+		return getCausalLog() != null;
 	}
 
-	public IJobCausalLog getJobCausalLog() {
-		return this.jobCausalLog;
+	public JobCausalLog getCausalLog() {
+		return this.causalLog;
 	}
 
 	public IRecoveryManager getRecoveryManager() {
@@ -809,7 +808,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 				// checkpoint alignments
 
 				if (!this.recoveryManager.vertexGraphInformation.hasUpstream()) {
-					this.jobCausalLog.appendDeterminant(reuseSourceCheckpointDeterminant.replace(
+					this.causalLog.appendDeterminant(reuseSourceCheckpointDeterminant.replace(
 						recordCountProvider.getRecordCount(),
 						checkpointMetaData.getCheckpointId(),
 						checkpointMetaData.getTimestamp(),
@@ -877,7 +876,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			ignoreCheckpointReuseDeterminant.replace(recordCountProvider.getRecordCount(), checkpointId);
 			if (isRunning && recoveryManager.isRunning()) {
 				LOG.info("Ignoring checkpoint, appending determinant and ignoring.");
-				jobCausalLog.appendDeterminant(ignoreCheckpointReuseDeterminant, currentEpochID.get());
+				causalLog.appendDeterminant(ignoreCheckpointReuseDeterminant, currentEpochID.get());
 				CheckpointBarrierHandler handler = getCheckpointBarrierHandler();
 				try {
 					handler.ignoreCheckpoint(checkpointId);
@@ -916,7 +915,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 					}
 				}
 
-				jobCausalLog.notifyCheckpointComplete(checkpointId);
+				causalLog.notifyCheckpointComplete(checkpointId);
 				//Notify InFlightLogger
 				this.streamRecordWriters.forEach(rw -> {
 					try {

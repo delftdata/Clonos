@@ -145,7 +145,6 @@ public class TaskManagerComponentsStartupShutdownTest extends TestLogger {
 			final IOManager ioManager = new IOManagerAsync(TMP_DIR);
 			final NetworkEnvironment network = new NetworkEnvironment(
 				new NetworkBufferPool(32, netConf.networkBufferSize()),
-				new NetworkBufferPool(32, netConf.networkBufferSize()),
 				new LocalConnectionManager(),
 				new ResultPartitionManager(),
 				new TaskEventDispatcher(),
@@ -159,7 +158,7 @@ public class TaskManagerComponentsStartupShutdownTest extends TestLogger {
 				netConf.floatingNetworkBuffersPerGate(),
 				netConf.senderExtraNetworkBuffersPerChannel(),
 				netConf.senderExtraFloatingNetworkBuffersPerGate(),
-				true, 0);
+				true);
 
 			network.start();
 

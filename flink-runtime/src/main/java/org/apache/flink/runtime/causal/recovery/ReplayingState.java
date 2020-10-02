@@ -25,15 +25,12 @@
 
 package org.apache.flink.runtime.causal.recovery;
 
-import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.ImmutableSortedMap;
 import com.google.common.collect.Table;
+import org.apache.flink.runtime.causal.DeterminantResponseEvent;
 import org.apache.flink.runtime.causal.determinant.*;
-import org.apache.flink.runtime.causal.log.thread.SubpartitionThreadLogDelta;
-import org.apache.flink.runtime.causal.log.vertex.VertexCausalLogDelta;
+import org.apache.flink.runtime.causal.log.job.CausalLogID;
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
 import org.apache.flink.runtime.io.network.partition.PipelinedSubpartition;
-import org.apache.flink.runtime.io.network.partition.ResultSubpartition;
 import org.apache.flink.runtime.io.network.partition.consumer.RemoteInputChannel;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
@@ -68,22 +65,20 @@ public class ReplayingState extends AbstractState {
 
 	Queue<Determinant>[] reuseCache;
 
-	public ReplayingState(RecoveryManager context, VertexCausalLogDelta recoveryDeterminants) {
+	public ReplayingState(RecoveryManager context, DeterminantResponseEvent determinantAccumulator) {
 		super(context);
 
-		LOG.info("Entered replaying state with delta: {}", recoveryDeterminants);
-		determinantEncoder = context.jobCausalLog.getDeterminantEncoder();
+		LOG.info("Entered replaying state with determinants: {}", determinantAccumulator);
+		determinantEncoder = context.causalLog.getDeterminantEncoder();
 
 		setupDeterminantCache();
 
-		createSubpartitionRecoveryThreads(recoveryDeterminants);
+		createSubpartitionRecoveryThreads(determinantAccumulator);
 		for (Thread t : recoveryThreads)
 			t.start();
 
-		if (recoveryDeterminants.getMainThreadDelta() != null)
-			this.mainThreadRecoveryBuffer = recoveryDeterminants.getMainThreadDelta().getRawDeterminants();
-
-
+		this.mainThreadRecoveryBuffer =
+			determinantAccumulator.getDeterminants().get(new CausalLogID(context.vertexGraphInformation.getThisTasksVertexID().getVertexId()));
 	}
 
 	private void setupDeterminantCache() {
@@ -124,18 +119,18 @@ public class ReplayingState extends AbstractState {
 		context.readyToReplayFuture.complete(null);//allow task to start running
 	}
 
-	private void createSubpartitionRecoveryThreads(VertexCausalLogDelta recoveryDeterminants) {
+	private void createSubpartitionRecoveryThreads(DeterminantResponseEvent determinantResponseEvent) {
 
 		recoveryThreads = new LinkedList<>();
 
+		CausalLogID id = new CausalLogID(context.vertexGraphInformation.getThisTasksVertexID().getVertexId());
 		for (Table.Cell<IntermediateResultPartitionID, Integer, PipelinedSubpartition> cell :
 			context.subpartitionTable.cellSet()) {
-
-			SubpartitionThreadLogDelta delta = recoveryDeterminants.getPartitionDeltas().getOrDefault(cell.getRowKey()
-				, ImmutableSortedMap.of()).get(cell.getColumnKey());
+			id.replace(cell.getRowKey().getLowerPart(), cell.getRowKey().getUpperPart(), cell.getColumnKey().byteValue());
+			ByteBuf subpartitionBuf = determinantResponseEvent.getDeterminants().get(id);
 			ByteBuf recoveryBuffer = Unpooled.EMPTY_BUFFER;
-			if (delta != null)
-				recoveryBuffer = delta.getRawDeterminants();
+			if (subpartitionBuf != null)
+				recoveryBuffer = subpartitionBuf;
 			PipelinedSubpartition subpartition = cell.getValue();
 
 			Thread t = new SubpartitionRecoveryThread(recoveryBuffer, subpartition, context, cell.getRowKey(),
@@ -250,7 +245,7 @@ public class ReplayingState extends AbstractState {
 	private void finishReplaying() {
 
 		//Safety check that recovery brought us to the exact same causal log state as pre-failure
-		assert mainThreadRecoveryBuffer.capacity() == context.jobCausalLog.mainThreadLogLength();
+		assert mainThreadRecoveryBuffer.capacity() == context.causalLog.mainThreadLogLength();
 
 		if (mainThreadRecoveryBuffer != null)
 			mainThreadRecoveryBuffer.release();
@@ -277,7 +272,7 @@ public class ReplayingState extends AbstractState {
 										  int index) {
 			this.recoveryBuffer = recoveryBuffer;
 			this.pipelinedSubpartition = pipelinedSubpartition;
-			this.determinantEncoder = context.jobCausalLog.getDeterminantEncoder();
+			this.determinantEncoder = context.causalLog.getDeterminantEncoder();
 			this.context = context;
 			this.partitionID = partitionID;
 			this.index = index;
@@ -293,7 +288,7 @@ public class ReplayingState extends AbstractState {
 				Queue<Determinant>[] subpartCache = new Queue[7];
 				subpartCache[BufferBuiltDeterminant.getTypeTag()] = new ArrayDeque<>();
 				subpartCache[BufferBuiltDeterminant.getTypeTag()].add(reuse);
-				//2. Rebuild in-fligh log and subpartition state
+				//2. Rebuild in-flight log and subpartition state
 				while (recoveryBuffer.isReadable()) {
 
 					Determinant determinant = determinantEncoder.decodeNext(recoveryBuffer, subpartCache);
@@ -305,19 +300,19 @@ public class ReplayingState extends AbstractState {
 							+ determinant);
 					BufferBuiltDeterminant bufferBuiltDeterminant = (BufferBuiltDeterminant) determinant;
 
-					LOG.debug("Requesting to build and log buffer with {} bytes",
+					LOG.info("Requesting to build and log buffer with {} bytes",
 						bufferBuiltDeterminant.getNumberOfBytes());
 					try {
 						pipelinedSubpartition.buildAndLogBuffer(bufferBuiltDeterminant.getNumberOfBytes());
 					} catch (InterruptedException e) {
-							return;
+						return;
 					}
 					subpartCache[BufferBuiltDeterminant.getTypeTag()].add(reuse);
 				}
 			}
 			LOG.info("Done recovering pipelined subpartition");
 			//Safety check that recovery brought us to the exact same state as pre-failure
-			assert recoveryBuffer.capacity() == context.jobCausalLog.subpartitionLogLength(partitionID, index);
+			assert recoveryBuffer.capacity() == context.causalLog.subpartitionLogLength(partitionID, index);
 
 			// If there is a replay request, we have to prepare it, before setting isRecovering to true
 			InFlightLogRequestEvent unansweredRequest =

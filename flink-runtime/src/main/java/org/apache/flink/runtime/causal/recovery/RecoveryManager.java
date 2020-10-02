@@ -30,7 +30,6 @@ import com.google.common.collect.Table;
 import org.apache.flink.runtime.causal.*;
 import org.apache.flink.runtime.causal.determinant.AsyncDeterminant;
 import org.apache.flink.runtime.causal.log.job.JobCausalLog;
-import org.apache.flink.runtime.causal.log.vertex.VertexCausalLogDelta;
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
 import org.apache.flink.runtime.io.network.api.DeterminantRequestEvent;
 import org.apache.flink.runtime.io.network.partition.PipelinedSubpartition;
@@ -57,7 +56,7 @@ public class RecoveryManager implements IRecoveryManager {
 
 	public final VertexGraphInformation vertexGraphInformation;
 	final CompletableFuture<Void> readyToReplayFuture;
-	final JobCausalLog jobCausalLog;
+	final JobCausalLog causalLog;
 
 	final ConcurrentMap<VertexID, UnansweredDeterminantRequest> unansweredDeterminantRequests;
 	final int determinantSharingDepth;
@@ -91,12 +90,12 @@ public class RecoveryManager implements IRecoveryManager {
 
 	public AtomicInteger numberOfRecoveringSubpartitions;
 
-	public RecoveryManager(AbstractInvokable invokable, EpochProvider epochProvider, JobCausalLog jobCausalLog,
+	public RecoveryManager(AbstractInvokable invokable, EpochProvider epochProvider, JobCausalLog causalLog,
 						   CompletableFuture<Void> readyToReplayFuture, VertexGraphInformation vertexGraphInformation,
 						   RecordCountProvider recordCountProvider, CheckpointForceable checkpointForceable,
 						   ResultPartition[] partitions, int determinantSharingDepth) {
 		this.invokable = invokable;
-		this.jobCausalLog = jobCausalLog;
+		this.causalLog = causalLog;
 		this.readyToReplayFuture = readyToReplayFuture;
 		this.vertexGraphInformation = vertexGraphInformation;
 
@@ -278,18 +277,13 @@ public class RecoveryManager implements IRecoveryManager {
 	public static class UnansweredDeterminantRequest {
 		private int numResponsesReceived;
 		private int requestingChannel;
-		private DeterminantRequestEvent event;
 
-		/**
-		 * The delta we are going to return. Starts empty, but is progressively merged with downstream deltas.
-		 */
-		VertexCausalLogDelta vertexCausalLogDelta;
+		private DeterminantResponseEvent response;
 
 		public UnansweredDeterminantRequest(DeterminantRequestEvent event, int requestingChannel) {
 			this.numResponsesReceived = 0;
 			this.requestingChannel = requestingChannel;
-			this.event = event;
-			vertexCausalLogDelta = new VertexCausalLogDelta(event.getFailedVertex());
+			this.response = new DeterminantResponseEvent(event.getFailedVertex());
 		}
 
 		public int getNumResponsesReceived() {
@@ -305,12 +299,8 @@ public class RecoveryManager implements IRecoveryManager {
 			numResponsesReceived++;
 		}
 
-		public VertexCausalLogDelta getVertexCausalLogDelta() {
-			return vertexCausalLogDelta;
-		}
-
-		public DeterminantRequestEvent getEvent() {
-			return event;
+		public DeterminantResponseEvent getCurrentResponse() {
+			return response;
 		}
 
 	}

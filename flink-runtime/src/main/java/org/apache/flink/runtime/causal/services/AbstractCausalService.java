@@ -26,7 +26,7 @@
 package org.apache.flink.runtime.causal.services;
 
 import org.apache.flink.runtime.causal.EpochProvider;
-import org.apache.flink.runtime.causal.log.job.IJobCausalLog;
+import org.apache.flink.runtime.causal.log.job.JobCausalLog;
 import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 
 /**
@@ -40,7 +40,7 @@ public abstract class AbstractCausalService {
 	protected final IRecoveryManager recoveryManager;
 
 	// Causal services will append the determinant of a single nondeterministic event to the causal logging manager
-	protected final IJobCausalLog causalLoggingManager;
+	protected final JobCausalLog causalLog;
 
 	// Causal services need to know to which epoch this nondeterministic event belongs to
 	protected final EpochProvider epochProvider;
@@ -48,10 +48,10 @@ public abstract class AbstractCausalService {
 	// Boolean used to short-circuit accesses to the recovery manager when not in recovery
 	private boolean isRecovering;
 
-	public AbstractCausalService(IRecoveryManager recoveryManager, IJobCausalLog causalLoggingManager,
+	public AbstractCausalService(JobCausalLog causalLog, IRecoveryManager recoveryManager,
 								 EpochProvider epochProvider){
+		this.causalLog = causalLog;
 		this.recoveryManager = recoveryManager;
-		this.causalLoggingManager = causalLoggingManager;
 		this.epochProvider = epochProvider;
 		this.isRecovering = !recoveryManager.isRunning();
 	}

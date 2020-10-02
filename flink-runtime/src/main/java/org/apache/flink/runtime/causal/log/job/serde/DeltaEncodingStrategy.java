@@ -23,14 +23,16 @@
  *
  */
 
-package org.apache.flink.runtime.causal.log.thread;
+package org.apache.flink.runtime.causal.log.job.serde;
 
-import org.apache.flink.runtime.causal.determinant.Determinant;
-
-public interface LocalThreadCausalLog extends ThreadCausalLog {
+public enum DeltaEncodingStrategy {
 	/**
-	 * Appends the provided determinants to the  log.
-	 * @param determinant to append
+	 * The flat strategy is simpler to encode and decode, but leads to duplicated metadata
 	 */
-	void appendDeterminant(Determinant determinant, long epochID);
+	FLAT,
+	/**
+	 * The Hierarchical strategy will save on duplicated metadata by hierarchically grouping deltas, at the cost of
+	 * more complex serialization logic.
+	 */
+	HIERARCHICAL
 }

@@ -17,67 +17,125 @@
  */
 package org.apache.flink.runtime.causal;
 
+import org.apache.flink.api.java.typeutils.runtime.DataOutputViewStream;
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataOutputView;
-import org.apache.flink.runtime.causal.determinant.Determinant;
-import org.apache.flink.runtime.causal.log.vertex.VertexCausalLog;
-import org.apache.flink.runtime.causal.log.vertex.VertexCausalLogDelta;
+import org.apache.flink.runtime.causal.log.job.CausalLogID;
 import org.apache.flink.runtime.event.TaskEvent;
+import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
+import org.apache.flink.shaded.netty4.io.netty.buffer.Unpooled;
 
 import java.io.IOException;
-import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 public class DeterminantResponseEvent extends TaskEvent {
 
-	VertexCausalLogDelta vertexCausalLogDelta;
-	boolean found;
+	private boolean found;
+
+	private VertexID vertexID;
+
+	private Map<CausalLogID, ByteBuf> determinants;
 
 	public DeterminantResponseEvent() {
 	}
 
-	public DeterminantResponseEvent(VertexCausalLogDelta vertexCausalLogDelta) {
-		this.found = true;
-		this.vertexCausalLogDelta = vertexCausalLogDelta;
+	public DeterminantResponseEvent(VertexID failedVertex) {
+		this(false, failedVertex);
 	}
 
 	/**
 	 * This constructor differentiates from the empty constructor used in deserialization.
 	 * Though it receives a parameter found, it is expected that this is always false.
 	 */
-	public DeterminantResponseEvent(boolean found, VertexID vertexID){
+	public DeterminantResponseEvent(boolean found, VertexID vertexID) {
 		this.found = found;
-		this.vertexCausalLogDelta = new VertexCausalLogDelta(vertexID);
+		this.vertexID = vertexID;
+		determinants = new HashMap<>();
 	}
 
+	public DeterminantResponseEvent(VertexID vertexID, Map<CausalLogID, ByteBuf> determinants) {
+		this.found = true;
+		this.vertexID = vertexID;
+		this.determinants = determinants;
+	}
+
+
+	public boolean isFound() {
+		return found;
+	}
+
+	public VertexID getVertexID() {
+		return vertexID;
+	}
+
+	public Map<CausalLogID, ByteBuf> getDeterminants() {
+		return determinants;
+	}
 
 	@Override
 	public void write(DataOutputView out) throws IOException {
 		out.writeBoolean(found);
-		vertexCausalLogDelta.write(out);
+		out.writeShort(vertexID.getVertexId());
+		out.writeByte(determinants.size());
+		for (Map.Entry<CausalLogID, ByteBuf> entry : determinants.entrySet()) {
+			entry.getKey().write(out);
+			ByteBuf buf = entry.getValue();
+			out.writeInt(buf.readableBytes());
+			buf.readBytes(new DataOutputViewStream(out), buf.readableBytes());
+			buf.release();
+		}
 	}
 
 	@Override
 	public void read(DataInputView in) throws IOException {
 		this.found = in.readBoolean();
-		this.vertexCausalLogDelta = new VertexCausalLogDelta();
-		this.vertexCausalLogDelta.read(in);
+		this.vertexID = new VertexID(in.readShort());
+		this.determinants = new HashMap<>();
+		byte numDeterminantDeltas = in.readByte();
+		for (int i = 0; i < numDeterminantDeltas; i++) {
+			CausalLogID causalLogID = new CausalLogID();
+			causalLogID.read(in);
 
+			int numBytesOfBuf = in.readInt();
+			byte[] toWrap = new byte[numBytesOfBuf];
+			in.read(toWrap);
+			ByteBuf buf = Unpooled.wrappedBuffer(toWrap);
+
+			this.determinants.put(causalLogID, buf);
+		}
 	}
 
-	public VertexCausalLogDelta getVertexCausalLogDelta() {
-		return vertexCausalLogDelta;
-	}
 
-	public boolean getFound() {
-		return found;
+	public void merge(DeterminantResponseEvent other){
+
+		if(!this.found && !other.found)
+			return;
+
+		if(!this.found) //The other one is found
+			this.found = true;
+
+		for(Map.Entry<CausalLogID, ByteBuf> entry : other.determinants.entrySet()) {
+			determinants.merge(entry.getKey(), entry.getValue(), (v1, v2) -> {
+				//Note, this is only ran if both are defined, in which  case the smaller one is released.
+				if(v1.readableBytes() > v2.readableBytes()) {
+					v2.release();
+					return v1;
+				}else {
+					v1.release();
+					return v2;
+				}
+			} );
+		}
 	}
 
 	@Override
 	public String toString() {
 		return "DeterminantResponseEvent{" +
 			"found=" + found +
-			"vertexCausalLogDelta=" + vertexCausalLogDelta +
-			'}';
+			", vertexID=" + vertexID +
+			", determinants=[" + determinants.entrySet().stream().map(e-> e.getKey() + " -> " + e.getValue().readableBytes()).collect(Collectors.joining(", ")) +
+			"]}";
 	}
-
 }

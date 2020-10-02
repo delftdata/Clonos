@@ -20,8 +20,7 @@ package org.apache.flink.runtime.io.network;
 
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.JobID;
-import org.apache.flink.runtime.causal.log.tm.CausalLogManager;
-import org.apache.flink.runtime.causal.VertexGraphInformation;
+import org.apache.flink.runtime.causal.log.CausalLogManager;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager.IOMode;
@@ -105,7 +104,6 @@ public class NetworkEnvironment {
 
 	private final boolean enableCreditBased;
 
-
 	private final CausalLogManager causalLogManager;
 
 	private boolean isShutdown;
@@ -113,7 +111,6 @@ public class NetworkEnvironment {
 
 	public NetworkEnvironment(
 		NetworkBufferPool networkBufferPool,
-		NetworkBufferPool determinantBufferPool,
 		ConnectionManager connectionManager,
 		ResultPartitionManager resultPartitionManager,
 		TaskEventDispatcher taskEventDispatcher,
@@ -127,7 +124,7 @@ public class NetworkEnvironment {
 		int extraNetworkBuffersPerGate,
 		int senderExtraNetworkBuffersPerChannel,
 		int senderExtraNetworkBuffersPerGate,
-		boolean enableCreditBased, int numDeterminantBuffersPerTask) {
+		boolean enableCreditBased, CausalLogManager causalLogManager) {
 
 		this.networkBufferPool = checkNotNull(networkBufferPool);
 		this.connectionManager = checkNotNull(connectionManager);
@@ -151,12 +148,12 @@ public class NetworkEnvironment {
 
 		this.enableCreditBased = enableCreditBased;
 
+		this.causalLogManager = causalLogManager;
 
-		this.causalLogManager = new CausalLogManager(determinantBufferPool, numDeterminantBuffersPerTask);
 
 	}
 
-	public NetworkEnvironment(NetworkBufferPool bufferPool, NettyConnectionManager nettyConnectionManager,
+	public NetworkEnvironment(NetworkBufferPool bufferPool, ConnectionManager nettyConnectionManager,
 							  ResultPartitionManager resultPartitionManager, TaskEventDispatcher taskEventDispatcher,
 							  KvStateRegistry kvStateRegistry, KvStateServer kvStateServer,
 							  KvStateClientProxy kvStateClientProxy, IOMode sync,
@@ -164,10 +161,10 @@ public class NetworkEnvironment {
 							  Integer networkBuffersPerChannel, Integer extraNetworkBuffersPerGate,
 							  Integer senderExtraNetworkBuffersPerChannel, Integer senderExtraNetworkBuffersPerGate,
 							  boolean enableCreditBased) {
-		this(bufferPool, null, nettyConnectionManager, resultPartitionManager, taskEventDispatcher, kvStateRegistry,
+		this(bufferPool, nettyConnectionManager, resultPartitionManager, taskEventDispatcher, kvStateRegistry,
 			kvStateServer, kvStateClientProxy, sync, partitionRequestInitialBackoff, partitionRequestMaxBackoff,
 			networkBuffersPerChannel, extraNetworkBuffersPerGate, senderExtraNetworkBuffersPerChannel,
-			senderExtraNetworkBuffersPerGate, enableCreditBased, 0);
+			senderExtraNetworkBuffersPerGate, enableCreditBased, null);
 	}
 
 	// --------------------------------------------------------------------------------------------
@@ -362,7 +359,7 @@ public class NetworkEnvironment {
 
 			try {
 				LOG.debug("Starting network connection manager");
-				connectionManager.start(resultPartitionManager, taskEventDispatcher, causalLogManager);
+				connectionManager.start(resultPartitionManager, taskEventDispatcher);
 
 			} catch (IOException t) {
 				throw new IOException("Failed to instantiate network connection manager.", t);

@@ -19,8 +19,7 @@
 package org.apache.flink.runtime.io.network.netty;
 
 import org.apache.flink.annotation.VisibleForTesting;
-import org.apache.flink.runtime.causal.log.job.CausalLogDelta;
-import org.apache.flink.runtime.causal.log.tm.CausalLogManager;
+import org.apache.flink.runtime.causal.log.CausalLogManager;
 import org.apache.flink.runtime.io.network.NetworkSequenceViewReader;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
@@ -152,7 +151,7 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 	public void notifyReaderCreated(final NetworkSequenceViewReader reader, ResultPartitionID partitionId, int queueIndex) {
 		allReaders.put(reader.getReceiverId(), reader);
 		if(causalLogManager != null)
-			causalLogManager.registerNewDownstreamConsumer(reader.getJobID(), reader.getReceiverId(), partitionId.getPartitionId(), queueIndex);
+			causalLogManager.registerNewDownstreamConsumer(reader.getReceiverId(), reader.getJobID(), partitionId.getPartitionId(), queueIndex);
 	}
 
 	public void cancel(InputChannelID receiverId) {
@@ -237,7 +236,6 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 		// gate and the consumed views as the local input channels.
 
 		BufferAndAvailability next = null;
-		CausalLogDelta delta = null;
 		try {
 			while (true) {
 				NetworkSequenceViewReader reader = pollAvailableReader();
@@ -271,14 +269,12 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 						registerAvailableReader(reader);
 					}
 
-					delta = causalLogManager.getNextDeterminantsForDownstream(reader.getReceiverId(), next.getEpochID());
-
 					BufferResponse msg = new BufferResponse(
 						next.buffer(),
-						delta,
 						reader.getSequenceNumber(),
 						reader.getReceiverId(),
-						next.buffersInBacklog());
+						next.buffersInBacklog(),
+						next.getEpochID());
 
 					if (isEndOfPartitionEvent(next.buffer())) {
 						LOG.warn("Reader {} received end of partition event.", reader);
@@ -300,10 +296,6 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 			if (next != null) {
 				next.buffer().recycleBuffer();
 			}
-			if(delta != null){
-				delta.release();
-			}
-
 			throw new IOException(t.getMessage(), t);
 		}
 	}

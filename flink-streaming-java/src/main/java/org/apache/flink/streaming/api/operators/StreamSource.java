@@ -18,11 +18,8 @@
 package org.apache.flink.streaming.api.operators;
 
 import org.apache.flink.annotation.Internal;
-import org.apache.flink.runtime.causal.EpochProvider;
 import org.apache.flink.runtime.causal.RecordCountProvider;
 import org.apache.flink.runtime.causal.determinant.ProcessingTimeCallbackID;
-import org.apache.flink.runtime.causal.log.job.IJobCausalLog;
-import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
@@ -33,7 +30,6 @@ import org.apache.flink.streaming.runtime.streamstatus.StreamStatusMaintainer;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeCallback;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeService;
 
-import java.util.UUID;
 import java.util.concurrent.ScheduledFuture;
 
 /**

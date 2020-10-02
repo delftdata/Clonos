@@ -26,7 +26,7 @@ package org.apache.flink.metrics;
  * history a rate is derived on demand, which represents the average rate of events over the given time span.
  *
  * <p>Setting the time span to a low value reduces memory-consumption and will more accurately report short-term changes.
- * The minimum value possible is {@link View#UPDATE_INTERVAL_SECONDS}.
+ * The minimum value possible is {@link View#UPDATE_INTERVAL_MILLIS}.
  * A high value in turn increases memory-consumption, since a longer history has to be maintained, but will result in
  * smoother transitions between rates.
  *
@@ -36,7 +36,7 @@ public class MeterView implements Meter, View {
 	/** The underlying counter maintaining the count. */
 	private final Counter counter;
 	/** The time-span over which the average is calculated. */
-	private final int timeSpanInSeconds;
+	private final int timeSpanInMillis;
 	/** Circular array containing the history of values. */
 	private final long[] values;
 	/** The index in the array for the current time. */
@@ -44,14 +44,14 @@ public class MeterView implements Meter, View {
 	/** The last rate we computed. */
 	private double currentRate = 0;
 
-	public MeterView(int timeSpanInSeconds) {
-		this(new SimpleCounter(), timeSpanInSeconds);
+	public MeterView(int timeSpanInMillis) {
+		this(new SimpleCounter(), timeSpanInMillis);
 	}
 
-	public MeterView(Counter counter, int timeSpanInSeconds) {
+	public MeterView(Counter counter, int timeSpanInMillis) {
 		this.counter = counter;
-		this.timeSpanInSeconds = timeSpanInSeconds - (timeSpanInSeconds % UPDATE_INTERVAL_SECONDS);
-		this.values = new long[this.timeSpanInSeconds / UPDATE_INTERVAL_SECONDS + 1];
+		this.timeSpanInMillis = timeSpanInMillis - (timeSpanInMillis % UPDATE_INTERVAL_MILLIS);
+		this.values = new long[this.timeSpanInMillis / UPDATE_INTERVAL_MILLIS + 1];
 	}
 
 	@Override
@@ -78,6 +78,6 @@ public class MeterView implements Meter, View {
 	public void update() {
 		time = (time + 1) % values.length;
 		values[time] = counter.getCount();
-		currentRate =  ((double) (values[time] - values[(time + 1) % values.length]) / timeSpanInSeconds);
+		currentRate =  ((double) (values[time] - values[(time + 1) % values.length]) / (((float)timeSpanInMillis)/1000.0f));
 	}
 }

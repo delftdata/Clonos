@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.io.network.netty;
 
+import org.apache.flink.runtime.causal.log.CausalLogManager;
 import org.apache.flink.runtime.io.network.ConnectionID;
 import org.apache.flink.runtime.io.network.NetworkClientHandler;
 import org.apache.flink.runtime.io.network.netty.exception.LocalTransportException;
@@ -44,9 +45,16 @@ class PartitionRequestClientFactory {
 
 	private final ConcurrentMap<ConnectionID, Object> clients = new ConcurrentHashMap<ConnectionID, Object>();
 
-	PartitionRequestClientFactory(NettyClient nettyClient) {
-		this.nettyClient = nettyClient;
+	private final CausalLogManager causalLogManager;
+
+	PartitionRequestClientFactory(NettyClient nettyClient){
+		this(nettyClient, null);
 	}
+	PartitionRequestClientFactory(NettyClient nettyClient, CausalLogManager causalLogManager) {
+		this.nettyClient = nettyClient;
+		this.causalLogManager = causalLogManager;
+	}
+
 
 	/**
 	 * Atomically establishes a TCP connection to the given remote address and
@@ -76,7 +84,7 @@ class PartitionRequestClientFactory {
 				// We create a "connecting future" and atomically add it to the map.
 				// Only the thread that really added it establishes the channel.
 				// The others need to wait on that original establisher's future.
-				ConnectingChannel connectingChannel = new ConnectingChannel(connectionId, this);
+				ConnectingChannel connectingChannel = new ConnectingChannel(connectionId, this, causalLogManager);
 				Object old = clients.putIfAbsent(connectionId, connectingChannel);
 
 				if (old == null) {
@@ -140,9 +148,12 @@ class PartitionRequestClientFactory {
 
 		private boolean disposeRequestClient = false;
 
-		public ConnectingChannel(ConnectionID connectionId, PartitionRequestClientFactory clientFactory) {
+		private final CausalLogManager causalLogManager;
+
+		public ConnectingChannel(ConnectionID connectionId, PartitionRequestClientFactory clientFactory, CausalLogManager causalLogManager) {
 			this.connectionId = connectionId;
 			this.clientFactory = clientFactory;
+			this.causalLogManager = causalLogManager;
 		}
 
 		private boolean dispose() {
@@ -167,7 +178,7 @@ class PartitionRequestClientFactory {
 				try {
 					NetworkClientHandler clientHandler = channel.pipeline().get(NetworkClientHandler.class);
 					partitionRequestClient = new PartitionRequestClient(
-						channel, clientHandler, connectionId, clientFactory);
+						channel, clientHandler, connectionId, clientFactory, causalLogManager);
 
 					if (disposeRequestClient) {
 						partitionRequestClient.disposeIfNotUsed();

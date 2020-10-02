@@ -27,8 +27,8 @@ package org.apache.flink.runtime.causal.services;
 
 import org.apache.flink.api.common.services.TimeService;
 import org.apache.flink.runtime.causal.EpochProvider;
-import org.apache.flink.runtime.causal.log.job.IJobCausalLog;
 import org.apache.flink.runtime.causal.determinant.TimestampDeterminant;
+import org.apache.flink.runtime.causal.log.job.JobCausalLog;
 import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,9 +40,9 @@ public class CausalTimeService extends AbstractCausalService implements TimeServ
 
 	private static final Logger LOG = LoggerFactory.getLogger(CausalTimeService.class);
 
-	public CausalTimeService(IJobCausalLog causalLoggingManager, IRecoveryManager recoveryManager,
+	public CausalTimeService(JobCausalLog causalLoggingManager, IRecoveryManager recoveryManager,
 							 EpochProvider epochProvider) {
-		super(recoveryManager, causalLoggingManager, epochProvider);
+		super(causalLoggingManager, recoveryManager, epochProvider);
 
 		this.reuseTimestampDeterminant = new TimestampDeterminant();
 	}
@@ -63,7 +63,7 @@ public class CausalTimeService extends AbstractCausalService implements TimeServ
 
 		//Whether we are recovering or not, we append the determinant. If recovering, we still need to restore the
 		// causal log to the pre-failure state.
-		causalLoggingManager.appendDeterminant(reuseTimestampDeterminant.replace(toReturn),
+		causalLog.appendDeterminant(reuseTimestampDeterminant.replace(toReturn),
 			epochProvider.getCurrentEpochID());
 
 		return toReturn;

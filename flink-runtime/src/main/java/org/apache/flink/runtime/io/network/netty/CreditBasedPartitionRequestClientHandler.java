@@ -20,7 +20,6 @@ package org.apache.flink.runtime.io.network.netty;
 
 import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.core.memory.MemorySegmentFactory;
-import org.apache.flink.runtime.causal.log.tm.CausalLogManager;
 import org.apache.flink.runtime.io.network.NetworkClientHandler;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.FreeingBufferRecycler;
@@ -83,15 +82,10 @@ class CreditBasedPartitionRequestClientHandler extends ChannelInboundHandlerAdap
 	 */
 	private volatile ChannelHandlerContext ctx;
 
-	private final CausalLogManager causalLogManager;
 
 	public CreditBasedPartitionRequestClientHandler(){
-		this(null);
 	}
 
-	public CreditBasedPartitionRequestClientHandler(CausalLogManager causalLogManager){
-		this.causalLogManager = causalLogManager;
-	}
 
 	// ------------------------------------------------------------------------
 	// Input channel/receiver registration
@@ -343,7 +337,6 @@ class CreditBasedPartitionRequestClientHandler extends ChannelInboundHandlerAdap
 		try {
 			ByteBuf nettyBuffer = bufferOrEvent.getNettyBuffer();
 			final int receivedSize = nettyBuffer.readableBytes();
-			causalLogManager.processCausalLogDelta(inputChannel.getJobID(), bufferOrEvent.getCausalLogDelta());
 			if (bufferOrEvent.isBuffer()) {
 				// ---- Buffer ------------------------------------------------
 

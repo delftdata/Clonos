@@ -88,7 +88,7 @@ public class MetricFetcher<T extends RestfulGateway> {
 	public void update() {
 		synchronized (this) {
 			long currentTime = System.currentTimeMillis();
-			if (currentTime - lastUpdateTime > 10000) { // 10 seconds have passed since the last update
+			if (currentTime - lastUpdateTime > 200) { // 10 seconds have passed since the last update
 				lastUpdateTime = currentTime;
 				fetchMetrics();
 			}

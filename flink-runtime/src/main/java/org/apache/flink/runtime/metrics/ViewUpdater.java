@@ -26,7 +26,7 @@ import java.util.TimerTask;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
-import static org.apache.flink.metrics.View.UPDATE_INTERVAL_SECONDS;
+import static org.apache.flink.metrics.View.UPDATE_INTERVAL_MILLIS;
 
 /**
  * The ViewUpdater is responsible for updating all metrics that implement the {@link View} interface.
@@ -38,7 +38,7 @@ public class ViewUpdater {
 	private final Object lock = new Object();
 
 	public ViewUpdater(ScheduledExecutorService executor) {
-		executor.scheduleWithFixedDelay(new ViewUpdaterTask(lock, toAdd, toRemove), 5, UPDATE_INTERVAL_SECONDS, TimeUnit.SECONDS);
+		executor.scheduleWithFixedDelay(new ViewUpdaterTask(lock, toAdd, toRemove), 5000, UPDATE_INTERVAL_MILLIS, TimeUnit.MILLISECONDS);
 	}
 
 	/**

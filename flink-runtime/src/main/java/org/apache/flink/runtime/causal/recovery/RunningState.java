@@ -84,7 +84,7 @@ public class RunningState extends AbstractState {
 
 		try {
 			DeterminantResponseEvent responseEvent =
-				context.jobCausalLog.respondToDeterminantRequest(vertex, e.getStartEpochID());
+				context.causalLog.respondToDeterminantRequest(vertex, e.getStartEpochID());
 			LOG.info("Responding with: {}", responseEvent);
 
 			context.inputGate.getInputChannel(channelRequestArrivedFrom).sendTaskEvent(responseEvent);
@@ -97,7 +97,6 @@ public class RunningState extends AbstractState {
 	public void notifyNewInputChannel(RemoteInputChannel inputChannel, int consumedSubpartitionIndex,
 									  int numBuffersRemoved){
 		if(context.determinantSharingDepth == 0) {
-			//TODO We need to reset the deserializers
 			SingleInputGate singleInputGate = inputChannel.getInputGate();
 			int channelIndex = inputChannel.getChannelIndex();
 

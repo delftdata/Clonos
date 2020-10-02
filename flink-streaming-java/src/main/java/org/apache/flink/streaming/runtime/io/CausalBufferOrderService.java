@@ -27,7 +27,7 @@ package org.apache.flink.streaming.runtime.io;
 
 import org.apache.flink.runtime.causal.EpochProvider;
 import org.apache.flink.runtime.causal.determinant.OrderDeterminant;
-import org.apache.flink.runtime.causal.log.job.IJobCausalLog;
+import org.apache.flink.runtime.causal.log.job.JobCausalLog;
 import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 import org.apache.flink.runtime.causal.services.AbstractCausalService;
 import org.apache.flink.runtime.causal.services.BufferOrderService;
@@ -41,7 +41,7 @@ import java.util.Queue;
 
 /**
  * A service that delivers deterministically ordered buffers from the {@link CheckpointBarrierHandler}.
- *
+ * <p>
  * This service is slightly more complex than other services as it returns the actual buffers and not just the
  * channel order determinant value.
  */
@@ -64,9 +64,10 @@ public class CausalBufferOrderService extends AbstractCausalService implements B
 	// If there are any buffered buffers, we need to check the queues
 	private int numBufferedBuffers;
 
-	public CausalBufferOrderService(IRecoveryManager recoveryManager,IJobCausalLog causalLoggingManager,
-									EpochProvider epochProvider, CheckpointBarrierHandler bufferSource, int numInputChannels) {
-		super(recoveryManager, causalLoggingManager, epochProvider);
+	public CausalBufferOrderService(JobCausalLog jobCausalLog, IRecoveryManager recoveryManager,
+									EpochProvider epochProvider, CheckpointBarrierHandler bufferSource,
+									int numInputChannels) {
+		super(jobCausalLog, recoveryManager, epochProvider);
 		this.bufferSource = bufferSource;
 		this.bufferedBuffersPerChannel = new LinkedList[numInputChannels];
 		for (int i = 0; i < numInputChannels; i++)
@@ -90,7 +91,7 @@ public class CausalBufferOrderService extends AbstractCausalService implements B
 		else
 			toReturn = getNextNonBlockedNew();
 
-		causalLoggingManager.appendDeterminant(reuseOrderDeterminant.replace((byte) toReturn.getChannelIndex()),
+		causalLog.appendDeterminant(reuseOrderDeterminant.replace((byte) toReturn.getChannelIndex()),
 			epochProvider.getCurrentEpochID());
 
 		return toReturn;

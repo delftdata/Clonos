@@ -26,23 +26,17 @@
 package org.apache.flink.runtime.causal.recovery;
 
 import org.apache.flink.runtime.causal.DeterminantResponseEvent;
-import org.apache.flink.runtime.causal.log.vertex.VertexCausalLogDelta;
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
 import org.apache.flink.runtime.io.network.api.DeterminantRequestEvent;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
-import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
-import org.apache.flink.runtime.io.network.buffer.BufferConsumer;
 import org.apache.flink.runtime.io.network.partition.PipelinedSubpartition;
-import org.apache.flink.runtime.io.network.partition.ResultSubpartition;
 import org.apache.flink.runtime.io.network.partition.consumer.RemoteInputChannel;
 import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
-import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.Arrays;
 
 /**
  * When transitioning into this state, we send out Determinant Requests on all output channels and wait for all
@@ -55,11 +49,11 @@ public class WaitingDeterminantsState extends AbstractState {
 
 	int numResponsesReceived;
 	int numResponsesExpected;
-	final VertexCausalLogDelta delta;
+	final DeterminantResponseEvent determinantAccumulator;
 
 	public WaitingDeterminantsState(RecoveryManager context) {
 		super(context);
-		delta = new VertexCausalLogDelta(context.vertexGraphInformation.getThisTasksVertexID());
+		determinantAccumulator = new DeterminantResponseEvent(context.vertexGraphInformation.getThisTasksVertexID());
 	}
 
 	@Override
@@ -100,12 +94,12 @@ public class WaitingDeterminantsState extends AbstractState {
 
 	@Override
 	public void notifyDeterminantResponseEvent(DeterminantResponseEvent e) {
-		if (e.getVertexCausalLogDelta().getVertexId().equals(context.vertexGraphInformation.getThisTasksVertexID())) {
+		if (e.getVertexID().equals(context.vertexGraphInformation.getThisTasksVertexID())) {
 
 			LOG.info("Received a DeterminantResponseEvent that is a direct response to my request: {}", e);
 			numResponsesReceived++;
-			synchronized (delta) {
-				delta.merge(e.getVertexCausalLogDelta());
+			synchronized (determinantAccumulator) {
+				determinantAccumulator.merge(e);
 			}
 
 			maybeGoToReplayingState();
@@ -183,7 +177,7 @@ public class WaitingDeterminantsState extends AbstractState {
 	private void maybeGoToReplayingState() {
 		if (numResponsesReceived == numResponsesExpected && !context.isRestoringState()) {
 			LOG.info("Received all determinants, transitioning to Replaying state!");
-			context.setState(new ReplayingState(context, delta));
+			context.setState(new ReplayingState(context, determinantAccumulator));
 		}
 	}
 

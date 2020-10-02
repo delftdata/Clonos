@@ -745,7 +745,6 @@ public class SingleInputGateTest {
 			int maxBackoff) {
 		return new NetworkEnvironment(
 			spy(new NetworkBufferPool(100, 32)),
-			spy(new NetworkBufferPool(100, 32)),
 			mock(NettyConnectionManager.class),
 			mock(ResultPartitionManager.class),
 			mock(TaskEventDispatcher.class),
@@ -759,7 +758,7 @@ public class SingleInputGateTest {
 			extraNetworkBuffersPerGate,
 			8,
 			92,
-			enableCreditBasedFlowControl,0);
+			enableCreditBasedFlowControl);
 	}
 
 	private SingleInputGate createInputGate() {

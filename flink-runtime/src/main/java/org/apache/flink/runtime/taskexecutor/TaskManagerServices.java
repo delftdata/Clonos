@@ -26,6 +26,7 @@ import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.core.memory.MemoryType;
 import org.apache.flink.queryablestate.network.stats.DisabledKvStateRequestStats;
 import org.apache.flink.runtime.broadcast.BroadcastVariableManager;
+import org.apache.flink.runtime.causal.log.CausalLogManager;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
@@ -426,8 +427,11 @@ public class TaskManagerServices {
 		ConnectionManager connectionManager;
 		boolean enableCreditBased = false;
 		NettyConfig nettyConfig = networkEnvironmentConfiguration.nettyConfig();
+
+		CausalLogManager causalLogManager = new CausalLogManager(determinantBufferPool, nettyConfig.getNumDeterminantBuffersPerTask(), nettyConfig.getDeltaEncodingStrategy());
+
 		if (nettyConfig != null) {
-			connectionManager = new NettyConnectionManager(nettyConfig);
+			connectionManager = new NettyConnectionManager(nettyConfig, causalLogManager);
 			enableCreditBased = nettyConfig.isCreditBasedEnabled();
 		} else {
 			connectionManager = new LocalConnectionManager();
@@ -470,7 +474,6 @@ public class TaskManagerServices {
 		// we start the network first, to make sure it can allocate its buffers first
 		return new NetworkEnvironment(
 			networkBufferPool,
-			determinantBufferPool,
 			connectionManager,
 			resultPartitionManager,
 			taskEventDispatcher,
@@ -484,7 +487,7 @@ public class TaskManagerServices {
 			networkEnvironmentConfiguration.floatingNetworkBuffersPerGate(),
 			networkEnvironmentConfiguration.senderExtraNetworkBuffersPerChannel(),
 			networkEnvironmentConfiguration.senderExtraFloatingNetworkBuffersPerGate(),
-			enableCreditBased, nettyConfig.getNumDeterminantBuffersPerTask());
+			enableCreditBased, causalLogManager);
 	}
 
 	/**

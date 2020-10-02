@@ -18,7 +18,7 @@
 
 package org.apache.flink.runtime.io.network.netty;
 
-import org.apache.flink.runtime.causal.log.tm.CausalLogManager;
+import org.apache.flink.runtime.causal.log.CausalLogManager;
 import org.apache.flink.runtime.io.network.ConnectionID;
 import org.apache.flink.runtime.io.network.ConnectionManager;
 import org.apache.flink.runtime.io.network.TaskEventDispatcher;
@@ -36,22 +36,25 @@ public class NettyConnectionManager implements ConnectionManager {
 
 	private final PartitionRequestClientFactory partitionRequestClientFactory;
 
+	private final CausalLogManager causalLogManager;
 
 	public NettyConnectionManager(NettyConfig nettyConfig) {
+		this(nettyConfig, null);
+	}
+
+	public NettyConnectionManager(NettyConfig nettyConfig, CausalLogManager causalLogManager) {
 		this.server = new NettyServer(nettyConfig);
 		this.client = new NettyClient(nettyConfig);
 		this.bufferPool = new NettyBufferPool(nettyConfig.getNumberOfArenas());
+		this.causalLogManager = causalLogManager;
 
-		this.partitionRequestClientFactory = new PartitionRequestClientFactory(client);
+		this.partitionRequestClientFactory = new PartitionRequestClientFactory(client, causalLogManager);
 	}
+
+
 
 	@Override
 	public void start(ResultPartitionProvider partitionProvider, TaskEventDispatcher taskEventDispatcher) throws IOException {
-		start(partitionProvider, taskEventDispatcher, null);
-	}
-
-	@Override
-	public void start(ResultPartitionProvider partitionProvider, TaskEventDispatcher taskEventDispatcher, CausalLogManager causalLogManager) throws IOException {
 		NettyProtocol partitionRequestProtocol = new NettyProtocol(
 			partitionProvider,
 			taskEventDispatcher,

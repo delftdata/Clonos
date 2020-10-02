@@ -18,8 +18,9 @@
 
 package org.apache.flink.runtime.io.network.partition;
 
-import org.apache.flink.runtime.causal.log.job.IJobCausalLog;
 import org.apache.flink.runtime.causal.determinant.BufferBuiltDeterminant;
+import org.apache.flink.runtime.causal.log.job.CausalLogID;
+import org.apache.flink.runtime.causal.log.job.JobCausalLog;
 import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 import org.apache.flink.runtime.inflightlogging.*;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
@@ -27,6 +28,7 @@ import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferConsumer;
 
+import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -70,7 +72,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 	// ------------------------------------------------------------------------
 
 	private InFlightLog inFlightLog;
-	private IJobCausalLog causalLoggingManager;
+	private JobCausalLog jobCausalLog;
 	private IRecoveryManager recoveryManager;
 
 	private long nextCheckpointId;
@@ -96,6 +98,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 	private BufferBuiltDeterminant reuseBufferBuiltDeterminant;
 
+	private CausalLogID causalLogID;
 
 	PipelinedSubpartition(int index, ResultPartition parent) {
 		this(index, parent, null);
@@ -126,8 +129,11 @@ public class PipelinedSubpartition extends ResultSubpartition {
 		this.recoveryManager = recoveryManager;
 	}
 
-	public void setCausalLoggingManager(IJobCausalLog causalLoggingManager) {
-		this.causalLoggingManager = causalLoggingManager;
+	public void setCausalLog(JobCausalLog causalLog) {
+		this.jobCausalLog = causalLog;
+		IntermediateResultPartitionID partitionID = parent.getPartitionId().getPartitionId();
+		this.causalLogID = new CausalLogID(causalLog.getLocalVertexID(), partitionID.getLowerPart(),
+			partitionID.getUpperPart(), (byte) index);
 	}
 
 	public InFlightLog getInFlightLog() {
@@ -200,13 +206,13 @@ public class PipelinedSubpartition extends ResultSubpartition {
 			if (finish) {
 				isFinished = true;
 				flush();
-			} else if (!isRecoveringSubpartitionInFlightState.get()){
+			} else if (!isRecoveringSubpartitionInFlightState.get()) {
 				maybeNotifyDataAvailable();
 			}
 
 			if (isRecoveringSubpartitionInFlightState.get())
 				buffers.notifyAll();
-			else if(downstreamFailed.get() || inflightReplayIterator != null)
+			else if (downstreamFailed.get() || inflightReplayIterator != null)
 				sendFinishedBuffersToInFlightLog();
 
 		}
@@ -267,10 +273,10 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 	private void sendFinishedBuffersToInFlightLog() {
 		synchronized (buffers) {
-			while(buffers.size() > 1){
+			while (buffers.size() > 1) {
 				//Send the buffer through the inflight log
 				BufferAndBacklog bnb = getBufferFromQueuedBufferConsumersUnsafe();
-				if(bnb != null)
+				if (bnb != null)
 					bnb.buffer().recycleBuffer();
 
 			}
@@ -383,8 +389,8 @@ public class PipelinedSubpartition extends ResultSubpartition {
 			return null;
 		}
 
-		causalLoggingManager.appendSubpartitionDeterminant(reuseBufferBuiltDeterminant.replace(buffer.readableBytes())
-			, currentEpochID, this.parent.getPartitionId().getPartitionId(), this.index);
+		jobCausalLog.appendDeterminant(causalLogID, reuseBufferBuiltDeterminant.replace(buffer.readableBytes())
+			, currentEpochID);
 		inFlightLog.log(buffer, currentEpochID, isFinished);
 
 		updateStatistics(buffer);
@@ -602,9 +608,8 @@ public class PipelinedSubpartition extends ResultSubpartition {
 		//This assumes that the input buffers which are before this close in the determinant log have
 		// been
 		// fully processed, thus the bufferconsumer will have this amount of data.
-		causalLoggingManager.appendSubpartitionDeterminant(
-			reuseBufferBuiltDeterminant.replace(bufferSize), currentEpochID,
-			this.parent.getPartitionId().getPartitionId(), this.index);
+		jobCausalLog.appendDeterminant(causalLogID,
+			reuseBufferBuiltDeterminant.replace(bufferSize), currentEpochID);
 		Buffer buffer = consumer.build(bufferSize);
 
 
@@ -626,7 +631,6 @@ public class PipelinedSubpartition extends ResultSubpartition {
 		if (checkpointId != -1)
 			currentEpochID = checkpointId;
 	}
-
 
 
 }

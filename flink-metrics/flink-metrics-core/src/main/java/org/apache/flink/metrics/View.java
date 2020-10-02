@@ -23,7 +23,7 @@ package org.apache.flink.metrics;
  */
 public interface View {
 	/** The interval in which metrics are updated. */
-	int UPDATE_INTERVAL_SECONDS = 5;
+	int UPDATE_INTERVAL_MILLIS = 300;
 
 	/**
 	 * This method will be called regularly to update the metric.

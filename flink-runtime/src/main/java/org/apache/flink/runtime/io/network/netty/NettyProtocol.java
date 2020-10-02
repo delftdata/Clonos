@@ -18,7 +18,7 @@
 
 package org.apache.flink.runtime.io.network.netty;
 
-import org.apache.flink.runtime.causal.log.tm.CausalLogManager;
+import org.apache.flink.runtime.causal.log.CausalLogManager;
 import org.apache.flink.runtime.io.network.NetworkClientHandler;
 import org.apache.flink.runtime.io.network.TaskEventDispatcher;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionProvider;
@@ -31,7 +31,7 @@ import org.apache.flink.shaded.netty4.io.netty.channel.ChannelHandler;
 public class NettyProtocol {
 
 	private final NettyMessage.NettyMessageEncoder
-		messageEncoder = new NettyMessage.NettyMessageEncoder();
+		messageEncoder;
 
 	private final ResultPartitionProvider partitionProvider;
 	private final TaskEventDispatcher taskEventDispatcher;
@@ -47,6 +47,7 @@ public class NettyProtocol {
 		this.taskEventDispatcher = taskEventDispatcher;
 		this.creditBasedEnabled = creditBasedEnabled;
 		this.causalLogManager = causalLogManager;
+		this.messageEncoder = new NettyMessage.NettyMessageEncoder(causalLogManager);
 	}
 
 	/**
@@ -89,7 +90,7 @@ public class NettyProtocol {
 
 		return new ChannelHandler[] {
 			messageEncoder,
-			new NettyMessage.NettyMessageDecoder(!creditBasedEnabled),
+			new NettyMessage.NettyMessageDecoder(!creditBasedEnabled, causalLogManager),
 			serverHandler,
 			queueOfPartitionQueues
 		};
@@ -129,11 +130,11 @@ public class NettyProtocol {
 	 */
 	public ChannelHandler[] getClientChannelHandlers() {
 		NetworkClientHandler networkClientHandler =
-			creditBasedEnabled ? new CreditBasedPartitionRequestClientHandler(causalLogManager) :
+			creditBasedEnabled ? new CreditBasedPartitionRequestClientHandler() :
 				new PartitionRequestClientHandler();
 		return new ChannelHandler[] {
 			messageEncoder,
-			new NettyMessage.NettyMessageDecoder(!creditBasedEnabled),
+			new NettyMessage.NettyMessageDecoder(!creditBasedEnabled, causalLogManager),
 			networkClientHandler};
 	}
 

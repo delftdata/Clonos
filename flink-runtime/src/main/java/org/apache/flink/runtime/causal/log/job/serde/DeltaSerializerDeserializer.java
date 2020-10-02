@@ -23,19 +23,16 @@
  *
  */
 
-package org.apache.flink.runtime.causal.log.vertex;
+package org.apache.flink.runtime.causal.log.job.serde;
 
-import org.apache.flink.runtime.causal.determinant.Determinant;
-import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
+import org.apache.flink.runtime.causal.log.job.CausalLogID;
+import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
+import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 
-public interface LocalVertexCausalLog extends VertexCausalLog {
+public interface DeltaSerializerDeserializer {
+    ByteBuf enrichWithCausalLogDelta(ByteBuf serialized, InputChannelID outputChannelID, long epochID);
 
-	/**
-	 * Appends the provided determinants to the  log.
-	 * @param determinant to append
-	 */
-	void appendDeterminant(Determinant determinant, long checkpointID);
+	void processCausalLogDelta(ByteBuf msg);
 
-	void appendSubpartitionDeterminants(Determinant determinant, long checkpointID, IntermediateResultPartitionID intermediateResultPartitionID, int subpartitionIndex);
-
+    void registerDownstreamConsumer(InputChannelID outputChannelID, CausalLogID consumedCausalLog);
 }

@@ -18,18 +18,13 @@
 package org.apache.flink.streaming.runtime.io;
 
 import org.apache.flink.runtime.causal.EpochProvider;
-import org.apache.flink.runtime.causal.log.job.IJobCausalLog;
-import org.apache.flink.runtime.causal.determinant.OrderDeterminant;
+import org.apache.flink.runtime.causal.log.job.JobCausalLog;
 import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 import org.apache.flink.runtime.causal.services.BufferOrderService;
-import org.apache.flink.runtime.io.network.api.DeterminantRequestEvent;
 import org.apache.flink.runtime.io.network.partition.consumer.BufferOrEvent;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.*;
 
 /**
  * A wrapper around a {@link CheckpointBarrierHandler} which uses a {@link CausalBufferOrderService} to ensure
@@ -48,14 +43,15 @@ public class CausalBufferHandler implements CheckpointBarrierHandler {
 	private BufferOrderService bufferOrderService;
 
 	public CausalBufferHandler(EpochProvider epochProvider,
-							   IJobCausalLog causalLoggingManager,
+							   JobCausalLog causalLog,
 							   IRecoveryManager recoveryManager,
 							   CheckpointBarrierHandler wrapped,
 							   int numInputChannels,
 							   Object checkpointLock) {
 		this.wrapped = wrapped;
 		this.lock = checkpointLock;
-		this.bufferOrderService = new CausalBufferOrderService(recoveryManager, causalLoggingManager, epochProvider, wrapped, numInputChannels);
+		this.bufferOrderService = new CausalBufferOrderService(causalLog, recoveryManager, epochProvider, wrapped,
+			numInputChannels);
 	}
 
 
@@ -63,11 +59,10 @@ public class CausalBufferHandler implements CheckpointBarrierHandler {
 	public BufferOrEvent getNextNonBlocked() throws Exception {
 		//We lock to guarantee that async events don't try to write to the causal log at the same time as the
 		// order service.
-		synchronized (lock){
+		synchronized (lock) {
 			return bufferOrderService.getNextBuffer();
 		}
 	}
-
 
 
 	@Override
