@@ -28,11 +28,11 @@ package org.apache.flink.runtime.causal;
 import org.apache.flink.runtime.causal.log.job.FlatJobCausalLog;
 import org.apache.flink.runtime.causal.log.job.JobCausalLog;
 import org.apache.flink.runtime.causal.log.job.serde.DeltaEncodingStrategy;
-import org.apache.flink.runtime.causal.log.job.serde.DeltaSerializerDeserializer;
-import org.apache.flink.runtime.causal.log.job.serde.FlatDeltaSerializerDeserializer;
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 import org.apache.flink.runtime.io.network.buffer.BufferPool;
 import org.apache.flink.runtime.io.network.buffer.NetworkBufferPool;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 
@@ -41,6 +41,7 @@ public class JobCausalLogFactory {
 	private final DeltaEncodingStrategy deltaEncodingStrategy;
 	NetworkBufferPool determinantNetworkBufferPool;
 
+	protected static final Logger LOG = LoggerFactory.getLogger(JobCausalLogFactory.class);
 
 	public JobCausalLogFactory(NetworkBufferPool determinantNetworkBufferPool, int numDeterminantBuffersPerTask,
 							   DeltaEncodingStrategy deltaEncodingStrategy){
@@ -50,15 +51,17 @@ public class JobCausalLogFactory {
 	}
 
 	public JobCausalLog buildJobCausalLog(VertexGraphInformation vertexGraphInformation, ResultPartitionWriter[] resultPartitionsOfLocalVertex, int determinantSharingDepth) {
-		BufferPool taskDeterminantBufferPool = null;
+		BufferPool taskDeterminantBufferPool;
 		try {
 			taskDeterminantBufferPool = determinantNetworkBufferPool.createBufferPool(numDeterminantBuffersPerTask,
 				numDeterminantBuffersPerTask);
 		} catch (IOException e) {
 			throw new RuntimeException("Could not register determinant buffer pool!: \n" + e.getMessage());
 		}
-		JobCausalLog jobCausalLog = new FlatJobCausalLog(vertexGraphInformation, determinantSharingDepth,
+
+		LOG.info("Creating a JobCausalLog for VertexID={} using encoding strategy {} and determinantSharingDepth {}", vertexGraphInformation.getThisTasksVertexID().getVertexId(), deltaEncodingStrategy.name(), determinantSharingDepth);
+
+		return new FlatJobCausalLog(vertexGraphInformation, determinantSharingDepth,
 			resultPartitionsOfLocalVertex, taskDeterminantBufferPool, deltaEncodingStrategy);
-		return jobCausalLog;
 	}
 }

@@ -65,7 +65,7 @@ public abstract class AbstractCausalService {
 	 * previous state.
 	 */
 	protected boolean isRecovering(){
-		return isRecovering && recoveryManager.isRecovering();
+		return isRecovering && (isRecovering = !recoveryManager.isRunning());
 	}
 
 }
