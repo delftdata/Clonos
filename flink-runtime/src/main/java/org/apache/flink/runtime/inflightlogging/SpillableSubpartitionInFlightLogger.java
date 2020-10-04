@@ -59,7 +59,9 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 
 	private SpilledReplayIterator currentIterator;
 
-	public SpillableSubpartitionInFlightLogger(IOManager ioManager,  BufferPool recoveryBufferPool,
+	private boolean closed;
+
+	public SpillableSubpartitionInFlightLogger(IOManager ioManager, BufferPool recoveryBufferPool,
 											   boolean eagerlySpill) {
 		this.ioManager = ioManager;
 		this.recoveryBufferPool = recoveryBufferPool;
@@ -68,6 +70,7 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 		this.isReplaying = new AtomicBoolean(false);
 		this.currentIterator = null;
 		this.eagerlySpill = eagerlySpill;
+		this.closed = false;
 	}
 
 
@@ -80,15 +83,19 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 	@Override
 	public void log(Buffer buffer, long epochID, boolean isFinished) {
 		synchronized (flushLock) {
-			if(isFinished) {
-				InFlightLoggingUtil.exchangeOwnership(buffer, inFlightBufferPool, flushLock, true);
+			if(closed) {
+				buffer.recycleBuffer();
+				return;
 			}
+			if (isFinished)
+				InFlightLoggingUtil.exchangeOwnership(buffer, inFlightBufferPool, flushLock, true);
+
 
 			Epoch epoch = slicedLog.computeIfAbsent(epochID, k -> new Epoch(createNewWriter(k), k));
 			epoch.append(buffer);
 			if (eagerlySpill)
 				flushAllUnflushed();
-			if(isReplaying.get())
+			if (isReplaying.get())
 				currentIterator.notifyNewBufferAdded(epochID);
 		}
 		LOG.debug("Logged a new buffer for epoch {} with refcnt {} and size {}", epochID, buffer.asByteBuf().refCnt(),
@@ -110,8 +117,8 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 			for (long epochID : toRemove)
 				epochsRemoved.add(slicedLog.remove(epochID));
 
-		for (Epoch epoch : epochsRemoved)
-			epoch.removeEpochFile();
+			for (Epoch epoch : epochsRemoved)
+				epoch.removeEpochFile();
 		}
 	}
 
@@ -120,12 +127,15 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 		LOG.info("Creating InFlightLog iterator for epochID {} and skipping {} buffers", epochID, ignoreBuffers);
 		SortedMap<Long, Epoch> logToReplay;
 		synchronized (flushLock) {
+			if (closed)
+				return null;
 			this.isReplaying.set(true);
 			logToReplay = slicedLog.tailMap(epochID);
 			if (logToReplay.size() == 0)
 				return null;
 
-			this.currentIterator = new SpilledReplayIterator(logToReplay, recoveryBufferPool, ioManager, flushLock, ignoreBuffers,
+			this.currentIterator = new SpilledReplayIterator(logToReplay, recoveryBufferPool, ioManager, flushLock,
+				ignoreBuffers,
 				isReplaying);
 			return currentIterator;
 		}
@@ -140,6 +150,7 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 	@Override
 	public void close() {
 		synchronized (flushLock) {
+			this.closed = true;
 			for (Epoch e : slicedLog.values())
 				e.removeEpochFile();
 		}
@@ -150,8 +161,10 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 		return inFlightBufferPool;
 	}
 
-	public void flushAllUnflushed(){
-		synchronized (flushLock){
+	public void flushAllUnflushed() {
+		synchronized (flushLock) {
+			if(closed)
+				return;
 			for (Epoch e : slicedLog.values())
 				e.flushAllUnflushed();
 		}
@@ -176,7 +189,6 @@ public class SpillableSubpartitionInFlightLogger implements InFlightLog {
 				epoch.notifyFlushFailed();
 		}
 	}
-
 
 
 	private BufferFileWriter createNewWriter(long epochID) {

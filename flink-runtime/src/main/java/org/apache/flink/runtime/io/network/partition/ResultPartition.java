@@ -401,6 +401,7 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 				((PipelinedSubpartition) rs).getInFlightLog().destroyBufferPools();
 			}
 		}
+		inFlightBufferPool.lazyDestroy();
 	}
 
 	/**

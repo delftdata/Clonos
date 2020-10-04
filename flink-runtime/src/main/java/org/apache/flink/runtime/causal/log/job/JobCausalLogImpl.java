@@ -80,6 +80,8 @@ public class JobCausalLogImpl implements JobCausalLog {
 
 	private final DeltaSerializerDeserializer deltaSerdeStrategy;
 
+	private final BufferPool determinantBufferPool;
+
 	public JobCausalLogImpl(VertexGraphInformation vertexGraphInformation, int determinantSharingDepth,
 							ResultPartitionWriter[] resultPartitionsOfLocalVertex, BufferPool bufferPool,
 							DeltaEncodingStrategy deltaEncodingStrategy) {
@@ -95,6 +97,8 @@ public class JobCausalLogImpl implements JobCausalLog {
 		flatThreadCausalLogs = new ConcurrentHashMap<>();
 		hierarchicalThreadCausalLogsToBeShared = new ConcurrentHashMap<>();
 		registerLocalThreadLogs(resultPartitionsOfLocalVertex, bufferPool, localVertexID);
+
+		this.determinantBufferPool = bufferPool;
 
 		if (deltaEncodingStrategy.equals(DeltaEncodingStrategy.FLAT))
 			this.deltaSerdeStrategy = new FlatDeltaSerializerDeserializer(flatThreadCausalLogs,
@@ -213,6 +217,7 @@ public class JobCausalLogImpl implements JobCausalLog {
 		for (ThreadCausalLog threadCausalLog : flatThreadCausalLogs.values()) {
 			threadCausalLog.close();
 		}
+		determinantBufferPool.lazyDestroy();
 	}
 
 	@Override
