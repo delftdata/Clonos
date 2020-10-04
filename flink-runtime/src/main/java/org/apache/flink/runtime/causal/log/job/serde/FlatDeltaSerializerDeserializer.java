@@ -26,6 +26,7 @@
 package org.apache.flink.runtime.causal.log.job.serde;
 
 import org.apache.flink.runtime.causal.log.job.CausalLogID;
+import org.apache.flink.runtime.causal.log.job.hierarchy.VertexCausalLogs;
 import org.apache.flink.runtime.causal.log.thread.ThreadCausalLog;
 import org.apache.flink.runtime.io.network.buffer.BufferPool;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
@@ -33,14 +34,16 @@ import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 import org.apache.flink.shaded.netty4.io.netty.buffer.CompositeByteBuf;
 
 import java.util.Map;
-import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.ConcurrentMap;
 
 public final class FlatDeltaSerializerDeserializer extends AbstractDeltaSerializerDeserializer {
 
-	public FlatDeltaSerializerDeserializer(ConcurrentSkipListMap<CausalLogID, ThreadCausalLog> threadCausalLogs,
+	public FlatDeltaSerializerDeserializer(ConcurrentMap<CausalLogID, ThreadCausalLog> threadCausalLogs,
+										   ConcurrentMap<Short, VertexCausalLogs> hierarchicalThreadCausalLogs,
 										   Map<Short, Integer> vertexIDToDistance, int determinantSharingDepth,
 										   short localVertexID, BufferPool determinantBufferPool) {
-		super(threadCausalLogs, vertexIDToDistance, determinantSharingDepth, localVertexID, determinantBufferPool);
+		super(threadCausalLogs, hierarchicalThreadCausalLogs, vertexIDToDistance, determinantSharingDepth,
+			localVertexID, determinantBufferPool);
 	}
 
 	@Override
@@ -51,15 +54,17 @@ public final class FlatDeltaSerializerDeserializer extends AbstractDeltaSerializ
 		for (Map.Entry<CausalLogID, ThreadCausalLog> entry : threadCausalLogs.entrySet()) {
 			CausalLogID currCID = entry.getKey();
 			ThreadCausalLog log = entry.getValue();
+
 			short currentVertex = currCID.getVertexID();
 			int distance = Math.abs(vertexIDToDistance.get(currentVertex));
+
 			if (determinantSharingDepth == -1 || distance + 1 <= determinantSharingDepth) {
 				if (currentVertex != localVertexID || currCID.isMainThread() || outputChannelSpecificCausalLog.equals(currCID)) {
 					if (log.hasDeltaForConsumer(outputChannelID, epochID)) {
 						//serializeID
 						serializeCausalLogID(deltaHeader, currCID);
 						//serialize delta
-						serializeThreadDelta(outputChannelID, epochID, composite, deltaHeader, log, currCID);
+						serializeThreadDelta(outputChannelID, epochID, composite, deltaHeader, log);
 					}
 				}
 			}
@@ -79,8 +84,7 @@ public final class FlatDeltaSerializerDeserializer extends AbstractDeltaSerializ
 	@Override
 	protected int deserializeStrategyStep(ByteBuf msg, CausalLogID causalLogID, int deltaIndex, long epochID) {
 		deserializeCausalLogID(msg, causalLogID);
-		deltaIndex += processThreadDelta(msg, causalLogID, deltaIndex, epochID);
-		return deltaIndex;
+		return processThreadDelta(msg, causalLogID, deltaIndex, epochID);
 	}
 
 	private void deserializeCausalLogID(ByteBuf msg, CausalLogID causalLogID) {

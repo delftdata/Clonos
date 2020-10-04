@@ -33,6 +33,13 @@ import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 
+/**
+ * Manages the {@link org.apache.flink.runtime.causal.log.thread.ThreadCausalLog}s of a specific job.
+ * The most important functionalities offered are appending determinants to the local logs,
+ * enriching a Buffer going downstream with determinant deltas, and deserializing said deltas.
+ *
+ * After a failure of an upstream vertex V, one can also request all determinants of vertex V.
+ */
 public interface JobCausalLog {
 
 	short getLocalVertexID();

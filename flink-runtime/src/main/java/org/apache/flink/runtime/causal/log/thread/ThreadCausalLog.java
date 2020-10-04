@@ -26,11 +26,13 @@
 package org.apache.flink.runtime.causal.log.thread;
 
 import org.apache.flink.runtime.causal.determinant.Determinant;
+import org.apache.flink.runtime.causal.log.job.CausalLogID;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 
 public interface ThreadCausalLog {
 
+	CausalLogID getCausalLogID();
 	/**
 	 * Get all determinants in this log from start to end. Does not advance any internal offsets.
 	 * @return a byte[] containing all determinants in sequence

@@ -26,15 +26,16 @@
 package org.apache.flink.runtime.causal.log.job.serde;
 
 import org.apache.flink.runtime.causal.log.job.CausalLogID;
+import org.apache.flink.runtime.causal.log.job.hierarchy.PartitionCausalLogs;
+import org.apache.flink.runtime.causal.log.job.hierarchy.VertexCausalLogs;
 import org.apache.flink.runtime.causal.log.thread.ThreadCausalLog;
 import org.apache.flink.runtime.io.network.buffer.BufferPool;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 import org.apache.flink.shaded.netty4.io.netty.buffer.CompositeByteBuf;
 
-import java.util.Iterator;
 import java.util.Map;
-import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.ConcurrentMap;
 
 
 /**
@@ -49,10 +50,12 @@ import java.util.concurrent.ConcurrentSkipListMap;
 public final class GroupingDeltaSerializerDeserializer extends AbstractDeltaSerializerDeserializer implements DeltaSerializerDeserializer {
 
 
-	public GroupingDeltaSerializerDeserializer(ConcurrentSkipListMap<CausalLogID, ThreadCausalLog> threadCausalLogs,
+	public GroupingDeltaSerializerDeserializer(ConcurrentMap<CausalLogID, ThreadCausalLog> threadCausalLogs,
+											   ConcurrentMap<Short, VertexCausalLogs> hierarchicalThreadCausalLogs,
 											   Map<Short, Integer> vertexIDToDistance, int determinantSharingDepth,
 											   short localVertexID, BufferPool determinantBufferPool) {
-		super(threadCausalLogs, vertexIDToDistance, determinantSharingDepth, localVertexID, determinantBufferPool);
+		super(threadCausalLogs, hierarchicalThreadCausalLogs, vertexIDToDistance, determinantSharingDepth,
+			localVertexID, determinantBufferPool);
 	}
 
 
@@ -61,9 +64,9 @@ public final class GroupingDeltaSerializerDeserializer extends AbstractDeltaSeri
 		short vertexID = msg.readShort();
 		causalLogID.replace(vertexID);
 		boolean hasMainThreadDelta = msg.readBoolean();
-
+		int deltaIndexOffset = 0;
 		if (hasMainThreadDelta)
-			deltaIndex += processThreadDelta(msg, causalLogID, deltaIndex, epochID);
+			deltaIndexOffset += processThreadDelta(msg, causalLogID, deltaIndex, epochID);
 
 		byte numPartitionDeltas = msg.readByte();
 		for (int p = 0; p < numPartitionDeltas; p++) {
@@ -74,132 +77,89 @@ public final class GroupingDeltaSerializerDeserializer extends AbstractDeltaSeri
 				byte subpartitionID = msg.readByte();
 				causalLogID.replace(intermediateResultPartitionLower, intermediateResultPartitionUpper,
 					subpartitionID);
-				deltaIndex += processThreadDelta(msg, causalLogID, deltaIndex, epochID);
+				deltaIndexOffset += processThreadDelta(msg, causalLogID, deltaIndex + deltaIndexOffset, epochID);
 			}
 		}
-		return deltaIndex;
+		return deltaIndexOffset;
 	}
 
 
 	@Override
 	protected void serializeDataStrategy(InputChannelID outputChannelID, long epochID, CompositeByteBuf composite,
 										 ByteBuf deltaHeader) {
-
-		Iterator<Map.Entry<CausalLogID, ThreadCausalLog>> iterator = threadCausalLogs.entrySet().iterator();
-		Map.Entry<CausalLogID, ThreadCausalLog> vertexEntry = iterator.next();
-
-		while (iterator.hasNext()) {
-			short currentVertex = vertexEntry.getKey().getVertexID();
-			int distance = Math.abs(vertexIDToDistance.get(currentVertex));
-
-			//If this vertex is supposed to be shared downstream
-			if (determinantSharingDepth == -1 || distance + 1 <= determinantSharingDepth)
-				vertexEntry = serializeVertex(outputChannelID, epochID, composite, deltaHeader, iterator, vertexEntry);
-			else
-				while (vertexEntry.getKey().getVertexID() == currentVertex && iterator.hasNext()) //Skip till next
-					// vertex
-					vertexEntry = iterator.next();
-		}
-	}
-
-	private Map.Entry<CausalLogID, ThreadCausalLog> serializeVertex(InputChannelID outputChannelID, long epochID,
-																	CompositeByteBuf composite,
-																	ByteBuf deltaHeader,
-																	Iterator<Map.Entry<CausalLogID, ThreadCausalLog>> iterator,
-																	Map.Entry<CausalLogID, ThreadCausalLog> vertexEntry) {
-		CausalLogID vertexCID = vertexEntry.getKey();
-		ThreadCausalLog vertexLog = vertexEntry.getValue();
-
-		deltaHeader.writeShort(vertexCID.getVertexID());
-
-		boolean hasMainThreadDelta = vertexLog.hasDeltaForConsumer(outputChannelID, epochID);
-		deltaHeader.writeBoolean(hasMainThreadDelta);
-		if (hasMainThreadDelta)
-			serializeThreadDelta(outputChannelID, epochID, composite, deltaHeader, vertexLog,vertexCID);
-
-		vertexEntry = serializePartitions(deltaHeader, composite, iterator, vertexEntry, outputChannelID, epochID);
-
-		return vertexEntry;
-	}
-
-	private Map.Entry<CausalLogID, ThreadCausalLog> serializePartitions(ByteBuf deltaHeader,
-																		CompositeByteBuf composite,
-																		Iterator<Map.Entry<CausalLogID,
-																			ThreadCausalLog>> iterator,
-																		Map.Entry<CausalLogID, ThreadCausalLog> vertexEntry, InputChannelID outputChannelID, long epochID) {
-		CausalLogID vertexCID = vertexEntry.getKey();
-
-		int numPartitionUpdates = 0;
-		int numPartitionUpdatesWriteIndex = deltaHeader.writerIndex();
-		deltaHeader.writeByte(0); //NumPartitionUpdates
-
 		CausalLogID outputChannelSpecificCausalLog = outputChannelSpecificCausalLogs.get(outputChannelID);
-		//Invariant: Each vertex has at least one output partition
-		while (iterator.hasNext()) {
-			Map.Entry<CausalLogID, ThreadCausalLog> partitionEntry = iterator.next();
-			CausalLogID partitionCID = partitionEntry.getKey();
+		for (VertexCausalLogs v : hierarchicalThreadCausalLogs.values()) {
+			int distance = Math.abs(vertexIDToDistance.get(v.getVertexID()));
+			if (determinantSharingDepth == -1 || distance + 1 <= determinantSharingDepth)
+				serializeVertex(outputChannelID, epochID, composite, deltaHeader, outputChannelSpecificCausalLog, v);
+		}
 
-			deltaHeader.writeLong(partitionCID.getIntermediateDataSetLower());
-			deltaHeader.writeLong(partitionCID.getIntermediateDataSetUpper());
+	}
 
-			Map.Entry<CausalLogID, ThreadCausalLog> subpartitionEntry = partitionEntry;
+	private void serializeVertex(InputChannelID outputChannelID, long epochID, CompositeByteBuf composite,
+								 ByteBuf deltaHeader, CausalLogID outputChannelSpecificCausalLog, VertexCausalLogs v) {
+		int numVertexUpdates = 0;
+		int vertexStartIndex = deltaHeader.writerIndex(); //May need to erase entire vertex
+		short vertexID = v.getVertexID();
+		deltaHeader.writeShort(vertexID);
+		ThreadCausalLog mainThreadLog = v.mainThreadLog.get();
+		if (mainThreadLog != null && mainThreadLog.hasDeltaForConsumer(outputChannelID, epochID)) {
+			deltaHeader.writeBoolean(true);
+			serializeThreadDelta(outputChannelID, epochID, composite, deltaHeader, mainThreadLog);
+			numVertexUpdates++;
+		} else
+			deltaHeader.writeBoolean(false);
 
-			int numSubpartitionUpdates = 0;
-			int numSubpartitionUpdatesWriteIndex = deltaHeader.writerIndex();
-			deltaHeader.writeByte(0); //NumSubpartitionUpdates
+		numVertexUpdates += serializePartitions(outputChannelID, epochID, composite, deltaHeader,
+			outputChannelSpecificCausalLog, v, vertexID);
 
-			CausalLogID subpartitionCID = partitionEntry.getKey();
-			ThreadCausalLog subpartitionLog = subpartitionEntry.getValue();
-			if (!subpartitionCID.isForVertex(localVertexID) || outputChannelSpecificCausalLog.equals(subpartitionCID)) { //If this isnt the local vertex or if it is the specific channel subpartition
-				if (subpartitionLog.hasDeltaForConsumer(outputChannelID, epochID)) {
-					serializeSubpartition(deltaHeader, composite, outputChannelID, epochID, subpartitionCID,
-						subpartitionLog);
+		if (numVertexUpdates == 0) //If there were no updates, reset the writer index.
+			deltaHeader.writerIndex(vertexStartIndex);
+	}
+
+	private int serializePartitions(InputChannelID outputChannelID, long epochID, CompositeByteBuf composite,
+									ByteBuf deltaHeader, CausalLogID outputChannelSpecificCausalLog,
+									VertexCausalLogs v, short vertexID) {
+		int numUpdatesOnAllPartitions = 0;
+		int partitionSectionStartIndex = deltaHeader.writerIndex();
+		deltaHeader.writeByte(0);//Num partition deltas
+		for (PartitionCausalLogs p : v.partitionCausalLogs.values())
+			numUpdatesOnAllPartitions += serializePartition(outputChannelID, epochID, composite, deltaHeader,
+				outputChannelSpecificCausalLog, vertexID, p);
+
+		//Even if numUpdatesOnAllPartitions is zero, we need to write it there.
+		deltaHeader.setByte(partitionSectionStartIndex, numUpdatesOnAllPartitions);
+
+		return numUpdatesOnAllPartitions;
+	}
+
+	private int serializePartition(InputChannelID outputChannelID, long epochID, CompositeByteBuf composite,
+								   ByteBuf deltaHeader, CausalLogID outputChannelSpecificCausalLog, short vertexID,
+								   PartitionCausalLogs p) {
+		int specificPartitionStartIndex = deltaHeader.writerIndex();
+		deltaHeader.writeLong(p.intermediateResultPartitionID.getLowerPart());
+		deltaHeader.writeLong(p.intermediateResultPartitionID.getUpperPart());
+
+		int numSubpartitionUpdates = 0;
+		int numSubpartitionUpdatesIndex = deltaHeader.writerIndex();
+		deltaHeader.writeByte(0); //num subpartition updates
+		for (ThreadCausalLog s : p.subpartitionLogs.values()) {
+			if (s.hasDeltaForConsumer(outputChannelID, epochID))
+				//If this isnt the local vertex or if it is the specific channel subpartition
+				if (vertexID != localVertexID || outputChannelSpecificCausalLog.equals(s.getCausalLogID())) {
+					deltaHeader.writeByte(s.getCausalLogID().getSubpartitionIndex());
+					serializeThreadDelta(outputChannelID, epochID, composite, deltaHeader, s);
 					numSubpartitionUpdates++;
 				}
-			}
-
-			while (iterator.hasNext()) {
-				subpartitionEntry = iterator.next();
-				subpartitionCID = partitionEntry.getKey();
-				subpartitionLog = subpartitionEntry.getValue();
-				if (!partitionCID.isForVertex(vertexCID.getVertexID()) ||
-					!subpartitionCID.isForIntermediatePartition(partitionCID.getIntermediateDataSetLower(),
-						partitionCID.getIntermediateDataSetUpper())) {
-					partitionEntry = subpartitionEntry;
-					break;
-				}
-				if (!subpartitionCID.isForVertex(localVertexID) || outputChannelSpecificCausalLogs.get(outputChannelID).equals(subpartitionCID)) { //If this isnt the local vertex or if it is the specific channel subpartition
-					if (subpartitionLog.hasDeltaForConsumer(outputChannelID, epochID)) {
-						serializeSubpartition(deltaHeader, composite, outputChannelID, epochID, subpartitionCID,
-							subpartitionLog);
-						numSubpartitionUpdates++;
-					}
-				}
-			}
-
-			if (numSubpartitionUpdates == 0) {
-				deltaHeader.writerIndex(numSubpartitionUpdatesWriteIndex - 8 * 2); // Erase partition
-			} else {
-				numPartitionUpdates++;
-				deltaHeader.setByte(numSubpartitionUpdatesWriteIndex, numSubpartitionUpdates);
-			}
-
-			partitionCID = partitionEntry.getKey();
-			if (!partitionCID.isForVertex(vertexCID.getVertexID())) {
-				vertexEntry = partitionEntry;
-				break;
-			}
-
 		}
-		deltaHeader.setByte(numPartitionUpdatesWriteIndex, numPartitionUpdates);
-		return vertexEntry;
+		if (numSubpartitionUpdates == 0) {
+			deltaHeader.writerIndex(specificPartitionStartIndex);
+			return 0;
+		} else {
+			deltaHeader.setByte(numSubpartitionUpdatesIndex, numSubpartitionUpdates);
+			return 1;
+		}
 	}
 
-	private void serializeSubpartition(ByteBuf deltaHeader, CompositeByteBuf composite, InputChannelID outputChannelID
-		, long epochID, CausalLogID subpartitionCID, ThreadCausalLog subpartitionLog) {
-		deltaHeader.writeByte(subpartitionCID.getSubpartitionIndex());
-		serializeThreadDelta(outputChannelID, epochID, composite, deltaHeader, subpartitionLog, subpartitionCID);
 
-
-	}
 }

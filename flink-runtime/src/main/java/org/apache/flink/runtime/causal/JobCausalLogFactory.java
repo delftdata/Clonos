@@ -25,7 +25,7 @@
 
 package org.apache.flink.runtime.causal;
 
-import org.apache.flink.runtime.causal.log.job.FlatJobCausalLog;
+import org.apache.flink.runtime.causal.log.job.JobCausalLogImpl;
 import org.apache.flink.runtime.causal.log.job.JobCausalLog;
 import org.apache.flink.runtime.causal.log.job.serde.DeltaEncodingStrategy;
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
@@ -61,7 +61,7 @@ public class JobCausalLogFactory {
 
 		LOG.info("Creating a JobCausalLog for VertexID={} using encoding strategy {} and determinantSharingDepth {}", vertexGraphInformation.getThisTasksVertexID().getVertexId(), deltaEncodingStrategy.name(), determinantSharingDepth);
 
-		return new FlatJobCausalLog(vertexGraphInformation, determinantSharingDepth,
+		return new JobCausalLogImpl(vertexGraphInformation, determinantSharingDepth,
 			resultPartitionsOfLocalVertex, taskDeterminantBufferPool, deltaEncodingStrategy);
 	}
 }

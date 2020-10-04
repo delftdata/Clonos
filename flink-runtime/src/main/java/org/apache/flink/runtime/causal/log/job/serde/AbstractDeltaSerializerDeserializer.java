@@ -26,23 +26,29 @@
 package org.apache.flink.runtime.causal.log.job.serde;
 
 import org.apache.flink.runtime.causal.log.job.CausalLogID;
+import org.apache.flink.runtime.causal.log.job.hierarchy.PartitionCausalLogs;
+import org.apache.flink.runtime.causal.log.job.hierarchy.VertexCausalLogs;
 import org.apache.flink.runtime.causal.log.thread.ThreadCausalLog;
 import org.apache.flink.runtime.causal.log.thread.ThreadCausalLogImpl;
-import org.apache.flink.runtime.causal.recovery.AbstractState;
 import org.apache.flink.runtime.io.network.buffer.BufferPool;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
+import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBufAllocator;
 import org.apache.flink.shaded.netty4.io.netty.buffer.CompositeByteBuf;
+import org.apache.flink.shaded.netty4.io.netty.util.internal.ConcurrentSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.ConcurrentMap;
 
 public abstract class AbstractDeltaSerializerDeserializer implements DeltaSerializerDeserializer {
-	protected final ConcurrentSkipListMap<CausalLogID, ThreadCausalLog> threadCausalLogs;
+	protected final ConcurrentMap<CausalLogID, ThreadCausalLog> threadCausalLogs;
+
+	protected final ConcurrentMap<Short, VertexCausalLogs> hierarchicalThreadCausalLogs;
+
 	protected final BufferPool determinantBufferPool;
 
 	protected final Map<InputChannelID, CausalLogID> outputChannelSpecificCausalLogs;
@@ -53,13 +59,16 @@ public abstract class AbstractDeltaSerializerDeserializer implements DeltaSerial
 
 	protected final int determinantSharingDepth;
 
+	private final static Object upstreamInsertLock = new Object();
 
 	protected static final Logger LOG = LoggerFactory.getLogger(AbstractDeltaSerializerDeserializer.class);
 
-	public AbstractDeltaSerializerDeserializer(ConcurrentSkipListMap<CausalLogID, ThreadCausalLog> threadCausalLogs,
+	public AbstractDeltaSerializerDeserializer(ConcurrentMap<CausalLogID, ThreadCausalLog> threadCausalLogs,
+											   ConcurrentMap<Short, VertexCausalLogs> hierarchicalThreadCausalLogs,
 											   Map<Short, Integer> vertexIDToDistance, int determinantSharingDepth,
 											   short localVertexID, BufferPool determinantBufferPool) {
 		this.threadCausalLogs = threadCausalLogs;
+		this.hierarchicalThreadCausalLogs = hierarchicalThreadCausalLogs;
 		this.outputChannelSpecificCausalLogs = new HashMap<>();
 		this.determinantBufferPool = determinantBufferPool;
 		this.vertexIDToDistance = vertexIDToDistance;
@@ -77,7 +86,7 @@ public abstract class AbstractDeltaSerializerDeserializer implements DeltaSerial
 		deltaHeader.writeInt(0);//Header Size
 		deltaHeader.writeLong(epochID);//Epoch
 
-
+		// Call the strategy specific serialization routine
 		serializeDataStrategy(outputChannelID, epochID, composite, deltaHeader);
 
 		deltaHeader.setInt(0, deltaHeader.readableBytes());
@@ -108,17 +117,19 @@ public abstract class AbstractDeltaSerializerDeserializer implements DeltaSerial
 		LOG.info("processCausalLogDelta: headerBytes: {}, epochID: {}", headerBytes, epochID);
 
 		while (msg.readerIndex() < headerBytesEnd) {
-			deltaIndex = deserializeStrategyStep(msg, causalLogID, deltaIndex, epochID);
+			// Call the strategy specific deserialization routine
+			deltaIndex += deserializeStrategyStep(msg, causalLogID, deltaIndex, epochID);
 		}
 	}
 
 	protected int processThreadDelta(ByteBuf msg, CausalLogID causalLogID, int deltaIndex, long epochID) {
 
 		if (!threadCausalLogs.containsKey(causalLogID)) {
-			//If we that mapping is not present, we need to clone the key, so it is not mutated
-			CausalLogID idToInsert = new CausalLogID(causalLogID);
-
-			threadCausalLogs.computeIfAbsent(idToInsert, k -> new ThreadCausalLogImpl(determinantBufferPool));
+			synchronized (upstreamInsertLock) {
+				//If after synchronizing, it is still not there, we have to insert it.
+				if (!threadCausalLogs.containsKey(causalLogID))
+					insertNewUpstreamLog(causalLogID);
+			}
 		}
 
 		ThreadCausalLog threadLog = threadCausalLogs.get(causalLogID);
@@ -127,19 +138,48 @@ public abstract class AbstractDeltaSerializerDeserializer implements DeltaSerial
 		int bufferSize = msg.readInt();
 		ByteBuf delta = msg.retainedSlice(deltaIndex, bufferSize);
 
-		LOG.info("processThreadDelta: causalLogID: {}, offsetOfConsumer: {}, bufSize: {}", causalLogID, offsetFromEpoch, bufferSize);
+		LOG.info("processThreadDelta: causalLogID: {}, offsetOfConsumer: {}, bufSize: {}", causalLogID,
+			offsetFromEpoch, bufferSize);
 		threadLog.processUpstreamDelta(delta, offsetFromEpoch, epochID);
 
 		return bufferSize;
 	}
 
+	private void insertNewUpstreamLog(CausalLogID causalLogID) {
+		LOG.info("Inserting a new Upstream Log for {}", causalLogID);
+		//If that mapping is not present, we need to clone the key, so it is not mutated
+		CausalLogID idToInsert = new CausalLogID(causalLogID);
+
+		ThreadCausalLog newCausalLog = new ThreadCausalLogImpl(determinantBufferPool, idToInsert);
+		//Put it in the flat map
+		threadCausalLogs.put(idToInsert, newCausalLog);
+
+		//Put it in the hierarchical structure as well
+		VertexCausalLogs v = hierarchicalThreadCausalLogs.computeIfAbsent(idToInsert.getVertexID(),
+			VertexCausalLogs::new);
+		if (idToInsert.isMainThread()) {
+			//If this is a main thread log, set it as the main thread log.
+			v.mainThreadLog.set(newCausalLog);
+		} else {
+			//Otherwise, it is a partition log.
+			IntermediateResultPartitionID partitionID =
+				new IntermediateResultPartitionID(idToInsert.getIntermediateDataSetLower(),
+					idToInsert.getIntermediateDataSetUpper());
+			PartitionCausalLogs p =
+				v.partitionCausalLogs.computeIfAbsent(partitionID, PartitionCausalLogs::new);
+			p.subpartitionLogs.putIfAbsent(idToInsert.getSubpartitionIndex(), newCausalLog);
+		}
+	}
+
 	protected void serializeThreadDelta(InputChannelID outputChannelID, long epochID, CompositeByteBuf composite,
-										ByteBuf deltaHeader, ThreadCausalLog log, CausalLogID causalLogID) {
+										ByteBuf deltaHeader, ThreadCausalLog log) {
+		CausalLogID causalLogID = log.getCausalLogID();
 		int offsetOfConsumer = log.getOffsetFromEpochForConsumer(outputChannelID, epochID);
 		deltaHeader.writeInt(offsetOfConsumer);
 		ByteBuf deltaBuf = log.getDeltaForConsumer(outputChannelID, epochID);
 		deltaHeader.writeInt(deltaBuf.readableBytes());
-		LOG.info("serializeDelta: causalLogID: {}, offsetOfConsumer: {}, bufSize: {}", causalLogID, offsetOfConsumer, deltaBuf.readableBytes());
+		LOG.info("serializeDelta: causalLogID: {}, offsetOfConsumer: {}, bufSize: {}", causalLogID, offsetOfConsumer,
+			deltaBuf.readableBytes());
 		composite.addComponent(true, deltaBuf);
 	}
 

@@ -35,7 +35,7 @@ import java.io.IOException;
 /**
  * An id identifying a thread causal log.
  */
-public class CausalLogID implements Comparable<CausalLogID>, IOReadableWritable {
+public class CausalLogID implements IOReadableWritable {
 
 	private short vertexID;
 	private boolean isMainThread;
@@ -131,11 +131,16 @@ public class CausalLogID implements Comparable<CausalLogID>, IOReadableWritable 
 		if (o == null || getClass() != o.getClass()) return false;
 		CausalLogID that = (CausalLogID) o;
 
+		if(this.vertexID != that.vertexID)
+			return false;
+
 		if (this.isMainThread != that.isMainThread) //Different types => false
 			return false;
 
-		if (this.isMainThread) // Both main thread => compare vertexIDs
-			return this.vertexID == that.vertexID;
+		//At this point, we know that matching vertexIDs and matching is MainThread.
+		//If one isMainThread, the other also is, and they match.
+		if(this.isMainThread)
+			return true;
 
 		//Otherwise, both subpartition => compare subpartitionIDs
 		return intermediateDataSetUpper == that.intermediateDataSetUpper &&
@@ -145,44 +150,16 @@ public class CausalLogID implements Comparable<CausalLogID>, IOReadableWritable 
 
 	@Override
 	public int hashCode() {
-		int hash = 7;
+		int hash = 17;
 		hash = 31 * hash + vertexID;
 		hash = 31 * hash + (isMainThread ? 1 : 0);
-		if (isMainThread) {
-			hash = 31 * hash + subpartitionIndex;
+		if (isMainThread)
 			return hash;
-		}
 
-		hash = (int) (31 * hash + intermediateDataSetLower);
-		hash = (int) (31 * hash + intermediateDataSetUpper);
+		hash = 31 * hash + (int) (intermediateDataSetLower ^ (intermediateDataSetLower >>> 32));
+		hash = 31 * hash + (int) (intermediateDataSetUpper ^ (intermediateDataSetUpper >>> 32));
 		hash = 31 * hash + subpartitionIndex;
 		return hash;
-	}
-
-	@Override
-	public int compareTo(CausalLogID that) {
-		if (this.vertexID != that.vertexID)
-			return this.vertexID - that.vertexID; //Different vertexIDs => smaller one is smallest
-
-		if (this.isMainThread != that.isMainThread) { //Different isMainThread => Main threads are smaller
-			if (this.isMainThread)
-				return -1;
-			return 1;
-		}
-
-		if (this.isMainThread) // Both are main thread => equal
-			return 0;
-
-		if (this.intermediateDataSetUpper != that.intermediateDataSetUpper)
-			return (int) (this.intermediateDataSetUpper - that.intermediateDataSetUpper);
-
-		if (this.intermediateDataSetLower != that.intermediateDataSetLower)
-			return (int) (this.intermediateDataSetLower - that.intermediateDataSetLower);
-
-		if (this.subpartitionIndex != that.subpartitionIndex)
-			return this.subpartitionIndex - that.subpartitionIndex;
-
-		return 0;
 	}
 
 	@Override
