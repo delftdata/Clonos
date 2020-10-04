@@ -26,7 +26,9 @@
 package org.apache.flink.runtime.causal.services;
 
 import org.apache.flink.runtime.causal.EpochProvider;
+import org.apache.flink.runtime.causal.log.job.CausalLogID;
 import org.apache.flink.runtime.causal.log.job.JobCausalLog;
+import org.apache.flink.runtime.causal.log.thread.ThreadCausalLog;
 import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 
 /**
@@ -39,8 +41,8 @@ public abstract class AbstractCausalService {
 	// Causal services will request replay of a single nondeterministic event from the recovery manager
 	protected final IRecoveryManager recoveryManager;
 
-	// Causal services will append the determinant of a single nondeterministic event to the causal logging manager
-	protected final JobCausalLog causalLog;
+	// Causal services will append the determinant of a single nondeterministic event to the main thread log
+	protected final ThreadCausalLog threadCausalLog;
 
 	// Causal services need to know to which epoch this nondeterministic event belongs to
 	protected final EpochProvider epochProvider;
@@ -50,7 +52,8 @@ public abstract class AbstractCausalService {
 
 	public AbstractCausalService(JobCausalLog causalLog, IRecoveryManager recoveryManager,
 								 EpochProvider epochProvider){
-		this.causalLog = causalLog;
+		CausalLogID causalLogID = new CausalLogID(causalLog.getLocalVertexID());
+		this.threadCausalLog = causalLog.getThreadCausalLog(causalLogID);
 		this.recoveryManager = recoveryManager;
 		this.epochProvider = epochProvider;
 		this.isRecovering = !recoveryManager.isRunning();

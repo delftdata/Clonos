@@ -21,6 +21,7 @@ package org.apache.flink.runtime.io.network.partition;
 import org.apache.flink.runtime.causal.determinant.BufferBuiltDeterminant;
 import org.apache.flink.runtime.causal.log.job.CausalLogID;
 import org.apache.flink.runtime.causal.log.job.JobCausalLog;
+import org.apache.flink.runtime.causal.log.thread.ThreadCausalLog;
 import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 import org.apache.flink.runtime.inflightlogging.*;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
@@ -71,8 +72,8 @@ public class PipelinedSubpartition extends ResultSubpartition {
 	private volatile boolean isReleased;
 	// ------------------------------------------------------------------------
 
-	private InFlightLog inFlightLog;
-	private JobCausalLog jobCausalLog;
+	private final InFlightLog inFlightLog;
+	private ThreadCausalLog subpartitionThreadCausalLog;
 	private IRecoveryManager recoveryManager;
 
 	private long nextCheckpointId;
@@ -98,7 +99,6 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 	private BufferBuiltDeterminant reuseBufferBuiltDeterminant;
 
-	private CausalLogID causalLogID;
 
 	PipelinedSubpartition(int index, ResultPartition parent) {
 		this(index, parent, null);
@@ -130,10 +130,10 @@ public class PipelinedSubpartition extends ResultSubpartition {
 	}
 
 	public void setCausalLog(JobCausalLog causalLog) {
-		this.jobCausalLog = causalLog;
 		IntermediateResultPartitionID partitionID = parent.getPartitionId().getPartitionId();
-		this.causalLogID = new CausalLogID(causalLog.getLocalVertexID(), partitionID.getLowerPart(),
+		CausalLogID causalLogID = new CausalLogID(causalLog.getLocalVertexID(), partitionID.getLowerPart(),
 			partitionID.getUpperPart(), (byte) index);
+		this.subpartitionThreadCausalLog = causalLog.getThreadCausalLog(causalLogID);
 	}
 
 	public InFlightLog getInFlightLog() {
@@ -389,7 +389,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 			return null;
 		}
 
-		jobCausalLog.appendDeterminant(causalLogID, reuseBufferBuiltDeterminant.replace(buffer.readableBytes())
+		subpartitionThreadCausalLog.appendDeterminant(reuseBufferBuiltDeterminant.replace(buffer.readableBytes())
 			, currentEpochID);
 		inFlightLog.log(buffer, currentEpochID, isFinished);
 
@@ -608,8 +608,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 		//This assumes that the input buffers which are before this close in the determinant log have
 		// been
 		// fully processed, thus the bufferconsumer will have this amount of data.
-		jobCausalLog.appendDeterminant(causalLogID,
-			reuseBufferBuiltDeterminant.replace(bufferSize), currentEpochID);
+		subpartitionThreadCausalLog.appendDeterminant(reuseBufferBuiltDeterminant.replace(bufferSize), currentEpochID);
 		Buffer buffer = consumer.build(bufferSize);
 
 

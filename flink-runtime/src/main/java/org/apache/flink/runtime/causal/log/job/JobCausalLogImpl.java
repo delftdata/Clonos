@@ -140,6 +140,11 @@ public class JobCausalLogImpl implements JobCausalLog {
 	}
 
 	@Override
+	public ThreadCausalLog getThreadCausalLog(CausalLogID causalLogID) {
+		return flatThreadCausalLogs.get(causalLogID);
+	}
+
+	@Override
 	public void processCausalLogDelta(ByteBuf msg) {
 		deltaSerdeStrategy.processCausalLogDelta(msg);
 	}
@@ -147,18 +152,6 @@ public class JobCausalLogImpl implements JobCausalLog {
 	@Override
 	public ByteBuf enrichWithCausalLogDelta(ByteBuf serialized, InputChannelID outputChannelID, long epochID) {
 		return deltaSerdeStrategy.enrichWithCausalLogDelta(serialized, outputChannelID, epochID);
-	}
-
-	@Override
-	public void appendDeterminant(CausalLogID causalLogID, Determinant determinant, long epochID) {
-		flatThreadCausalLogs.get(causalLogID).appendDeterminant(determinant, epochID);
-	}
-
-	@Override
-	public void appendDeterminant(Determinant determinant, long epochID) {
-		//assert (Thread.holdsLock(lock));
-		flatThreadCausalLogs.get(localMainThreadCausalLogID).appendDeterminant(determinant, epochID);
-
 	}
 
 	@Override

@@ -63,7 +63,7 @@ public class CausalTimeService extends AbstractCausalService implements TimeServ
 
 		//Whether we are recovering or not, we append the determinant. If recovering, we still need to restore the
 		// causal log to the pre-failure state.
-		causalLog.appendDeterminant(reuseTimestampDeterminant.replace(toReturn),
+		threadCausalLog.appendDeterminant(reuseTimestampDeterminant.replace(toReturn),
 			epochProvider.getCurrentEpochID());
 
 		return toReturn;

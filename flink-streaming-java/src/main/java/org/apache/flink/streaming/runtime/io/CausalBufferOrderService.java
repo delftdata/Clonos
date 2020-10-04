@@ -91,7 +91,7 @@ public class CausalBufferOrderService extends AbstractCausalService implements B
 		else
 			toReturn = getNextNonBlockedNew();
 
-		causalLog.appendDeterminant(reuseOrderDeterminant.replace((byte) toReturn.getChannelIndex()),
+		threadCausalLog.appendDeterminant(reuseOrderDeterminant.replace((byte) toReturn.getChannelIndex()),
 			epochProvider.getCurrentEpochID());
 
 		return toReturn;

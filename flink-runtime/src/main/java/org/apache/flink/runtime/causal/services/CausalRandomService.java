@@ -72,7 +72,7 @@ public class CausalRandomService extends AbstractCausalService implements Random
 
 		//Whether we are recovering or not, we append the determinant. If recovering, we still need to restore the
 		// causal log to the pre-failure state.
-		causalLog.appendDeterminant(reuseRNGDeterminant.replace(toReturn),
+		threadCausalLog.appendDeterminant(reuseRNGDeterminant.replace(toReturn),
 			epochProvider.getCurrentEpochID());
 		return toReturn;
 	}

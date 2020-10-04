@@ -29,6 +29,7 @@ import org.apache.flink.runtime.causal.DeterminantResponseEvent;
 import org.apache.flink.runtime.causal.VertexID;
 import org.apache.flink.runtime.causal.determinant.Determinant;
 import org.apache.flink.runtime.causal.determinant.DeterminantEncoder;
+import org.apache.flink.runtime.causal.log.thread.ThreadCausalLog;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
@@ -44,13 +45,11 @@ public interface JobCausalLog {
 
 	short getLocalVertexID();
 
+	ThreadCausalLog getThreadCausalLog(CausalLogID causalLogID);
+
 	void processCausalLogDelta(ByteBuf msg);
 
 	ByteBuf enrichWithCausalLogDelta(ByteBuf serialized, InputChannelID inputChannelID, long epochID);
-
-	void appendDeterminant(CausalLogID causalLogID, Determinant determinant, long epochID);
-
-	void appendDeterminant(Determinant determinant, long epochID);
 
 	DeterminantResponseEvent respondToDeterminantRequest(VertexID vertexId, long startEpochID);
 
