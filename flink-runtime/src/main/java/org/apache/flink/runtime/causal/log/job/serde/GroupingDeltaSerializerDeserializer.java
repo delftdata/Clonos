@@ -51,10 +51,10 @@ public final class GroupingDeltaSerializerDeserializer extends AbstractDeltaSeri
 
 
 	public GroupingDeltaSerializerDeserializer(ConcurrentMap<CausalLogID, ThreadCausalLog> threadCausalLogs,
-											   ConcurrentMap<Short, VertexCausalLogs> hierarchicalThreadCausalLogs,
+											   ConcurrentMap<Short, VertexCausalLogs> hierarchicalThreadCausalLogsToBeShared,
 											   Map<Short, Integer> vertexIDToDistance, int determinantSharingDepth,
 											   short localVertexID, BufferPool determinantBufferPool) {
-		super(threadCausalLogs, hierarchicalThreadCausalLogs, vertexIDToDistance, determinantSharingDepth,
+		super(threadCausalLogs, hierarchicalThreadCausalLogsToBeShared, vertexIDToDistance, determinantSharingDepth,
 			localVertexID, determinantBufferPool);
 	}
 
@@ -88,11 +88,9 @@ public final class GroupingDeltaSerializerDeserializer extends AbstractDeltaSeri
 	protected void serializeDataStrategy(InputChannelID outputChannelID, long epochID, CompositeByteBuf composite,
 										 ByteBuf deltaHeader) {
 		CausalLogID outputChannelSpecificCausalLog = outputChannelSpecificCausalLogs.get(outputChannelID);
-		for (VertexCausalLogs v : hierarchicalThreadCausalLogs.values()) {
-			int distance = Math.abs(vertexIDToDistance.get(v.getVertexID()));
-			if (determinantSharingDepth == -1 || distance + 1 <= determinantSharingDepth)
-				serializeVertex(outputChannelID, epochID, composite, deltaHeader, outputChannelSpecificCausalLog, v);
-		}
+		for (VertexCausalLogs v : hierarchicalThreadCausalLogsToBeShared.values())
+			serializeVertex(outputChannelID, epochID, composite, deltaHeader, outputChannelSpecificCausalLog, v);
+
 
 	}
 

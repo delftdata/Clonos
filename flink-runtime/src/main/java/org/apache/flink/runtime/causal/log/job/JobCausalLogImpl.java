@@ -28,7 +28,6 @@ package org.apache.flink.runtime.causal.log.job;
 import org.apache.flink.runtime.causal.DeterminantResponseEvent;
 import org.apache.flink.runtime.causal.VertexGraphInformation;
 import org.apache.flink.runtime.causal.VertexID;
-import org.apache.flink.runtime.causal.determinant.Determinant;
 import org.apache.flink.runtime.causal.determinant.DeterminantEncoder;
 import org.apache.flink.runtime.causal.determinant.SimpleDeterminantEncoder;
 import org.apache.flink.runtime.causal.log.job.hierarchy.PartitionCausalLogs;
@@ -53,9 +52,14 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.stream.Collectors;
 
 /**
- * This implementation of the {@link JobCausalLog} maintains both a flat and a hierarchical data-structure of the {@link ThreadCausalLog}s of the job.
- * The Flat data-structure is used for accesses by {@link CausalLogID}, while the hierarchical data-structure is maintained for easy
- * serialization and deserialization using the {@link GroupingDeltaSerializerDeserializer}, which saves on metadata transmitted.
+ * This implementation of the {@link JobCausalLog} maintains both a flat and a hierarchical data-structure of the
+ * {@link ThreadCausalLog}s of the job.
+ * The Flat data-structure is used for accesses by {@link CausalLogID}, while the hierarchical data-structure is
+ * maintained for easy serialization and deserialization using the {@link GroupingDeltaSerializerDeserializer}, which saves on metadata
+ * transmitted.
+ *
+ * To avoid auto-boxing concerns with the vertexIDToDistance map, we also only store the logs to share downstream
+ * in the hierarchical structure.
  */
 public class JobCausalLogImpl implements JobCausalLog {
 	private static final Logger LOG = LoggerFactory.getLogger(JobCausalLogImpl.class);
@@ -65,16 +69,14 @@ public class JobCausalLogImpl implements JobCausalLog {
 
 	private final int determinantSharingDepth;
 
-	//TODO now we are boxing shorts to send downstream... We can have another list of the logs to share downstream
 	private final Map<Short, Integer> vertexIDToDistance;
 
 	private final ConcurrentMap<CausalLogID, ThreadCausalLog> flatThreadCausalLogs;
 
-	private final ConcurrentMap<Short, VertexCausalLogs> hierarchicalThreadCausalLogs;
+	// Stores the logs to be shared downstream (regarding determinant sharing depth), in a hierarchical fashion
+	private final ConcurrentMap<Short, VertexCausalLogs> hierarchicalThreadCausalLogsToBeShared;
 
 	private final CausalLogID localMainThreadCausalLogID;
-
-	private final short localVertexID;
 
 	private final DeltaSerializerDeserializer deltaSerdeStrategy;
 
@@ -83,7 +85,6 @@ public class JobCausalLogImpl implements JobCausalLog {
 							DeltaEncodingStrategy deltaEncodingStrategy) {
 		this.vertexIDToDistance =
 			vertexGraphInformation.getDistances().entrySet().stream().collect(Collectors.toMap(e -> e.getKey().getVertexId(), Map.Entry::getValue));
-		this.localVertexID = vertexGraphInformation.getThisTasksVertexID().getVertexId();
 		this.determinantSharingDepth = determinantSharingDepth;
 		this.encoder = new SimpleDeterminantEncoder();
 
@@ -92,51 +93,59 @@ public class JobCausalLogImpl implements JobCausalLog {
 
 		//Create thread logs for local task main thread and subpartition threads.
 		flatThreadCausalLogs = new ConcurrentHashMap<>();
-		hierarchicalThreadCausalLogs = new ConcurrentHashMap<>();
+		hierarchicalThreadCausalLogsToBeShared = new ConcurrentHashMap<>();
 		registerLocalThreadLogs(resultPartitionsOfLocalVertex, bufferPool, localVertexID);
 
 		if (deltaEncodingStrategy.equals(DeltaEncodingStrategy.FLAT))
 			this.deltaSerdeStrategy = new FlatDeltaSerializerDeserializer(flatThreadCausalLogs,
-				hierarchicalThreadCausalLogs, vertexIDToDistance, determinantSharingDepth, localVertexID, bufferPool);
+				hierarchicalThreadCausalLogsToBeShared, vertexIDToDistance, determinantSharingDepth, localVertexID,
+				bufferPool);
 		else
 			this.deltaSerdeStrategy = new GroupingDeltaSerializerDeserializer(flatThreadCausalLogs,
-				hierarchicalThreadCausalLogs, vertexIDToDistance, determinantSharingDepth, localVertexID, bufferPool);
+				hierarchicalThreadCausalLogsToBeShared, vertexIDToDistance, determinantSharingDepth, localVertexID,
+				bufferPool);
 	}
 
 	private void registerLocalThreadLogs(ResultPartitionWriter[] resultPartitionsOfLocalVertex, BufferPool bufferPool,
 										 short localVertexID) {
-
-		VertexCausalLogs hierarchicalVertexCausalLogs = new VertexCausalLogs(localVertexID);
-		hierarchicalThreadCausalLogs.put(localVertexID, hierarchicalVertexCausalLogs);
 		//Register the main thread log
 		ThreadCausalLog mainThreadLog = new ThreadCausalLogImpl(bufferPool, localMainThreadCausalLogID, encoder);
 		flatThreadCausalLogs.put(localMainThreadCausalLogID, mainThreadLog);
-		hierarchicalVertexCausalLogs.mainThreadLog.set(mainThreadLog);
+		VertexCausalLogs hierarchicalVertexCausalLogs = null;
+		if (determinantSharingDepth != 0) {
+			hierarchicalVertexCausalLogs = new VertexCausalLogs(localVertexID);
+			hierarchicalThreadCausalLogsToBeShared.put(localVertexID, hierarchicalVertexCausalLogs);
+			hierarchicalVertexCausalLogs.mainThreadLog.set(mainThreadLog);
+		}
 
 		//Register the Partitions
 		for (ResultPartitionWriter writer : resultPartitionsOfLocalVertex) {
 			IntermediateResultPartitionID intermediateResultPartitionID = writer.getPartitionId().getPartitionId();
 			long partitionIDLower = intermediateResultPartitionID.getLowerPart();
 			long partitionIDUpper = intermediateResultPartitionID.getUpperPart();
-
-			PartitionCausalLogs hierarchicalPartitionCausalLogs =
-				new PartitionCausalLogs(intermediateResultPartitionID);
-			hierarchicalVertexCausalLogs.partitionCausalLogs.put(intermediateResultPartitionID,hierarchicalPartitionCausalLogs);
+			PartitionCausalLogs hierarchicalPartitionCausalLogs = null;
+			if (determinantSharingDepth != 0) {
+				hierarchicalPartitionCausalLogs = new PartitionCausalLogs(intermediateResultPartitionID);
+				hierarchicalVertexCausalLogs.partitionCausalLogs.put(intermediateResultPartitionID,
+					hierarchicalPartitionCausalLogs);
+			}
 
 			//Register the subpartitions
 			for (int i = 0; i < writer.getNumberOfSubpartitions(); i++) {
 				CausalLogID subpartitionCausalLogID = new CausalLogID(localVertexID, partitionIDLower,
 					partitionIDUpper, (byte) i);
-				ThreadCausalLog subpartitionThreadCausalLog = new ThreadCausalLogImpl(bufferPool, subpartitionCausalLogID, encoder);
+				ThreadCausalLog subpartitionThreadCausalLog = new ThreadCausalLogImpl(bufferPool,
+					subpartitionCausalLogID, encoder);
 				flatThreadCausalLogs.put(subpartitionCausalLogID, subpartitionThreadCausalLog);
-				hierarchicalPartitionCausalLogs.subpartitionLogs.put((byte) i, subpartitionThreadCausalLog);
+				if(determinantSharingDepth != 0)
+					hierarchicalPartitionCausalLogs.subpartitionLogs.put((byte) i, subpartitionThreadCausalLog);
 			}
 		}
 	}
 
 	@Override
 	public short getLocalVertexID() {
-		return localVertexID;
+		return localMainThreadCausalLogID.getVertexID();
 	}
 
 	@Override
@@ -163,13 +172,9 @@ public class JobCausalLogImpl implements JobCausalLog {
 			short vertex = vertexId.getVertexId();
 			Map<CausalLogID, ByteBuf> determinants = new HashMap<>();
 
-			VertexCausalLogs v = hierarchicalThreadCausalLogs.get(vertex);
-			ThreadCausalLog mainThreadLog = v.mainThreadLog.get();
-			if(mainThreadLog != null)
-				determinants.put(mainThreadLog.getCausalLogID(), mainThreadLog.getDeterminants(startEpochID));
-			for(PartitionCausalLogs p : v.partitionCausalLogs.values())
-				for(ThreadCausalLog t: p.subpartitionLogs.values())
-					determinants.put(t.getCausalLogID(), t.getDeterminants(startEpochID));
+			for (Map.Entry<CausalLogID, ThreadCausalLog> e : flatThreadCausalLogs.entrySet())
+				if (e.getKey().isForVertex(vertex))
+					determinants.put(e.getKey(), e.getValue().getDeterminants(startEpochID));
 
 			return new DeterminantResponseEvent(vertexId, determinants);
 		}
@@ -179,7 +184,7 @@ public class JobCausalLogImpl implements JobCausalLog {
 	public void registerDownstreamConsumer(InputChannelID outputChannelID,
 										   IntermediateResultPartitionID intermediateResultPartitionID,
 										   int consumedSubpartition) {
-		CausalLogID consumedCausalLog = new CausalLogID(this.localVertexID,
+		CausalLogID consumedCausalLog = new CausalLogID(this.localMainThreadCausalLogID.getVertexID(),
 			intermediateResultPartitionID.getLowerPart(),
 			intermediateResultPartitionID.getUpperPart(), (byte) consumedSubpartition);
 
@@ -212,14 +217,14 @@ public class JobCausalLogImpl implements JobCausalLog {
 
 	@Override
 	public int mainThreadLogLength() {
-		CausalLogID mainThreadID = new CausalLogID(localVertexID);
-		return flatThreadCausalLogs.get(mainThreadID).logLength();
+		return flatThreadCausalLogs.get(localMainThreadCausalLogID).logLength();
 	}
 
 	@Override
 	public int subpartitionLogLength(IntermediateResultPartitionID intermediateResultPartitionID,
 									 int subpartitionIndex) {
-		CausalLogID subpartitionID = new CausalLogID(localVertexID, intermediateResultPartitionID.getLowerPart(),
+		CausalLogID subpartitionID = new CausalLogID(localMainThreadCausalLogID.getVertexID(),
+			intermediateResultPartitionID.getLowerPart(),
 			intermediateResultPartitionID.getUpperPart(), (byte) subpartitionIndex);
 		return flatThreadCausalLogs.get(subpartitionID).logLength();
 	}

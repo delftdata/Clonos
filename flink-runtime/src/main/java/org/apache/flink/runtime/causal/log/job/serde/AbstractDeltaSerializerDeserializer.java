@@ -49,7 +49,7 @@ import java.util.concurrent.ConcurrentMap;
 public abstract class AbstractDeltaSerializerDeserializer implements DeltaSerializerDeserializer {
 	protected final ConcurrentMap<CausalLogID, ThreadCausalLog> threadCausalLogs;
 
-	protected final ConcurrentMap<Short, VertexCausalLogs> hierarchicalThreadCausalLogs;
+	protected final ConcurrentMap<Short, VertexCausalLogs> hierarchicalThreadCausalLogsToBeShared;
 
 	protected final BufferPool determinantBufferPool;
 
@@ -66,11 +66,11 @@ public abstract class AbstractDeltaSerializerDeserializer implements DeltaSerial
 	protected static final Logger LOG = LoggerFactory.getLogger(AbstractDeltaSerializerDeserializer.class);
 
 	public AbstractDeltaSerializerDeserializer(ConcurrentMap<CausalLogID, ThreadCausalLog> threadCausalLogs,
-											   ConcurrentMap<Short, VertexCausalLogs> hierarchicalThreadCausalLogs,
+											   ConcurrentMap<Short, VertexCausalLogs> hierarchicalThreadCausalLogsToBeShared,
 											   Map<Short, Integer> vertexIDToDistance, int determinantSharingDepth,
 											   short localVertexID, BufferPool determinantBufferPool) {
 		this.threadCausalLogs = threadCausalLogs;
-		this.hierarchicalThreadCausalLogs = hierarchicalThreadCausalLogs;
+		this.hierarchicalThreadCausalLogsToBeShared = hierarchicalThreadCausalLogsToBeShared;
 		this.outputChannelSpecificCausalLogs = new HashMap<>();
 		this.determinantBufferPool = determinantBufferPool;
 		this.vertexIDToDistance = vertexIDToDistance;
@@ -160,20 +160,24 @@ public abstract class AbstractDeltaSerializerDeserializer implements DeltaSerial
 		//Put it in the flat map
 		threadCausalLogs.put(idToInsert, newCausalLog);
 
-		//Put it in the hierarchical structure as well
-		VertexCausalLogs v = hierarchicalThreadCausalLogs.computeIfAbsent(idToInsert.getVertexID(),
-			VertexCausalLogs::new);
-		if (idToInsert.isMainThread()) {
-			//If this is a main thread log, set it as the main thread log.
-			v.mainThreadLog.set(newCausalLog);
-		} else {
-			//Otherwise, it is a partition log.
-			IntermediateResultPartitionID partitionID =
-				new IntermediateResultPartitionID(idToInsert.getIntermediateDataSetLower(),
-					idToInsert.getIntermediateDataSetUpper());
-			PartitionCausalLogs p =
-				v.partitionCausalLogs.computeIfAbsent(partitionID, PartitionCausalLogs::new);
-			p.subpartitionLogs.putIfAbsent(idToInsert.getSubpartitionIndex(), newCausalLog);
+		int distance = Math.abs(vertexIDToDistance.get(causalLogID.getVertexID()));
+		//If this log is meant to be shared downstream.
+		if (determinantSharingDepth == -1 || distance + 1 <= determinantSharingDepth) {
+			//Put it in the hierarchical structure as well
+			VertexCausalLogs v = hierarchicalThreadCausalLogsToBeShared.computeIfAbsent(idToInsert.getVertexID(),
+				VertexCausalLogs::new);
+			if (idToInsert.isMainThread()) {
+				//If this is a main thread log, set it as the main thread log.
+				v.mainThreadLog.set(newCausalLog);
+			} else {
+				//Otherwise, it is a partition log.
+				IntermediateResultPartitionID partitionID =
+					new IntermediateResultPartitionID(idToInsert.getIntermediateDataSetLower(),
+						idToInsert.getIntermediateDataSetUpper());
+				PartitionCausalLogs p =
+					v.partitionCausalLogs.computeIfAbsent(partitionID, PartitionCausalLogs::new);
+				p.subpartitionLogs.putIfAbsent(idToInsert.getSubpartitionIndex(), newCausalLog);
+			}
 		}
 	}
 

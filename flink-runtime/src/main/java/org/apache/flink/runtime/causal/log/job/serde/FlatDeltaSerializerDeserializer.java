@@ -33,16 +33,19 @@ import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 import org.apache.flink.shaded.netty4.io.netty.buffer.CompositeByteBuf;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentMap;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public final class FlatDeltaSerializerDeserializer extends AbstractDeltaSerializerDeserializer {
 
 	public FlatDeltaSerializerDeserializer(ConcurrentMap<CausalLogID, ThreadCausalLog> threadCausalLogs,
-										   ConcurrentMap<Short, VertexCausalLogs> hierarchicalThreadCausalLogs,
+										   ConcurrentMap<Short, VertexCausalLogs> hierarchicalThreadCausalLogsToBeShared,
 										   Map<Short, Integer> vertexIDToDistance, int determinantSharingDepth,
 										   short localVertexID, BufferPool determinantBufferPool) {
-		super(threadCausalLogs, hierarchicalThreadCausalLogs, vertexIDToDistance, determinantSharingDepth,
+		super(threadCausalLogs, hierarchicalThreadCausalLogsToBeShared, vertexIDToDistance, determinantSharingDepth,
 			localVertexID, determinantBufferPool);
 	}
 
@@ -51,21 +54,27 @@ public final class FlatDeltaSerializerDeserializer extends AbstractDeltaSerializ
 										 ByteBuf deltaHeader) {
 		CausalLogID outputChannelSpecificCausalLog = outputChannelSpecificCausalLogs.get(outputChannelID);
 
-		for (Map.Entry<CausalLogID, ThreadCausalLog> entry : threadCausalLogs.entrySet()) {
-			CausalLogID currCID = entry.getKey();
-			ThreadCausalLog log = entry.getValue();
+		List<ThreadCausalLog> flattenedToShare =
+			hierarchicalThreadCausalLogsToBeShared.values().stream().flatMap(v -> {
+				Stream<ThreadCausalLog> s =
+					v.partitionCausalLogs.values().stream().flatMap(p -> p.subpartitionLogs.values().stream());
+				ThreadCausalLog mainThreadLog = v.mainThreadLog.get();
+				if (mainThreadLog != null)
+					s = Stream.concat(Stream.of(mainThreadLog), s);
+				return s;
+			}).collect(Collectors.toList());
+
+		for (ThreadCausalLog log : flattenedToShare) {
+			CausalLogID currCID = log.getCausalLogID();
 
 			short currentVertex = currCID.getVertexID();
-			int distance = Math.abs(vertexIDToDistance.get(currentVertex));
 
-			if (determinantSharingDepth == -1 || distance + 1 <= determinantSharingDepth) {
-				if (currentVertex != localVertexID || currCID.isMainThread() || outputChannelSpecificCausalLog.equals(currCID)) {
-					if (log.hasDeltaForConsumer(outputChannelID, epochID)) {
-						//serializeID
-						serializeCausalLogID(deltaHeader, currCID);
-						//serialize delta
-						serializeThreadDelta(outputChannelID, epochID, composite, deltaHeader, log);
-					}
+			if (currentVertex != localVertexID || currCID.isMainThread() || outputChannelSpecificCausalLog.equals(currCID)) {
+				if (log.hasDeltaForConsumer(outputChannelID, epochID)) {
+					//serializeID
+					serializeCausalLogID(deltaHeader, currCID);
+					//serialize delta
+					serializeThreadDelta(outputChannelID, epochID, composite, deltaHeader, log);
 				}
 			}
 		}
