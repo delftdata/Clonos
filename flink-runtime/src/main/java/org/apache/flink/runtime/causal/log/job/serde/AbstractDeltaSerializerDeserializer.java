@@ -36,7 +36,6 @@ import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBufAllocator;
 import org.apache.flink.shaded.netty4.io.netty.buffer.CompositeByteBuf;
-import org.apache.flink.shaded.netty4.io.netty.util.internal.ConcurrentSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -44,6 +43,9 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentMap;
 
+/**
+ * Sets up the basic serialization metadata used by all strategies.
+ */
 public abstract class AbstractDeltaSerializerDeserializer implements DeltaSerializerDeserializer {
 	protected final ConcurrentMap<CausalLogID, ThreadCausalLog> threadCausalLogs;
 
@@ -91,7 +93,8 @@ public abstract class AbstractDeltaSerializerDeserializer implements DeltaSerial
 
 		deltaHeader.setInt(0, deltaHeader.readableBytes());
 
-		LOG.info("enrichWithCausalLogDelta: headerBytes: {}, epochID: {}", deltaHeader.readableBytes(), epochID);
+		if(LOG.isDebugEnabled())
+			LOG.debug("enrichWithCausalLogDelta: headerBytes: {}, epochID: {}", deltaHeader.readableBytes(), epochID);
 
 		int addedSize = composite.readableBytes() + deltaHeader.readableBytes();
 
@@ -114,7 +117,8 @@ public abstract class AbstractDeltaSerializerDeserializer implements DeltaSerial
 		int deltaIndex = headerBytesEnd;
 		long epochID = msg.readLong();
 
-		LOG.info("processCausalLogDelta: headerBytes: {}, epochID: {}", headerBytes, epochID);
+		if(LOG.isDebugEnabled())
+			LOG.debug("processCausalLogDelta: headerBytes: {}, epochID: {}", headerBytes, epochID);
 
 		while (msg.readerIndex() < headerBytesEnd) {
 			// Call the strategy specific deserialization routine
@@ -138,7 +142,8 @@ public abstract class AbstractDeltaSerializerDeserializer implements DeltaSerial
 		int bufferSize = msg.readInt();
 		ByteBuf delta = msg.retainedSlice(deltaIndex, bufferSize);
 
-		LOG.info("processThreadDelta: causalLogID: {}, offsetOfConsumer: {}, bufSize: {}", causalLogID,
+		if(LOG.isDebugEnabled())
+			LOG.debug("processThreadDelta: causalLogID: {}, offsetOfConsumer: {}, bufSize: {}", causalLogID,
 			offsetFromEpoch, bufferSize);
 		threadLog.processUpstreamDelta(delta, offsetFromEpoch, epochID);
 
@@ -146,7 +151,8 @@ public abstract class AbstractDeltaSerializerDeserializer implements DeltaSerial
 	}
 
 	private void insertNewUpstreamLog(CausalLogID causalLogID) {
-		LOG.info("Inserting a new Upstream Log for {}", causalLogID);
+		if(LOG.isDebugEnabled())
+			LOG.debug("Inserting a new Upstream Log for {}", causalLogID);
 		//If that mapping is not present, we need to clone the key, so it is not mutated
 		CausalLogID idToInsert = new CausalLogID(causalLogID);
 
@@ -178,7 +184,8 @@ public abstract class AbstractDeltaSerializerDeserializer implements DeltaSerial
 		deltaHeader.writeInt(offsetOfConsumer);
 		ByteBuf deltaBuf = log.getDeltaForConsumer(outputChannelID, epochID);
 		deltaHeader.writeInt(deltaBuf.readableBytes());
-		LOG.info("serializeDelta: causalLogID: {}, offsetOfConsumer: {}, bufSize: {}", causalLogID, offsetOfConsumer,
+		if(LOG.isDebugEnabled())
+			LOG.debug("serializeDelta: causalLogID: {}, offsetOfConsumer: {}, bufSize: {}", causalLogID, offsetOfConsumer,
 			deltaBuf.readableBytes());
 		composite.addComponent(true, deltaBuf);
 	}

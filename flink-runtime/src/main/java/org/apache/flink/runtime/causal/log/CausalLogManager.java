@@ -141,7 +141,8 @@ public class CausalLogManager {
 
 	public ByteBuf enrichWithCausalLogDeltas(ByteBuf serialized, InputChannelID outputChannelID, long epochID) {
 		JobCausalLog log;
-		LOG.debug("Get next determinants for channel {}", outputChannelID);
+		if(LOG.isDebugEnabled())
+			LOG.debug("Get next determinants for channel {}", outputChannelID);
 		synchronized (outputChannelIDToCausalLog) {
 			log = outputChannelIDToCausalLog.get(outputChannelID);
 			while (log == null) {

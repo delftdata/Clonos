@@ -151,14 +151,12 @@ public class JobCausalLogImpl implements JobCausalLog {
 
 	@Override
 	public void appendDeterminant(CausalLogID causalLogID, Determinant determinant, long epochID) {
-		LOG.info("Appending Determinant {} to CausalLog {}", determinant, causalLogID);
 		flatThreadCausalLogs.get(causalLogID).appendDeterminant(determinant, epochID);
 	}
 
 	@Override
 	public void appendDeterminant(Determinant determinant, long epochID) {
 		//assert (Thread.holdsLock(lock));
-		LOG.info("Appending Determinant {} to main thread CausalLog {}", determinant, localMainThreadCausalLogID);
 		flatThreadCausalLogs.get(localMainThreadCausalLogID).appendDeterminant(determinant, epochID);
 
 	}

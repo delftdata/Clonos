@@ -29,10 +29,27 @@ import org.apache.flink.runtime.causal.log.job.CausalLogID;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 
+/**
+ * Packages the logic for serializing and deserializing causal log deltas.
+ */
 public interface DeltaSerializerDeserializer {
+	/**
+	 * Takes a data buffer and piggybacks the appropriate causal log deltas.
+	 * @param serialized the data buffer to piggyback onto
+	 * @param outputChannelID the output channel to send deltas to. Used for causal log offsets.
+	 * @param epochID the epoch at which the downstream is.
+	 * @return the data buffer with piggybacked deltas, ready to be sent.
+	 */
     ByteBuf enrichWithCausalLogDelta(ByteBuf serialized, InputChannelID outputChannelID, long epochID);
 
+	/**
+	 * Deserializes the piggybacked thread causal deltas.
+	 * @param msg the buffer to be deserialized
+	 */
 	void processCausalLogDelta(ByteBuf msg);
 
+	/**
+	 * Notifies the Serializer of what causalLogIDs the output channel consumes
+	 */
     void registerDownstreamConsumer(InputChannelID outputChannelID, CausalLogID consumedCausalLog);
 }
