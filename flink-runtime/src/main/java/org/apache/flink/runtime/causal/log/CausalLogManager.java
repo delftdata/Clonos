@@ -46,6 +46,8 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * The {@link CausalLogManager} manages the CausalLogs of different jobs as {@link JobCausalLog}s.
  * A {@link JobCausalLog} gets its own BufferPool for storing determinants
+ * <p>
+ * It also tracks the input and output channel IDs and connecting them the the Job causal logs to which they belong.
  */
 public class CausalLogManager {
 
@@ -67,7 +69,8 @@ public class CausalLogManager {
 	//TODO would be awesome to remove all this synchronization
 	public CausalLogManager(NetworkBufferPool determinantBufferPool, int numDeterminantBuffersPerTask,
 							DeltaEncodingStrategy deltaEncodingStrategy) {
-		this.jobCausalLogFactory = new JobCausalLogFactory(determinantBufferPool, numDeterminantBuffersPerTask, deltaEncodingStrategy);
+		this.jobCausalLogFactory = new JobCausalLogFactory(determinantBufferPool, numDeterminantBuffersPerTask,
+			deltaEncodingStrategy);
 
 		this.jobIDToManagerMap = new HashMap<>();
 		this.outputChannelIDToCausalLog = new HashMap<>();
@@ -80,7 +83,8 @@ public class CausalLogManager {
 									   ResultPartitionWriter[] resultPartitionsOfLocalVertex) {
 		LOG.info("Registering a new Job {}.", jobID);
 
-		JobCausalLog causalLog = jobCausalLogFactory.buildJobCausalLog(vertexGraphInformation, resultPartitionsOfLocalVertex, determinantSharingDepth);
+		JobCausalLog causalLog = jobCausalLogFactory.buildJobCausalLog(vertexGraphInformation,
+			resultPartitionsOfLocalVertex, determinantSharingDepth);
 
 		synchronized (jobIDToManagerMap) {
 			jobIDToManagerMap.put(jobID, causalLog);
@@ -135,21 +139,21 @@ public class CausalLogManager {
 		JobCausalLog jobCausalLog = getJobCausalLog(jobID);
 
 		jobCausalLog.close();
-
-
 	}
 
 	public ByteBuf enrichWithCausalLogDeltas(ByteBuf serialized, InputChannelID outputChannelID, long epochID) {
-		JobCausalLog log;
-		if(LOG.isDebugEnabled())
+		if (LOG.isDebugEnabled())
 			LOG.debug("Get next determinants for channel {}", outputChannelID);
-		synchronized (outputChannelIDToCausalLog) {
-			log = outputChannelIDToCausalLog.get(outputChannelID);
-			while (log == null) {
-				if (removedOutputChannels.containsKey(outputChannelID))
-					return serialized;
-				waitUninterruptedly(outputChannelIDToCausalLog);
+		JobCausalLog log = outputChannelIDToCausalLog.get(outputChannelID);
+		if (log == null) {
+			synchronized (outputChannelIDToCausalLog) {
 				log = outputChannelIDToCausalLog.get(outputChannelID);
+				while (log == null) {
+					if (removedOutputChannels.containsKey(outputChannelID))
+						return serialized;
+					waitUninterruptedly(outputChannelIDToCausalLog);
+					log = outputChannelIDToCausalLog.get(outputChannelID);
+				}
 			}
 		}
 
@@ -158,12 +162,14 @@ public class CausalLogManager {
 	}
 
 	public void deserializeCausalLogDelta(ByteBuf msg, InputChannelID inputChannelID) {
-		JobCausalLog jobCausalLog;
-		synchronized (inputChannelIDToCausalLog) {
-			jobCausalLog = inputChannelIDToCausalLog.get(inputChannelID);
-			while (jobCausalLog == null) {
-				waitUninterruptedly(inputChannelIDToCausalLog);
+		JobCausalLog jobCausalLog = inputChannelIDToCausalLog.get(inputChannelID);
+		if (jobCausalLog == null) {
+			synchronized (inputChannelIDToCausalLog) {
 				jobCausalLog = inputChannelIDToCausalLog.get(inputChannelID);
+				while (jobCausalLog == null) {
+					waitUninterruptedly(inputChannelIDToCausalLog);
+					jobCausalLog = inputChannelIDToCausalLog.get(inputChannelID);
+				}
 			}
 		}
 
