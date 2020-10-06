@@ -32,6 +32,7 @@ import org.apache.flink.runtime.io.network.buffer.BufferPool;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 import org.apache.flink.shaded.netty4.io.netty.buffer.CompositeByteBuf;
+import org.apache.flink.shaded.netty4.io.netty.util.internal.ConcurrentSet;
 
 import java.util.List;
 import java.util.Map;
@@ -43,16 +44,18 @@ public final class FlatDeltaSerializerDeserializer extends AbstractDeltaSerializ
 
 	public FlatDeltaSerializerDeserializer(ConcurrentMap<CausalLogID, ThreadCausalLog> threadCausalLogs,
 										   ConcurrentMap<Short, VertexCausalLogs> hierarchicalThreadCausalLogsToBeShared,
-										   Map<Short, Integer> vertexIDToDistance, int determinantSharingDepth,
-										   short localVertexID, BufferPool determinantBufferPool) {
-		super(threadCausalLogs, hierarchicalThreadCausalLogsToBeShared, vertexIDToDistance, determinantSharingDepth,
-			localVertexID, determinantBufferPool);
+										   Map<Short, Integer> vertexIDToDistance, ConcurrentSet<Short> localVertices,
+										   int determinantSharingDepth,
+										   BufferPool determinantBufferPool) {
+		super(threadCausalLogs, hierarchicalThreadCausalLogsToBeShared, vertexIDToDistance, localVertices,
+			determinantSharingDepth,
+			determinantBufferPool);
 	}
 
 	@Override
 	protected void serializeDataStrategy(InputChannelID outputChannelID, long epochID, CompositeByteBuf composite,
 										 ByteBuf deltaHeader) {
-		CausalLogID outputChannelSpecificCausalLog = outputChannelSpecificCausalLogs.get(outputChannelID);
+		CausalLogID outputChannelSpecificCausalLog = outputChannelSpecificCausalLogs.get(outputChannelID); //TODO
 
 		List<ThreadCausalLog> flattenedToShare =
 			hierarchicalThreadCausalLogsToBeShared.values().stream().flatMap(v -> {
@@ -69,7 +72,8 @@ public final class FlatDeltaSerializerDeserializer extends AbstractDeltaSerializ
 
 			short currentVertex = currCID.getVertexID();
 
-			if (currentVertex != localVertexID || currCID.isMainThread() || outputChannelSpecificCausalLog.equals(currCID)) {
+			//Only send if not a local vertex, or if local then it must be the correct local vertex and be main thread, otherwise it must be the specific consumed subpartition
+			if (!localVertices.contains(currentVertex) || (outputChannelSpecificCausalLog.isForVertex(currentVertex) && currCID.isMainThread()) || outputChannelSpecificCausalLog.equals(currCID)) {
 				if (log.hasDeltaForConsumer(outputChannelID, epochID)) {
 					//serializeID
 					serializeCausalLogID(deltaHeader, currCID);

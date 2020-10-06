@@ -150,6 +150,11 @@ public class RecoveryManager implements IRecoveryManager {
 	}
 
 	@Override
+	public VertexID getTaskVertexID() {
+		return vertexGraphInformation.getThisTasksVertexID();
+	}
+
+	@Override
 	public void setRecordCountTargetForceable(RecordCountTargetForceable recordCountTargetForceable) {
 		this.recordCountTargetForceable = recordCountTargetForceable;
 	}

@@ -38,7 +38,7 @@ public class VertexID implements Serializable {
 	}
 
 
-	public short getVertexId() {
+	public short getVertexID() {
 		return id;
 	}
 

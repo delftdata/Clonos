@@ -20,6 +20,7 @@ package org.apache.flink.runtime.io.network.netty;
 
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.runtime.causal.log.CausalLogManager;
+import org.apache.flink.runtime.causal.log.job.CausalLogID;
 import org.apache.flink.runtime.io.network.NetworkSequenceViewReader;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
@@ -150,8 +151,9 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 	}
 	public void notifyReaderCreated(final NetworkSequenceViewReader reader, ResultPartitionID partitionId, int queueIndex) {
 		allReaders.put(reader.getReceiverId(), reader);
-		if(causalLogManager != null)
-			causalLogManager.registerNewDownstreamConsumer(reader.getReceiverId(), reader.getJobID(), partitionId.getPartitionId(), queueIndex);
+		CausalLogID consumerSpecificCausalLog = new CausalLogID(reader.getVertexID().getVertexID(),
+			partitionId.getPartitionId().getLowerPart(), partitionId.getPartitionId().getUpperPart(), (byte) queueIndex);
+		causalLogManager.registerNewDownstreamConsumer(reader.getReceiverId(), reader.getJobID(), consumerSpecificCausalLog);
 	}
 
 	public void cancel(InputChannelID receiverId) {

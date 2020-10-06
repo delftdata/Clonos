@@ -78,7 +78,7 @@ public class ReplayingState extends AbstractState {
 			t.start();
 
 		this.mainThreadRecoveryBuffer =
-			determinantAccumulator.getDeterminants().get(new CausalLogID(context.vertexGraphInformation.getThisTasksVertexID().getVertexId()));
+			determinantAccumulator.getDeterminants().get(new CausalLogID(context.vertexGraphInformation.getThisTasksVertexID().getVertexID()));
 	}
 
 	private void setupDeterminantCache() {
@@ -123,10 +123,11 @@ public class ReplayingState extends AbstractState {
 
 		recoveryThreads = new LinkedList<>();
 
-		CausalLogID id = new CausalLogID(context.vertexGraphInformation.getThisTasksVertexID().getVertexId());
+		CausalLogID id = new CausalLogID(context.vertexGraphInformation.getThisTasksVertexID().getVertexID());
 		for (Table.Cell<IntermediateResultPartitionID, Integer, PipelinedSubpartition> cell :
 			context.subpartitionTable.cellSet()) {
-			id.replace(cell.getRowKey().getLowerPart(), cell.getRowKey().getUpperPart(), cell.getColumnKey().byteValue());
+			id.replace(cell.getRowKey().getLowerPart(), cell.getRowKey().getUpperPart(),
+				cell.getColumnKey().byteValue());
 			ByteBuf subpartitionBuf = determinantResponseEvent.getDeterminants().get(id);
 			ByteBuf recoveryBuffer = Unpooled.EMPTY_BUFFER;
 			if (subpartitionBuf != null)
@@ -245,7 +246,8 @@ public class ReplayingState extends AbstractState {
 	private void finishReplaying() {
 
 		//Safety check that recovery brought us to the exact same causal log state as pre-failure
-		assert mainThreadRecoveryBuffer.capacity() == context.causalLog.mainThreadLogLength();
+		assert mainThreadRecoveryBuffer.capacity() ==
+			context.causalLog.threadLogLength(new CausalLogID(context.getTaskVertexID().getVertexID()));
 
 		if (mainThreadRecoveryBuffer != null)
 			mainThreadRecoveryBuffer.release();
@@ -312,7 +314,10 @@ public class ReplayingState extends AbstractState {
 			}
 			LOG.info("Done recovering pipelined subpartition");
 			//Safety check that recovery brought us to the exact same state as pre-failure
-			assert recoveryBuffer.capacity() == context.causalLog.subpartitionLogLength(partitionID, index);
+			int logLengthAfterRecovery =
+				context.causalLog.threadLogLength(new CausalLogID(context.getTaskVertexID().getVertexID(),
+					partitionID.getLowerPart(), partitionID.getUpperPart(), (byte) index));
+			assert recoveryBuffer.capacity() == logLengthAfterRecovery;
 
 			// If there is a replay request, we have to prepare it, before setting isRecovering to true
 			InFlightLogRequestEvent unansweredRequest =

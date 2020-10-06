@@ -21,6 +21,7 @@ package org.apache.flink.runtime.io.network.partition;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.causal.CheckpointBarrierListener;
+import org.apache.flink.runtime.causal.VertexID;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferConsumer;
 import org.apache.flink.runtime.state.CheckpointListener;
@@ -185,7 +186,11 @@ public abstract class ResultSubpartition implements CheckpointListener, Checkpoi
 		return parent;
 	}
 
-	// ------------------------------------------------------------------------
+    public VertexID getVertexID(){
+		return null;
+	}
+
+    // ------------------------------------------------------------------------
 
 	/**
 	 * A combination of a {@link Buffer} and the backlog length indicating

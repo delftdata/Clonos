@@ -44,13 +44,13 @@ public class JobCausalLogFactory {
 	protected static final Logger LOG = LoggerFactory.getLogger(JobCausalLogFactory.class);
 
 	public JobCausalLogFactory(NetworkBufferPool determinantNetworkBufferPool, int numDeterminantBuffersPerTask,
-							   DeltaEncodingStrategy deltaEncodingStrategy){
+							   DeltaEncodingStrategy deltaEncodingStrategy) {
 		this.determinantNetworkBufferPool = determinantNetworkBufferPool;
 		this.numDeterminantBuffersPerTask = numDeterminantBuffersPerTask;
 		this.deltaEncodingStrategy = deltaEncodingStrategy;
 	}
 
-	public JobCausalLog buildJobCausalLog(VertexGraphInformation vertexGraphInformation, ResultPartitionWriter[] resultPartitionsOfLocalVertex, int determinantSharingDepth) {
+	public JobCausalLog buildJobCausalLog(int determinantSharingDepth) {
 		BufferPool taskDeterminantBufferPool;
 		try {
 			taskDeterminantBufferPool = determinantNetworkBufferPool.createBufferPool(numDeterminantBuffersPerTask,
@@ -59,9 +59,7 @@ public class JobCausalLogFactory {
 			throw new RuntimeException("Could not register determinant buffer pool!: \n" + e.getMessage());
 		}
 
-		LOG.info("Creating a JobCausalLog for VertexID={} using encoding strategy {} and determinantSharingDepth {}", vertexGraphInformation.getThisTasksVertexID().getVertexId(), deltaEncodingStrategy.name(), determinantSharingDepth);
 
-		return new JobCausalLogImpl(vertexGraphInformation, determinantSharingDepth,
-			resultPartitionsOfLocalVertex, taskDeterminantBufferPool, deltaEncodingStrategy);
+		return new JobCausalLogImpl(determinantSharingDepth, taskDeterminantBufferPool, deltaEncodingStrategy);
 	}
 }

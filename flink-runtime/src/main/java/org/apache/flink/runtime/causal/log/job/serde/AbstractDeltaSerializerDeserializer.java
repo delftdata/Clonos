@@ -36,6 +36,7 @@ import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBufAllocator;
 import org.apache.flink.shaded.netty4.io.netty.buffer.CompositeByteBuf;
+import org.apache.flink.shaded.netty4.io.netty.util.internal.ConcurrentSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -55,8 +56,6 @@ public abstract class AbstractDeltaSerializerDeserializer implements DeltaSerial
 
 	protected final Map<InputChannelID, CausalLogID> outputChannelSpecificCausalLogs;
 
-	protected final short localVertexID;
-
 	protected final Map<Short, Integer> vertexIDToDistance;
 
 	protected final int determinantSharingDepth;
@@ -65,17 +64,20 @@ public abstract class AbstractDeltaSerializerDeserializer implements DeltaSerial
 
 	protected static final Logger LOG = LoggerFactory.getLogger(AbstractDeltaSerializerDeserializer.class);
 
+	protected final ConcurrentSet<Short> localVertices;
+
 	public AbstractDeltaSerializerDeserializer(ConcurrentMap<CausalLogID, ThreadCausalLog> threadCausalLogs,
 											   ConcurrentMap<Short, VertexCausalLogs> hierarchicalThreadCausalLogsToBeShared,
-											   Map<Short, Integer> vertexIDToDistance, int determinantSharingDepth,
-											   short localVertexID, BufferPool determinantBufferPool) {
+											   Map<Short, Integer> vertexIDToDistance,
+											   ConcurrentSet<Short> localVertices, int determinantSharingDepth,
+											   BufferPool determinantBufferPool) {
 		this.threadCausalLogs = threadCausalLogs;
 		this.hierarchicalThreadCausalLogsToBeShared = hierarchicalThreadCausalLogsToBeShared;
 		this.outputChannelSpecificCausalLogs = new HashMap<>();
 		this.determinantBufferPool = determinantBufferPool;
 		this.vertexIDToDistance = vertexIDToDistance;
+		this.localVertices = localVertices;
 		this.determinantSharingDepth = determinantSharingDepth;
-		this.localVertexID = localVertexID;
 	}
 
 

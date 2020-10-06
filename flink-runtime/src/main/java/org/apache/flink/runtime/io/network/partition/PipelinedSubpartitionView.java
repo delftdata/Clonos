@@ -19,6 +19,7 @@
 package org.apache.flink.runtime.io.network.partition;
 
 import org.apache.flink.api.common.JobID;
+import org.apache.flink.runtime.causal.VertexID;
 import org.apache.flink.runtime.io.network.partition.ResultSubpartition.BufferAndBacklog;
 
 import javax.annotation.Nullable;
@@ -105,6 +106,11 @@ class PipelinedSubpartitionView implements ResultSubpartitionView {
 	@Override
 	public JobID getJobID() {
 		return this.parent.getJobID();
+	}
+
+	@Override
+	public VertexID getVertexID() {
+		return this.parent.getVertexID();
 	}
 
 	@Override

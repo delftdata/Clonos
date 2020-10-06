@@ -55,7 +55,7 @@ public class DeterminantRequestEvent extends AbstractEvent {
 
 	@Override
 	public void write(DataOutputView out) throws IOException {
-		out.writeShort(this.failedVertex.getVertexId());
+		out.writeShort(this.failedVertex.getVertexID());
 		out.writeLong(startEpochID);
 	}
 

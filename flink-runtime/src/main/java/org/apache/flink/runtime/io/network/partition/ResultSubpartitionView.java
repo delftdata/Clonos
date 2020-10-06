@@ -19,6 +19,7 @@
 package org.apache.flink.runtime.io.network.partition;
 
 import org.apache.flink.api.common.JobID;
+import org.apache.flink.runtime.causal.VertexID;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.partition.ResultSubpartition.BufferAndBacklog;
 
@@ -64,4 +65,6 @@ public interface ResultSubpartitionView {
 	boolean isAvailable();
 
     JobID getJobID();
+
+    VertexID getVertexID();
 }

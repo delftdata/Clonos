@@ -103,7 +103,7 @@ public class SystemProcessingTimeService extends ProcessingTimeService implement
 
 		this.epochProvider = epochProvider;
 		this.recordCountProvider = recordCountProvider;
-		this.mainThreadCausalLog = causalLog.getThreadCausalLog(new CausalLogID(causalLog.getLocalVertexID()));
+		this.mainThreadCausalLog = causalLog.getThreadCausalLog(new CausalLogID(recoveryManager.getTaskVertexID().getVertexID()));
 		this.recoveryManager = recoveryManager;
 
 		this.preregisteredTimerTasks = new HashMap<>();

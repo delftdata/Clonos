@@ -52,7 +52,7 @@ public abstract class AbstractCausalService {
 
 	public AbstractCausalService(JobCausalLog causalLog, IRecoveryManager recoveryManager,
 								 EpochProvider epochProvider){
-		CausalLogID causalLogID = new CausalLogID(causalLog.getLocalVertexID());
+		CausalLogID causalLogID = new CausalLogID(recoveryManager.getTaskVertexID().getVertexID());
 		this.threadCausalLog = causalLog.getThreadCausalLog(causalLogID);
 		this.recoveryManager = recoveryManager;
 		this.epochProvider = epochProvider;

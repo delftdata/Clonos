@@ -291,11 +291,11 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 		SingleInputGate[] inputGates = environment.getContainingTask().getAllInputGates();
 
-		this.causalLog = environment.getCausalLogManager().registerNewJob(this.getEnvironment().getJobID(),
+		this.causalLog = environment.getCausalLogManager().registerNewTask(this.getEnvironment().getJobID(),
 			vertexGraphInformation, getExecutionConfig().getDeterminantSharingDepth(),
 			getEnvironment().getAllWriters());
 		this.mainThreadCausalLog =
-			causalLog.getThreadCausalLog(new CausalLogID(vertexGraphInformation.getThisTasksVertexID().getVertexId()));
+			causalLog.getThreadCausalLog(new CausalLogID(vertexGraphInformation.getThisTasksVertexID().getVertexID()));
 
 		this.recoveryManager = new RecoveryManager(this, this, causalLog, readyToReplayFuture,
 			vertexGraphInformation,
@@ -314,8 +314,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 		for (ResultPartition partition : environment.getContainingTask().getProducedPartitions()) {
 			for (ResultSubpartition subpartition : partition.getResultSubpartitions()) {
-				((PipelinedSubpartition) subpartition).setCausalLog(causalLog);
-				((PipelinedSubpartition) subpartition).setRecoveryManager(recoveryManager);
+				((PipelinedSubpartition) subpartition).setCausalComponents(recoveryManager, causalLog);
 			}
 			DeterminantResponseEventListener edel =
 				new DeterminantResponseEventListener(environment.getUserClassLoader(), recoveryManager);

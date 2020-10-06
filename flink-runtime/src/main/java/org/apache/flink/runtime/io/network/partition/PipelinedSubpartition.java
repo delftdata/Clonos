@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.io.network.partition;
 
+import org.apache.flink.runtime.causal.VertexID;
 import org.apache.flink.runtime.causal.determinant.BufferBuiltDeterminant;
 import org.apache.flink.runtime.causal.log.job.CausalLogID;
 import org.apache.flink.runtime.causal.log.job.JobCausalLog;
@@ -125,14 +126,11 @@ public class PipelinedSubpartition extends ResultSubpartition {
 		this.currentEpochID = currentEpochID;
 	}
 
-	public void setRecoveryManager(IRecoveryManager recoveryManager) {
+	public void setCausalComponents(IRecoveryManager recoveryManager, JobCausalLog causalLog) {
 		this.recoveryManager = recoveryManager;
-	}
-
-	public void setCausalLog(JobCausalLog causalLog) {
 		IntermediateResultPartitionID partitionID = parent.getPartitionId().getPartitionId();
-		CausalLogID causalLogID = new CausalLogID(causalLog.getLocalVertexID(), partitionID.getLowerPart(),
-			partitionID.getUpperPart(), (byte) index);
+		CausalLogID causalLogID = new CausalLogID(recoveryManager.getTaskVertexID().getVertexID(),
+			partitionID.getLowerPart(),	partitionID.getUpperPart(), (byte) index);
 		this.subpartitionThreadCausalLog = causalLog.getThreadCausalLog(causalLogID);
 	}
 
@@ -631,5 +629,8 @@ public class PipelinedSubpartition extends ResultSubpartition {
 			currentEpochID = checkpointId;
 	}
 
-
+	@Override
+	public VertexID getVertexID() {
+		return recoveryManager.getTaskVertexID();
+	}
 }

@@ -77,7 +77,7 @@ public class DeterminantResponseEvent extends TaskEvent {
 	@Override
 	public void write(DataOutputView out) throws IOException {
 		out.writeBoolean(found);
-		out.writeShort(vertexID.getVertexId());
+		out.writeShort(vertexID.getVertexID());
 		out.writeByte(determinants.size());
 		for (Map.Entry<CausalLogID, ByteBuf> entry : determinants.entrySet()) {
 			entry.getKey().write(out);

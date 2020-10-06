@@ -26,10 +26,12 @@
 package org.apache.flink.runtime.causal.log.job;
 
 import org.apache.flink.runtime.causal.DeterminantResponseEvent;
+import org.apache.flink.runtime.causal.VertexGraphInformation;
 import org.apache.flink.runtime.causal.VertexID;
 import org.apache.flink.runtime.causal.determinant.Determinant;
 import org.apache.flink.runtime.causal.determinant.DeterminantEncoder;
 import org.apache.flink.runtime.causal.log.thread.ThreadCausalLog;
+import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
@@ -43,7 +45,7 @@ import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
  */
 public interface JobCausalLog {
 
-	short getLocalVertexID();
+	void registerSubtask(VertexGraphInformation vertexGraphInformation, ResultPartitionWriter[] resultPartitionsOfLocalVertex);
 
 	ThreadCausalLog getThreadCausalLog(CausalLogID causalLogID);
 
@@ -53,7 +55,7 @@ public interface JobCausalLog {
 
 	DeterminantResponseEvent respondToDeterminantRequest(VertexID vertexId, long startEpochID);
 
-	void registerDownstreamConsumer(InputChannelID inputChannelID, IntermediateResultPartitionID intermediateResultPartitionID, int consumedSubpartition);
+	void registerDownstreamConsumer(InputChannelID inputChannelID, CausalLogID consumedSubpartition);
 
 	void unregisterDownstreamConsumer(InputChannelID toCancel);
 
@@ -65,8 +67,6 @@ public interface JobCausalLog {
 	void close();
 
 	//================ Safety check metrics==================================================
-	// These methods are used to ensure that after recovery, log length is the exact size it should be
-	int mainThreadLogLength();
-	int subpartitionLogLength(IntermediateResultPartitionID intermediateResultPartitionID, int subpartitionIndex);
+	int threadLogLength(CausalLogID causalLogID);
 
 }

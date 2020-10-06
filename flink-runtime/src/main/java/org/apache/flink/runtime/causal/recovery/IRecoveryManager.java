@@ -59,21 +59,27 @@ public interface IRecoveryManager {
 
 	void triggerAsyncEvent();
 
-	//=======================================
-
 	void setState(State state);
-
-	RecordCountProvider getRecordCountProvider();
+	//=======================================
 
 	void setInputGate(InputGate inputGate);
 
 	void setProcessingTimeService(ProcessingTimeForceable processingTimeForceable);
 
+	void setRecordCountTargetForceable(RecordCountTargetForceable recordCountTargetForceable);
+
+	// ==========================================
+
+	RecordCountProvider getRecordCountProvider();
+
 	ProcessingTimeForceable getProcessingTimeForceable();
 
 	CheckpointForceable getCheckpointForceable();
 
-	void setRecordCountTargetForceable(RecordCountTargetForceable recordCountTargetForceable);
+	VertexID getTaskVertexID();
+
+
+	// =======================================================
 
 	boolean isRunning();
 
