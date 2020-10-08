@@ -88,7 +88,6 @@ public class CausalLogManager {
 			causalLog = jobIDToManagerMap.get(jobID);
 			jobIDToManagerMap.notifyAll();
 		}
-		LOG.info("Leave sync");
 
 		synchronized (causalLog) {
 			causalLog.registerSubtask(vertexGraphInformation, resultPartitionsOfLocalVertex);

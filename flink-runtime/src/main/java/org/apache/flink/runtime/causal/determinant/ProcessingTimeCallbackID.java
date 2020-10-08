@@ -25,9 +25,10 @@
 
 package org.apache.flink.runtime.causal.determinant;
 
+import java.io.Serializable;
 import java.util.Objects;
 
-public class ProcessingTimeCallbackID{
+public class ProcessingTimeCallbackID implements Serializable {
 
 	public enum Type {
 		WATERMARK, TIMESTAMP_EXTRACTOR, TIMESTAMP_PERIODIC_WATERMARK_EXTRACTOR, TIMESTAMP_PUNCTUATED_WATERMARK_EXTRACTOR, IDLE, LATENCY, INTERNAL
