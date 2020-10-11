@@ -24,7 +24,7 @@
 	<parent>
 		<groupId>org.apache.flink</groupId>
 		<artifactId>flink-end-to-end-tests</artifactId>
-		<version>1.7.2</version>
+		<version>1.7-FLINK-SNAPSHOT</version>
 		<relativePath>..</relativePath>
 	</parent>
 
