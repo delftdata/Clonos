@@ -539,7 +539,12 @@ public class StreamingJobGraphGenerator {
 			final JobVertex vertex = entry.getValue();
 
 			// configure slot sharing group
-			final String slotSharingGroupKey = String.valueOf(UUID.randomUUID());
+
+			final String slotSharingGroupKey;
+			if( streamGraph.getExecutionConfig().isSlotSharingEnabled())
+				slotSharingGroupKey = node.getSlotSharingGroup();
+			else
+				slotSharingGroupKey = String.valueOf(UUID.randomUUID());
 			final SlotSharingGroup sharingGroup;
 
 			if (slotSharingGroupKey != null) {

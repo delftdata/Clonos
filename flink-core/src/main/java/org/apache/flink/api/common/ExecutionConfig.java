@@ -118,6 +118,8 @@ public class ExecutionConfig implements Serializable, Archiveable<ArchivedExecut
 
 	private boolean objectReuse = false;
 
+	private boolean slotSharing = true;
+
 	private boolean autoTypeRegistrationEnabled = true;
 
 	private boolean forceAvro = false;
@@ -631,7 +633,16 @@ public class ExecutionConfig implements Serializable, Archiveable<ArchivedExecut
 	public boolean isObjectReuseEnabled() {
 		return objectReuse;
 	}
-	
+
+	public ExecutionConfig disableSlotSharing() {
+		slotSharing = false;
+		return this;
+	}
+
+	public boolean isSlotSharingEnabled() {
+		return slotSharing;
+	}
+
 	/**
 	 * Sets the {@link CodeAnalysisMode} of the program. Specifies to which extent user-defined
 	 * functions are analyzed in order to give the Flink optimizer an insight of UDF internals
