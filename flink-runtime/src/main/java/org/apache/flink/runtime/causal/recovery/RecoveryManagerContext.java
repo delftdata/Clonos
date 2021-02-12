@@ -28,10 +28,7 @@ package org.apache.flink.runtime.causal.recovery;
 import com.google.common.collect.HashBasedTable;
 import com.google.common.collect.Table;
 import org.apache.flink.runtime.causal.*;
-import org.apache.flink.runtime.causal.determinant.AsyncDeterminant;
-import org.apache.flink.runtime.causal.log.job.JobCausalLog;
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
-import org.apache.flink.runtime.io.network.api.DeterminantRequestEvent;
 import org.apache.flink.runtime.io.network.partition.PipelinedSubpartition;
 import org.apache.flink.runtime.io.network.partition.ResultPartition;
 import org.apache.flink.runtime.io.network.partition.ResultSubpartition;
@@ -47,7 +44,6 @@ public class RecoveryManagerContext {
 
 	public final VertexGraphInformation vertexGraphInformation;
 	public final short vertexID;
-	final JobCausalLog causalLog;
 
 	final Set<Long> incompleteStateRestorations;
 
@@ -56,35 +52,29 @@ public class RecoveryManagerContext {
 
 	final EpochTracker epochTracker;
 
-	ProcessingTimeForceable processingTimeForceable;
 	CheckpointForceable checkpointForceable;
 
-	final Table<VertexID, Long, UnansweredDeterminantRequest> unansweredDeterminantRequests;
 	final Table<IntermediateResultPartitionID, Integer, InFlightLogRequestEvent> unansweredInFlightLogRequests;
-	final List<AsyncDeterminant> unansweredRPCRequests;
 
 	final AbstractInvokable invokable;
 	final CompletableFuture<Void> readyToReplayFuture;
 
 
-	public RecoveryManagerContext(AbstractInvokable invokable, JobCausalLog causalLog,
+	public RecoveryManagerContext(AbstractInvokable invokable,
 								  CompletableFuture<Void> readyToReplayFuture, VertexGraphInformation vertexGraphInformation,
 								  EpochTracker epochTracker, CheckpointForceable checkpointForceable,
 								  ResultPartition[] partitions) {
 		this.invokable = invokable;
-		this.causalLog = causalLog;
 		this.readyToReplayFuture = readyToReplayFuture;
 		this.vertexGraphInformation = vertexGraphInformation;
 		this.vertexID = vertexGraphInformation.getThisTasksVertexID().getVertexID();
 
-		this.unansweredDeterminantRequests = HashBasedTable.create();
 
 		this.incompleteStateRestorations = new HashSet<>();
 
 		this.epochTracker = epochTracker;
 		this.checkpointForceable = checkpointForceable;
 
-		this.unansweredRPCRequests = new LinkedList<>();
 		int maxNumSubpart =
 			Arrays.stream(partitions).mapToInt(ResultPartition::getNumberOfSubpartitions).max().orElse(0);
 		this.unansweredInFlightLogRequests = HashBasedTable.create(partitions.length, maxNumSubpart);
@@ -103,16 +93,8 @@ public class RecoveryManagerContext {
 		}
 	}
 
-	public void setOwner(RecoveryManager owner){
+	public void setOwner(RecoveryManager owner) {
 		this.owner = owner;
-	}
-
-	public void setProcessingTimeService(ProcessingTimeForceable processingTimeForceable) {
-		this.processingTimeForceable = processingTimeForceable;
-	}
-
-	public ProcessingTimeForceable getProcessingTimeForceable() {
-		return processingTimeForceable;
 	}
 
 	public CheckpointForceable getCheckpointForceable() {
@@ -123,7 +105,7 @@ public class RecoveryManagerContext {
 		return vertexID;
 	}
 
-	public EpochTracker getEpochTracker(){
+	public EpochTracker getEpochTracker() {
 		return this.epochTracker;
 	}
 
@@ -131,45 +113,9 @@ public class RecoveryManagerContext {
 		this.inputGate = inputGate;
 	}
 
-	public void appendRPCRequestDuringRecovery(AsyncDeterminant determinant){
-		this.unansweredRPCRequests.add(determinant);
-	}
-
-
-	public int getNumberOfDirectDownstreamNeighbourVertexes(){
+	public int getNumberOfDirectDownstreamNeighbourVertexes() {
 		return subpartitionTable.size();
 	}
+}
 //=======================================================================
 
-	public static class UnansweredDeterminantRequest {
-		private int numResponsesReceived;
-		private final int requestingChannel;
-
-		private final DeterminantResponseEvent response;
-
-		public UnansweredDeterminantRequest(DeterminantRequestEvent event, int requestingChannel) {
-			this.numResponsesReceived = 0;
-			this.requestingChannel = requestingChannel;
-			this.response = new DeterminantResponseEvent(event);
-			this.response.setCorrelationID(event.getUpstreamCorrelationID());
-		}
-
-		public int getNumResponsesReceived() {
-			return numResponsesReceived;
-		}
-
-
-		public int getRequestingChannel() {
-			return requestingChannel;
-		}
-
-		public void incResponsesReceived() {
-			numResponsesReceived++;
-		}
-
-		public DeterminantResponseEvent getCurrentResponse() {
-			return response;
-		}
-
-	}
-}

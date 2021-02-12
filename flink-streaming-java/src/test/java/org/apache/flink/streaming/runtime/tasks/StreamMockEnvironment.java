@@ -26,7 +26,6 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.accumulators.AccumulatorRegistry;
 import org.apache.flink.runtime.broadcast.BroadcastVariableManager;
-import org.apache.flink.runtime.causal.log.CausalLogManager;
 import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
 import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
@@ -273,10 +272,6 @@ public class StreamMockEnvironment implements Environment {
 		return taskEventDispatcher;
 	}
 
-	@Override
-	public CausalLogManager getCausalLogManager() {
-		return null;
-	}
 
 	@Override
 	public JobVertexID getJobVertexId() {

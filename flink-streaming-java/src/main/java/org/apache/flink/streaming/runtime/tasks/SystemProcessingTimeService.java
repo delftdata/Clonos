@@ -19,15 +19,6 @@ package org.apache.flink.streaming.runtime.tasks;
 
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.time.Deadline;
-import org.apache.flink.runtime.causal.ProcessingTimeForceable;
-import org.apache.flink.runtime.causal.EpochTracker;
-import org.apache.flink.runtime.causal.determinant.ProcessingTimeCallbackID;
-import org.apache.flink.runtime.causal.determinant.TimerTriggerDeterminant;
-import org.apache.flink.runtime.causal.log.job.CausalLogID;
-import org.apache.flink.runtime.causal.log.job.JobCausalLog;
-import org.apache.flink.runtime.causal.log.thread.ThreadCausalLog;
-import org.apache.flink.runtime.causal.recovery.RecoveryManager;
-import org.apache.flink.api.common.services.TimeService;
 import org.apache.flink.util.Preconditions;
 
 import org.slf4j.Logger;
@@ -36,8 +27,6 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.Nonnull;
 
 import java.time.Duration;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -47,7 +36,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * A {@link ProcessingTimeService} which assigns as current processing time the result of calling
  * {@link System#currentTimeMillis()} and registers timers using a {@link ScheduledThreadPoolExecutor}.
  */
-public class SystemProcessingTimeService extends ProcessingTimeService implements ProcessingTimeForceable {
+public class SystemProcessingTimeService extends ProcessingTimeService {
 
 	private static final Logger LOG = LoggerFactory.getLogger(SystemProcessingTimeService.class);
 
@@ -74,15 +63,6 @@ public class SystemProcessingTimeService extends ProcessingTimeService implement
 
 	private final AtomicInteger status;
 
-	private final TimeService timeService;
-	private final EpochTracker epochTracker;
-	private final ThreadCausalLog mainThreadCausalLog;
-	private final RecoveryManager recoveryManager;
-	private final TimerTriggerDeterminant reuseTimerTriggerDeterminant;
-
-	private final Map<ProcessingTimeCallbackID, PreregisteredTimer> preregisteredTimerTasks;
-
-	private final Map<ProcessingTimeCallbackID, ProcessingTimeCallback> callbacks;
 
 	public SystemProcessingTimeService(AsyncExceptionHandler failureHandler, Object checkpointLock) {
 		this(failureHandler, checkpointLock, null);
@@ -92,26 +72,8 @@ public class SystemProcessingTimeService extends ProcessingTimeService implement
 		AsyncExceptionHandler task,
 		Object checkpointLock,
 		ThreadFactory threadFactory) {
-		this(task, checkpointLock, threadFactory, null,
-			null, null,  null);
-	}
-
-	public <OUT> SystemProcessingTimeService(AsyncExceptionHandler task, Object checkpointLock,
-											 ThreadFactory threadFactory, TimeService timeService,
-											 EpochTracker epochTracker,
-											 JobCausalLog causalLog, RecoveryManager recoveryManager) {
 		this.task = checkNotNull(task);
 		this.checkpointLock = checkNotNull(checkpointLock);
-		this.timeService = timeService;
-
-		this.epochTracker = epochTracker;
-		this.mainThreadCausalLog =
-			causalLog.getThreadCausalLog(new CausalLogID(recoveryManager.getContext().getTaskVertexID()));
-		this.recoveryManager = recoveryManager;
-
-		this.preregisteredTimerTasks = new HashMap<>();
-		this.callbacks = new HashMap<>();
-		this.reuseTimerTriggerDeterminant = new TimerTriggerDeterminant();
 
 		this.status = new AtomicInteger(STATUS_ALIVE);
 
@@ -129,19 +91,13 @@ public class SystemProcessingTimeService extends ProcessingTimeService implement
 		this.timerService.setExecuteExistingDelayedTasksAfterShutdownPolicy(false);
 
 
-
 	}
-
 
 
 	@Override
 	public long getCurrentProcessingTime() {
-		return timeService.currentTimeMillis();
-	}
-
-	@Override
-	public long getCurrentProcessingTimeCausal() {
-		return timeService.currentTimeMillis();
+		//throw new RuntimeException("Cannot access physical processing time as this is nondeterministic");
+		return System.currentTimeMillis();
 	}
 
 	/**
@@ -160,26 +116,15 @@ public class SystemProcessingTimeService extends ProcessingTimeService implement
 		// With processing time, we therefore need to delay firing the timer by one ms.
 		long delay = Math.max(timestamp - System.currentTimeMillis(), 0) + 1;
 		ScheduledFuture<?> future;
-		TriggerTask toRegister = new TriggerTask(status, task, checkpointLock, target, timestamp, mainThreadCausalLog,
-			epochTracker, reuseTimerTriggerDeterminant);
-		if (recoveryManager.isRecovering())
-			future = registerTimerRecovering(toRegister, delay);
-		else
-			future = registerTimerRunning(toRegister, delay);
+		TriggerTask toRegister = new TriggerTask(status, task, checkpointLock, target, timestamp);
+		future = registerTimerRunning(toRegister, delay);
 
 		return future;
 	}
 
-	private ScheduledFuture<?> registerTimerRecovering(TriggerTask toRegister, long delay) {
-		ProcessingTimeCallbackID id = toRegister.getTarget().getID();
-		if(LOG.isDebugEnabled())
-			LOG.debug("We are recovering, differing one-shot timer registration for {}!", id);
-		preregisteredTimerTasks.put(id, new PreregisteredTimer(toRegister, delay));
-		return new PreregisteredCompleteableFuture<>(id);
-	}
 
 	private ScheduledFuture<?> registerTimerRunning(TriggerTask toRegister, long delay) {
-		if(LOG.isDebugEnabled())
+		if (LOG.isDebugEnabled())
 			LOG.debug("We are running, directly registering one-shot timer!");
 		// we directly try to register the timer and only react to the status on exception
 		// that way we save unnecessary volatile accesses for each timer
@@ -204,33 +149,16 @@ public class SystemProcessingTimeService extends ProcessingTimeService implement
 		long nextTimestamp = System.currentTimeMillis() + initialDelay;
 
 		RepeatedTriggerTask toRegister = new RepeatedTriggerTask(status, task, checkpointLock, callback, nextTimestamp,
-			period, mainThreadCausalLog, epochTracker, reuseTimerTriggerDeterminant);
+			period);
 		ScheduledFuture<?> future;
-		if (recoveryManager.isRecovering())
-			future = registerAtFixedRateRecovering(initialDelay, toRegister);
-		else
-			future = registerAtFixedRateRunning(initialDelay, period, toRegister);
+		future = registerAtFixedRateRunning(initialDelay, period, toRegister);
 		return future;
 	}
 
-	@Override
-	public void registerCallback(ProcessingTimeCallback callback) {
-		this.callbacks.put(callback.getID(), callback);
-	}
-
-	private ScheduledFuture<?> registerAtFixedRateRecovering(long initialDelay,
-															 RepeatedTriggerTask toRegister) {
-		ProcessingTimeCallbackID id = toRegister.getTarget().getID();
-		if(LOG.isDebugEnabled())
-			LOG.debug("We are recovering, differing fixed rate timer registration for {}!", id);
-		preregisteredTimerTasks.put(id, new PreregisteredTimer(toRegister, initialDelay));
-		return new PreregisteredCompleteableFuture<>(id);
-
-	}
 
 	private ScheduledFuture<?> registerAtFixedRateRunning(long initialDelay, long period,
 														  RepeatedTriggerTask toRegister) {
-		if(LOG.isDebugEnabled())
+		if (LOG.isDebugEnabled())
 			LOG.debug("We are running, directly registering fixed rate timer!");
 		// we directly try to register the timer and only react to the status on exception
 		// that way we save unnecessary volatile accesses for each timer
@@ -340,50 +268,6 @@ public class SystemProcessingTimeService extends ProcessingTimeService implement
 		}
 	}
 
-	@Override
-	public void forceExecution(ProcessingTimeCallbackID id, long timestamp) {
-
-		PreregisteredTimer timerTask = preregisteredTimerTasks.get(id);
-		if(timerTask != null) {
-			Runnable runnable = timerTask.getTask();
-
-			if (runnable instanceof TriggerTask) {
-				preregisteredTimerTasks.remove(id);
-				((TriggerTask) runnable).runTask(timestamp);
-			} else if (runnable instanceof RepeatedTriggerTask) {
-				((RepeatedTriggerTask) runnable).runTask(timestamp);
-			}
-			return;
-		}
-		ProcessingTimeCallback callback = callbacks.get(id);
-
-		if(callback == null)
-			throw new RuntimeException("Timer "+ id+ " not found during recovery");
-
-		try {
-			callback.onProcessingTime(timestamp);
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-
-	}
-
-	@Override
-	public void concludeReplay() {
-		LOG.info("Concluded replay, moving preregistered timers to main registry");
-		for (PreregisteredTimer preregisteredTimer : preregisteredTimerTasks.values()) {
-			LOG.debug("Preregistered timer: {}", preregisteredTimer);
-			if (preregisteredTimer.task instanceof TriggerTask)
-				registerTimerRunning((TriggerTask) preregisteredTimer.task, preregisteredTimer.delay);
-			else if (preregisteredTimer.task instanceof RepeatedTriggerTask)//register using period as delay, since it
-				// has been executed a few times already
-				registerAtFixedRateRunning(((RepeatedTriggerTask) preregisteredTimer.task).period,
-					((RepeatedTriggerTask) preregisteredTimer.task).period,
-					(RepeatedTriggerTask) preregisteredTimer.task);
-		}
-		preregisteredTimerTasks.clear();
-	}
-
 	// ------------------------------------------------------------------------
 
 	/**
@@ -396,9 +280,6 @@ public class SystemProcessingTimeService extends ProcessingTimeService implement
 		private final ProcessingTimeCallback target;
 		private final long timestamp;
 		private final AsyncExceptionHandler exceptionHandler;
-		private final EpochTracker epochTracker;
-		private final ThreadCausalLog causalLog;
-		private final TimerTriggerDeterminant timerTriggerDeterminantToUse;
 
 
 		private TriggerTask(
@@ -406,19 +287,13 @@ public class SystemProcessingTimeService extends ProcessingTimeService implement
 			final AsyncExceptionHandler exceptionHandler,
 			final Object lock,
 			final ProcessingTimeCallback target,
-			final long timestamp,
-			final ThreadCausalLog causalLog,
-			final EpochTracker epochTracker,
-			final TimerTriggerDeterminant toUse) {
+			final long timestamp) {
 
 			this.serviceStatus = Preconditions.checkNotNull(serviceStatus);
 			this.exceptionHandler = Preconditions.checkNotNull(exceptionHandler);
 			this.lock = Preconditions.checkNotNull(lock);
 			this.target = Preconditions.checkNotNull(target);
 			this.timestamp = timestamp;
-			this.causalLog = causalLog;
-			this.epochTracker = epochTracker;
-			this.timerTriggerDeterminantToUse = toUse;
 		}
 
 
@@ -431,12 +306,6 @@ public class SystemProcessingTimeService extends ProcessingTimeService implement
 			synchronized (lock) {
 				try {
 					if (serviceStatus.get() == STATUS_ALIVE) {
-						causalLog.appendDeterminant(
-							timerTriggerDeterminantToUse.replace(
-								epochTracker.getRecordCount(),
-								target.getID(),
-								timestamp),
-							epochTracker.getCurrentEpoch());
 						target.onProcessingTime(timestamp);
 					}
 				} catch (Throwable t) {
@@ -465,12 +334,8 @@ public class SystemProcessingTimeService extends ProcessingTimeService implement
 		private final ProcessingTimeCallback target;
 		private final long period;
 		private final AsyncExceptionHandler exceptionHandler;
-		private final TimerTriggerDeterminant timerTriggerDeterminantToUse;
 
 		private long nextTimestamp;
-
-		private final EpochTracker epochTracker;
-		private final ThreadCausalLog causalLog;
 
 		private RepeatedTriggerTask(
 			final AtomicInteger serviceStatus,
@@ -478,10 +343,7 @@ public class SystemProcessingTimeService extends ProcessingTimeService implement
 			final Object lock,
 			final ProcessingTimeCallback target,
 			final long nextTimestamp,
-			final long period,
-			final ThreadCausalLog causalLog,
-			final EpochTracker epochTracker,
-			final TimerTriggerDeterminant toUse) {
+			final long period) {
 
 			this.serviceStatus = Preconditions.checkNotNull(serviceStatus);
 			this.lock = Preconditions.checkNotNull(lock);
@@ -490,9 +352,7 @@ public class SystemProcessingTimeService extends ProcessingTimeService implement
 			this.exceptionHandler = Preconditions.checkNotNull(exceptionHandler);
 
 			this.nextTimestamp = nextTimestamp;
-			this.causalLog = causalLog;
-			this.epochTracker = epochTracker;
-			this.timerTriggerDeterminantToUse = toUse;
+
 		}
 
 		@Override
@@ -504,12 +364,7 @@ public class SystemProcessingTimeService extends ProcessingTimeService implement
 			synchronized (lock) {
 				try {
 					if (serviceStatus.get() == STATUS_ALIVE) {
-						causalLog.appendDeterminant(
-							timerTriggerDeterminantToUse.replace(
-								epochTracker.getRecordCount(),
-								target.getID(),
-								timestamp),
-							epochTracker.getCurrentEpoch());
+
 						target.onProcessingTime(nextTimestamp);
 					}
 
@@ -605,67 +460,4 @@ public class SystemProcessingTimeService extends ProcessingTimeService implement
 		}
 	}
 
-	private class PreregisteredCompleteableFuture<T> implements ScheduledFuture<T> {
-
-		private final ProcessingTimeCallbackID callbackID;
-
-		public PreregisteredCompleteableFuture(ProcessingTimeCallbackID id) {
-			this.callbackID = id;
-		}
-
-		@Override
-		public long getDelay(TimeUnit timeUnit) {
-			throw new UnsupportedOperationException("Not Implemented");
-		}
-
-		@Override
-		public int compareTo(Delayed delayed) {
-			throw new UnsupportedOperationException("Not Implemented");
-		}
-
-		@Override
-		public boolean cancel(boolean b) {
-			preregisteredTimerTasks.remove(callbackID);
-			return true;
-		}
-
-		@Override
-		public boolean isCancelled() {
-			return preregisteredTimerTasks.containsKey(this.callbackID);
-		}
-
-		@Override
-		public boolean isDone() {
-			throw new UnsupportedOperationException("Not Implemented");
-		}
-
-		@Override
-		public T get() throws InterruptedException, ExecutionException {
-			throw new UnsupportedOperationException("Not Implemented");
-		}
-
-		@Override
-		public T get(long l, TimeUnit timeUnit) throws InterruptedException, ExecutionException, TimeoutException {
-			throw new UnsupportedOperationException("Not Implemented");
-		}
-	}
-
-	private static class PreregisteredTimer {
-		Runnable task;
-		long delay;
-
-		public PreregisteredTimer(Runnable task, long delay) {
-			this.task = task;
-			this.delay = delay;
-		}
-
-		public Runnable getTask() {
-			return task;
-		}
-
-		public long getDelay() {
-			return delay;
-		}
-
-	}
 }

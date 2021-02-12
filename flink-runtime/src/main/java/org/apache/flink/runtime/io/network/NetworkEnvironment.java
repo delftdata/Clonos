@@ -20,7 +20,6 @@ package org.apache.flink.runtime.io.network;
 
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.JobID;
-import org.apache.flink.runtime.causal.log.CausalLogManager;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager.IOMode;
@@ -66,13 +65,19 @@ public class NetworkEnvironment {
 
 	private final TaskEventDispatcher taskEventDispatcher;
 
-	/** Server for {@link InternalKvState} requests. */
+	/**
+	 * Server for {@link InternalKvState} requests.
+	 */
 	private KvStateServer kvStateServer;
 
-	/** Proxy for the queryable state client. */
+	/**
+	 * Proxy for the queryable state client.
+	 */
 	private KvStateClientProxy kvStateProxy;
 
-	/** Registry for {@link InternalKvState} instances. */
+	/**
+	 * Registry for {@link InternalKvState} instances.
+	 */
 	private final KvStateRegistry kvStateRegistry;
 
 	private final IOManager.IOMode defaultIOMode;
@@ -81,10 +86,14 @@ public class NetworkEnvironment {
 
 	private final int partitionRequestMaxBackoff;
 
-	/** Number of network buffers to use for each outgoing/incoming channel (subpartition/input channel). */
+	/**
+	 * Number of network buffers to use for each outgoing/incoming channel (subpartition/input channel).
+	 */
 	private final int networkBuffersPerChannel;
 
-	/** Number of extra network buffers to use for each outgoing/incoming gate (result partition/input gate). */
+	/**
+	 * Number of extra network buffers to use for each outgoing/incoming gate (result partition/input gate).
+	 */
 	private final int extraNetworkBuffersPerGate;
 
 	private final int senderExtraNetworkBuffersPerChannel;
@@ -92,8 +101,6 @@ public class NetworkEnvironment {
 	private final int senderExtraNetworkBuffersPerGate;
 
 	private final boolean enableCreditBased;
-
-	private final CausalLogManager causalLogManager;
 
 	private boolean isShutdown;
 
@@ -122,7 +129,7 @@ public class NetworkEnvironment {
 			extraNetworkBuffersPerGate,
 			senderExtraNetworkBuffersPerChannel,
 			senderExtraNetworkBuffersPerGate,
-			enableCreditBased, null);
+			enableCreditBased);
 	}
 
 	public NetworkEnvironment(
@@ -140,7 +147,7 @@ public class NetworkEnvironment {
 		int extraNetworkBuffersPerGate,
 		int senderExtraNetworkBuffersPerChannel,
 		int senderExtraNetworkBuffersPerGate,
-		boolean enableCreditBased, CausalLogManager causalLogManager) {
+		boolean enableCreditBased) {
 
 		this.networkBufferPool = checkNotNull(networkBufferPool);
 		this.connectionManager = checkNotNull(connectionManager);
@@ -163,9 +170,6 @@ public class NetworkEnvironment {
 		this.senderExtraNetworkBuffersPerGate = senderExtraNetworkBuffersPerGate;
 
 		this.enableCreditBased = enableCreditBased;
-
-		this.causalLogManager = causalLogManager;
-
 
 	}
 
@@ -205,9 +209,6 @@ public class NetworkEnvironment {
 		return enableCreditBased;
 	}
 
-	public CausalLogManager getCausalLogManager() {
-		return causalLogManager;
-	}
 
 	public KvStateRegistry getKvStateRegistry() {
 		return kvStateRegistry;
@@ -319,7 +320,7 @@ public class NetworkEnvironment {
 
 	public void unregisterTask(Task task) {
 		LOG.debug("Unregister task {} from network environment (state: {}).",
-				task.getTaskInfo().getTaskNameWithSubtasks(), task.getExecutionState());
+			task.getTaskInfo().getTaskNameWithSubtasks(), task.getExecutionState());
 
 		final ExecutionAttemptID executionId = task.getExecutionId();
 
@@ -346,13 +347,11 @@ public class NetworkEnvironment {
 						if (gate != null) {
 							gate.releaseAllResources(task.getFailureCause());
 						}
-					}
-					catch (IOException e) {
+					} catch (IOException e) {
 						LOG.error("Error during release of reader resources: " + e.getMessage(), e);
 					}
 				}
 			}
-			causalLogManager.unregisterTask(task.getJobID(), task.getJobVertexId());
 		}
 	}
 
@@ -424,8 +423,7 @@ public class NetworkEnvironment {
 			try {
 				LOG.debug("Shutting down network connection manager");
 				connectionManager.shutdown();
-			}
-			catch (Throwable t) {
+			} catch (Throwable t) {
 				LOG.warn("Cannot shut down the network connection manager.", t);
 			}
 
@@ -433,8 +431,7 @@ public class NetworkEnvironment {
 			try {
 				LOG.debug("Shutting down intermediate result partition manager");
 				resultPartitionManager.shutdown();
-			}
-			catch (Throwable t) {
+			} catch (Throwable t) {
 				LOG.warn("Cannot shut down the result partition manager.", t);
 			}
 
@@ -446,8 +443,7 @@ public class NetworkEnvironment {
 			// destroy the buffer pool
 			try {
 				networkBufferPool.destroy();
-			}
-			catch (Throwable t) {
+			} catch (Throwable t) {
 				LOG.warn("Network buffer pool did not shut down properly.", t);
 			}
 

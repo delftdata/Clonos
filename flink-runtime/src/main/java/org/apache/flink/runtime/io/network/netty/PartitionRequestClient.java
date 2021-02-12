@@ -18,7 +18,6 @@
 
 package org.apache.flink.runtime.io.network.netty;
 
-import org.apache.flink.runtime.causal.log.CausalLogManager;
 import org.apache.flink.runtime.event.TaskEvent;
 import org.apache.flink.runtime.io.network.NetworkClientHandler;
 import org.apache.flink.runtime.io.network.ConnectionID;
@@ -63,26 +62,16 @@ public class PartitionRequestClient {
 	/** If zero, the underlying TCP channel can be safely closed. */
 	private final AtomicDisposableReferenceCounter closeReferenceCounter = new AtomicDisposableReferenceCounter();
 
-	private final CausalLogManager causalLogManager;
-
 	PartitionRequestClient(
 		Channel tcpChannel,
 		NetworkClientHandler clientHandler,
 		ConnectionID connectionId,
 		PartitionRequestClientFactory clientFactory){
-		this(tcpChannel, clientHandler, connectionId, clientFactory, null);
-	}
-	PartitionRequestClient(
-			Channel tcpChannel,
-			NetworkClientHandler clientHandler,
-			ConnectionID connectionId,
-			PartitionRequestClientFactory clientFactory, CausalLogManager causalLogManager) {
 
 		this.tcpChannel = checkNotNull(tcpChannel);
 		this.clientHandler = checkNotNull(clientHandler);
 		this.connectionId = checkNotNull(connectionId);
 		this.clientFactory = checkNotNull(clientFactory);
-		this.causalLogManager = checkNotNull(causalLogManager);
 	}
 
 	boolean disposeIfNotUsed() {
@@ -113,7 +102,6 @@ public class PartitionRequestClient {
 
 		checkNotClosed();
 
-		causalLogManager.registerNewUpstreamConnection(inputChannel.getInputChannelId(), inputChannel.getJobID());
 		LOG.debug("Requesting subpartition {} of partition {} with {} ms delay.",
 				subpartitionIndex, partitionId, delayMs);
 

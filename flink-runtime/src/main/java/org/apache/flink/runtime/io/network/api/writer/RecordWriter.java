@@ -191,7 +191,6 @@ public class RecordWriter<T extends IOReadableWritable> implements EpochStartLis
 	}
 
 	public void broadcastEvent(AbstractEvent event) throws IOException {
-		LOG.info("{}: RecordWriter broadcast event {}.", targetPartition.getTaskName(), event);
 
 		boolean isBarrier = event instanceof CheckpointBarrier;
 		try (BufferConsumer eventBufferConsumer = EventSerializer.toBufferConsumer(event, epochTracker.getCurrentEpoch())) {
@@ -209,7 +208,6 @@ public class RecordWriter<T extends IOReadableWritable> implements EpochStartLis
 
 
 	public void emitEvent(AbstractEvent event, int targetChannel) throws IOException {
-		LOG.info("{}: RecordWriter emit event {}.", targetPartition.getTaskName(), event);
 
 		boolean isBarrier = event instanceof CheckpointBarrier;
 

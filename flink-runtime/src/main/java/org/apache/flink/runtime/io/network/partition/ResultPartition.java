@@ -517,16 +517,16 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 	}
 
 	public boolean isPoolAvailabilityLow() {
-		float availability = computePoolAvailability();
-		LOG.info("In-Flight Availability: {} < {} ", availability, availabilityFillFactor);
+		if (inFlightBufferPool == null || inFlightBufferPool.isDestroyed())
+			return false;
+		int used = inFlightBufferPool.bestEffortGetNumOfUsedBuffers();
+		int total = inFlightBufferPool.getNumBuffers();
+
+		float availability = (1- ((float)used) / total);
+
+		LOG.info("In-Flight Availability: used: {}, total: {}, available: {}, spillTrigger: {} ", used, total,availability, availabilityFillFactor);
 
 		return availability <= availabilityFillFactor;
-	}
-
-	private float computePoolAvailability() {
-		if (inFlightBufferPool == null || inFlightBufferPool.isDestroyed())
-			return 1;
-		return 1 - ((float) inFlightBufferPool.bestEffortGetNumOfUsedBuffers()) / inFlightBufferPool.getNumBuffers();
 	}
 
 	private static class FlushRunnable implements Runnable {

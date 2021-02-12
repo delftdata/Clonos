@@ -18,7 +18,6 @@
 
 package org.apache.flink.runtime.io.network.netty;
 
-import org.apache.flink.runtime.causal.log.CausalLogManager;
 import org.apache.flink.runtime.event.TaskEvent;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
@@ -147,15 +146,10 @@ public abstract class NettyMessage {
 	@ChannelHandler.Sharable
 	static class NettyMessageEncoder extends ChannelOutboundHandlerAdapter {
 
-		private final CausalLogManager causalLog;
 
 		public NettyMessageEncoder() {
-			this(null);
 		}
 
-		public NettyMessageEncoder(CausalLogManager causalLogManager) {
-			this.causalLog = causalLogManager;
-		}
 
 		@Override
 		public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
@@ -165,11 +159,6 @@ public abstract class NettyMessage {
 
 				try {
 					serialized = ((NettyMessage) msg).write(ctx.alloc());
-					if (msg instanceof BufferResponse) {
-						BufferResponse bufferResponse = (BufferResponse) msg;
-						serialized = causalLog.enrichWithCausalLogDeltas(serialized, bufferResponse.receiverId,
-							bufferResponse.epochID, ctx.alloc());
-					}
 				} catch (Throwable t) {
 					throw new IOException("Error while serializing message: " + msg, t);
 				} finally {
@@ -199,23 +188,10 @@ public abstract class NettyMessage {
 	 */
 	static class NettyMessageDecoder extends LengthFieldBasedFrameDecoder {
 		private final boolean restoreOldNettyBehaviour;
-		private final CausalLogManager causalLog;
 
 		NettyMessageDecoder(boolean restoreOldNettyBehaviour) {
-			this(restoreOldNettyBehaviour, null);
-		}
-
-		/**
-		 * Creates a new message decoded with the required frame properties.
-		 *
-		 * @param restoreOldNettyBehaviour restore Netty 4.0.27 code in
-		 * {@link LengthFieldBasedFrameDecoder#extractFrame} to
-		 *                                 copy instead of slicing the buffer
-		 */
-		NettyMessageDecoder(boolean restoreOldNettyBehaviour, CausalLogManager causalLogManager) {
 			super(Integer.MAX_VALUE, 0, 4, -4, 4);
 			this.restoreOldNettyBehaviour = restoreOldNettyBehaviour;
-			this.causalLog = causalLogManager;
 		}
 
 		@Override
@@ -239,7 +215,6 @@ public abstract class NettyMessage {
 				switch (msgId) {
 					case BufferResponse.ID:
 						decodedMsg = BufferResponse.readFrom(msg);
-						causalLog.deserializeCausalLogDelta(msg, ((BufferResponse) decodedMsg).receiverId);
 						break;
 					case PartitionRequest.ID:
 						decodedMsg = PartitionRequest.readFrom(msg);

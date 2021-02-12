@@ -858,7 +858,6 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 				producedPartitions,
 				inputGates,
 				network.getTaskEventDispatcher(),
-				network.getCausalLogManager(),
 				checkpointResponder,
 				taskManagerConfig,
 				metrics,

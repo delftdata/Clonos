@@ -18,7 +18,6 @@
 
 package org.apache.flink.runtime.io.network.netty;
 
-import org.apache.flink.runtime.causal.log.CausalLogManager;
 import org.apache.flink.runtime.io.network.NetworkClientHandler;
 import org.apache.flink.runtime.io.network.TaskEventDispatcher;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionProvider;
@@ -37,17 +36,13 @@ public class NettyProtocol {
 	private final TaskEventDispatcher taskEventDispatcher;
 
 	private final boolean creditBasedEnabled;
-	private final CausalLogManager causalLogManager;
 
 	NettyProtocol(ResultPartitionProvider partitionProvider, TaskEventDispatcher taskEventDispatcher, boolean creditBasedEnabled) {
-		this(partitionProvider, taskEventDispatcher, creditBasedEnabled, null);
-	}
-	NettyProtocol(ResultPartitionProvider partitionProvider, TaskEventDispatcher taskEventDispatcher, boolean creditBasedEnabled, CausalLogManager causalLogManager) {
+
 		this.partitionProvider = partitionProvider;
 		this.taskEventDispatcher = taskEventDispatcher;
 		this.creditBasedEnabled = creditBasedEnabled;
-		this.causalLogManager = causalLogManager;
-		this.messageEncoder = new NettyMessage.NettyMessageEncoder(causalLogManager);
+		this.messageEncoder = new NettyMessage.NettyMessageEncoder();
 	}
 
 	/**
@@ -84,13 +79,13 @@ public class NettyProtocol {
 	 * @return channel handlers
 	 */
 	public ChannelHandler[] getServerChannelHandlers() {
-		PartitionRequestQueue queueOfPartitionQueues = new PartitionRequestQueue(causalLogManager);
+		PartitionRequestQueue queueOfPartitionQueues = new PartitionRequestQueue();
 		PartitionRequestServerHandler serverHandler = new PartitionRequestServerHandler(
 			partitionProvider, taskEventDispatcher, queueOfPartitionQueues, creditBasedEnabled);
 
 		return new ChannelHandler[] {
 			messageEncoder,
-			new NettyMessage.NettyMessageDecoder(!creditBasedEnabled, causalLogManager),
+			new NettyMessage.NettyMessageDecoder(!creditBasedEnabled),
 			serverHandler,
 			queueOfPartitionQueues
 		};
@@ -134,7 +129,7 @@ public class NettyProtocol {
 				new PartitionRequestClientHandler();
 		return new ChannelHandler[] {
 			messageEncoder,
-			new NettyMessage.NettyMessageDecoder(!creditBasedEnabled, causalLogManager),
+			new NettyMessage.NettyMessageDecoder(!creditBasedEnabled),
 			networkClientHandler};
 	}
 

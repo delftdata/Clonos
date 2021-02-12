@@ -26,8 +26,6 @@ import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.core.memory.MemoryType;
 import org.apache.flink.queryablestate.network.stats.DisabledKvStateRequestStats;
 import org.apache.flink.runtime.broadcast.BroadcastVariableManager;
-import org.apache.flink.runtime.causal.log.CausalLogManager;
-import org.apache.flink.runtime.causal.log.job.serde.DeltaEncodingStrategy;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
@@ -400,15 +398,13 @@ public class TaskManagerServices {
 
 		NetworkEnvironmentConfiguration networkEnvironmentConfiguration = taskManagerServicesConfiguration.getNetworkConfig();
 
-		int determinantSegmentSize = networkEnvironmentConfiguration.nettyConfig().getDeterminantBufferSize();
-		float determinantSteal = networkEnvironmentConfiguration.nettyConfig().getDeterminantMemorySteal();
 
 		final long networkBuf = calculateNetworkBufferMemory(taskManagerServicesConfiguration, maxJvmHeapMemory);
 		int dataSegmentSize = networkEnvironmentConfiguration.networkBufferSize();
 
 
 		// tolerate offcuts between intended and allocated memory due to segmentation (will be available to the user-space memory)
-		final long numNetBuffersLong = (long) (((1-determinantSteal) * networkBuf)/ dataSegmentSize);
+		final long numNetBuffersLong = (long) (networkBuf/ dataSegmentSize);
 		if (numNetBuffersLong > Integer.MAX_VALUE) {
 			throw new IllegalArgumentException("The given number of memory bytes (" + networkBuf
 				+ ") corresponds to more than MAX_INT pages.");
@@ -419,24 +415,15 @@ public class TaskManagerServices {
 			(int) (numNetBuffersLong),
 			dataSegmentSize);
 
-		final long numNetBuffersForDeterminants = (long) (networkBuf * determinantSteal / determinantSegmentSize);
-		NetworkBufferPool determinantBufferPool = new NetworkBufferPool(
-			(int) (numNetBuffersForDeterminants),
-			determinantSegmentSize);
-
 		ConnectionManager connectionManager;
 		boolean enableCreditBased = false;
 		NettyConfig nettyConfig = networkEnvironmentConfiguration.nettyConfig();
 
-		int numDeterminantBuffersPerJob = nettyConfig.getNumDeterminantBuffersPerJob();
-		DeltaEncodingStrategy deltaEncodingStrategy = nettyConfig.getDeltaEncodingStrategy();
-		boolean enableDeltaSharingOptimizations = nettyConfig.getEnableDeltaSharingOptimizations();
 
 
-		CausalLogManager causalLogManager = new CausalLogManager(determinantBufferPool, numDeterminantBuffersPerJob, deltaEncodingStrategy, enableDeltaSharingOptimizations);
 
 		if (nettyConfig != null) {
-			connectionManager = new NettyConnectionManager(nettyConfig, causalLogManager);
+			connectionManager = new NettyConnectionManager(nettyConfig);
 			enableCreditBased = nettyConfig.isCreditBasedEnabled();
 		} else {
 			connectionManager = new LocalConnectionManager();
@@ -492,7 +479,7 @@ public class TaskManagerServices {
 			networkEnvironmentConfiguration.floatingNetworkBuffersPerGate(),
 			networkEnvironmentConfiguration.senderExtraNetworkBuffersPerChannel(),
 			networkEnvironmentConfiguration.senderExtraFloatingNetworkBuffersPerGate(),
-			enableCreditBased, causalLogManager);
+			enableCreditBased);
 	}
 
 	/**

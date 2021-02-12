@@ -45,7 +45,6 @@ public abstract class ProcessingTimeService {
 	 */
 	public abstract long getCurrentProcessingTime();
 
-	public abstract long getCurrentProcessingTimeCausal();
 	/**
 	 * Registers a task to be executed when (processing) time is {@code timestamp}.
 	 *
@@ -66,8 +65,6 @@ public abstract class ProcessingTimeService {
 	 * @return Scheduled future representing the task to be executed repeatedly
 	 */
 	public abstract ScheduledFuture<?> scheduleAtFixedRate(ProcessingTimeCallback callback, long initialDelay, long period);
-
-    public abstract void registerCallback(ProcessingTimeCallback callback);
 
     /**
 	 * Returns <tt>true</tt> if the service has been shut down, <tt>false</tt> otherwise.

@@ -20,31 +20,18 @@ package org.apache.flink.streaming.runtime.tasks;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.accumulators.Accumulator;
-import org.apache.flink.api.common.services.SerializableService;
-import org.apache.flink.api.common.services.SerializableServiceFactory;
+import org.apache.flink.api.common.services.*;
 import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.core.fs.CloseableRegistry;
 import org.apache.flink.core.fs.FileSystemSafetyNet;
 import org.apache.flink.runtime.causal.*;
-import org.apache.flink.runtime.causal.determinant.IgnoreCheckpointDeterminant;
-import org.apache.flink.runtime.causal.determinant.ProcessingTimeCallbackID;
-import org.apache.flink.runtime.causal.determinant.SourceCheckpointDeterminant;
-import org.apache.flink.runtime.causal.log.job.CausalLogID;
-import org.apache.flink.runtime.causal.log.job.JobCausalLog;
-import org.apache.flink.runtime.causal.log.thread.ThreadCausalLog;
 import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 import org.apache.flink.runtime.causal.recovery.RecoveryManager;
 import org.apache.flink.runtime.causal.recovery.RecoveryManagerContext;
-import org.apache.flink.api.common.services.RandomService;
-import org.apache.flink.api.common.services.TimeService;
-import org.apache.flink.runtime.causal.services.CausalSerializableServiceFactory;
-import org.apache.flink.runtime.causal.services.DeterministicCausalRandomService;
-import org.apache.flink.runtime.causal.services.PeriodicCausalTimeService;
 import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
-import org.apache.flink.runtime.event.DeterminantResponseEventListener;
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
 import org.apache.flink.runtime.event.InFlightLogRequestEventListener;
 import org.apache.flink.runtime.execution.CancelTaskException;
@@ -57,7 +44,6 @@ import org.apache.flink.runtime.io.network.partition.ResultSubpartition;
 import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
-import org.apache.flink.runtime.plugable.DeserializationDelegate;
 import org.apache.flink.runtime.plugable.SerializationDelegate;
 import org.apache.flink.runtime.state.*;
 import org.apache.flink.runtime.taskmanager.DispatcherThreadFactory;
@@ -79,9 +65,11 @@ import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 import java.io.Closeable;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -229,17 +217,12 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 	private final List<StreamRecordWriter<SerializationDelegate<StreamRecord<OUT>>>> streamRecordWriters;
 
-	private final JobCausalLog causalLog;
-	private final ThreadCausalLog mainThreadCausalLog;
 	private final RecoveryManager recoveryManager;
 
 	private final TimeService timeService;
 	private final RandomService randomService;
 	private final SerializableServiceFactory serializableServiceFactory;
 	private final EpochTracker epochTracker;
-
-	private final SourceCheckpointDeterminant reuseSourceCheckpointDeterminant;
-	private final IgnoreCheckpointDeterminant ignoreCheckpointReuseDeterminant;
 
 	// ------------------------------------------------------------------------
 
@@ -287,25 +270,17 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 		SingleInputGate[] inputGates = environment.getContainingTask().getAllInputGates();
 
-		this.causalLog = environment.getCausalLogManager().registerNewTask(this.getEnvironment().getJobID(),
-			this.getEnvironment().getJobVertexId(),
-			vertexGraphInformation, getExecutionConfig().getDeterminantSharingDepth(),
-			getEnvironment().getAllWriters());
-		epochTracker.subscribeToCheckpointCompleteEvents(causalLog);
-		this.mainThreadCausalLog =
-			causalLog.getThreadCausalLog(new CausalLogID(vertexGraphInformation.getThisTasksVertexID().getVertexID()));
 
-		RecoveryManagerContext rmContext = new RecoveryManagerContext(this, causalLog,
+		RecoveryManagerContext rmContext = new RecoveryManagerContext(this,
 			readyToReplayFuture, vertexGraphInformation, epochTracker,
 			this, environment.getContainingTask().getProducedPartitions());
 
 		this.recoveryManager = new RecoveryManager(rmContext);
 		epochTracker.setRecoveryManager(recoveryManager);
 
-		this.timeService = new PeriodicCausalTimeService(causalLog, recoveryManager,
-			getExecutionConfig().getAutoTimeSetterInterval());
-		this.randomService = new DeterministicCausalRandomService(causalLog, recoveryManager);
-		this.serializableServiceFactory = new CausalSerializableServiceFactory(recoveryManager, causalLog);
+		this.timeService = new SimpleTimeService();
+		this.randomService = new SimpleRandomService();
+		this.serializableServiceFactory = new SimpleSerializableServiceFactory();
 
 
 		this.streamRecordWriters = createStreamRecordWriters(configuration, environment, randomService, epochTracker);
@@ -319,14 +294,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 		for (ResultPartition partition : environment.getContainingTask().getProducedPartitions()) {
 			for (ResultSubpartition subpartition : partition.getResultSubpartitions()) {
-				((PipelinedSubpartition) subpartition).setCausalComponents(recoveryManager, causalLog);
+				((PipelinedSubpartition) subpartition).setCausalComponents(recoveryManager);
 			}
-			DeterminantResponseEventListener edel =
-				new DeterminantResponseEventListener(environment.getUserClassLoader(), recoveryManager,
-					getCheckpointLock());
-			environment.getTaskEventDispatcher().subscribeToEvent(partition.getPartitionId(), edel,
-				DeterminantResponseEvent.class);
-			LOG.info("Set DeterminantResponseEventListener {} for resultPartition {}.", edel, partition);
 
 			InFlightLogRequestEventListener iflrel =
 				new InFlightLogRequestEventListener(environment.getUserClassLoader(), recoveryManager);
@@ -334,9 +303,6 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 				InFlightLogRequestEvent.class);
 			LOG.info("Set InFlightLogRequestEventListener {} for resultPartition {}.", iflrel, partition);
 		}
-
-		reuseSourceCheckpointDeterminant = new SourceCheckpointDeterminant();
-		ignoreCheckpointReuseDeterminant = new IgnoreCheckpointDeterminant();
 	}
 
 	// ------------------------------------------------------------------------
@@ -388,16 +354,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 				ThreadFactory timerThreadFactory = new DispatcherThreadFactory(TRIGGER_THREAD_GROUP,
 					"Time Trigger for " + getName(), getUserCodeClassLoader());
 
-				timerService = new SystemProcessingTimeService(this, getCheckpointLock(), timerThreadFactory,
-					timeService, epochTracker, causalLog, recoveryManager);
-			}
-
-			recoveryManager.getContext().setProcessingTimeService((ProcessingTimeForceable) timerService);
-
-			//TODO don't like this, timeService should schedule itself ideally
-			if (timeService instanceof PeriodicCausalTimeService) {
-				timerService.scheduleAtFixedRate(new TimeSetterTask(((PeriodicCausalTimeService) timeService).getCurrentTime()), 10,
-					((PeriodicCausalTimeService) timeService).getInterval());
+				timerService = new SystemProcessingTimeService(this, getCheckpointLock(), timerThreadFactory);
 			}
 
 			operatorChain = new OperatorChain<>(this, streamRecordWriters);
@@ -730,17 +687,6 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	@Override
 	public boolean triggerCheckpoint(CheckpointMetaData checkpointMetaData, CheckpointOptions checkpointOptions) throws Exception {
 
-		if (this.recoveryManager.isRecovering() && !this.recoveryManager.getContext().vertexGraphInformation.hasUpstream()) {
-			LOG.info("Store trigger checkpoint determinant for later processing because recovering!");
-			recoveryManager.getContext().appendRPCRequestDuringRecovery(reuseSourceCheckpointDeterminant.replace(
-				0,
-				checkpointMetaData.getCheckpointId(),
-				checkpointMetaData.getTimestamp(),
-				checkpointOptions.getCheckpointType(),
-				checkpointOptions.getTargetLocation().getReferenceBytes()));
-			return true;
-		}
-
 		try {
 			// No alignment if we inject a checkpoint
 			CheckpointMetrics checkpointMetrics = new CheckpointMetrics()
@@ -794,14 +740,6 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	}
 
 
-	public boolean isCausal() {
-		return getCausalLog() != null;
-	}
-
-	public JobCausalLog getCausalLog() {
-		return this.causalLog;
-	}
-
 	public IRecoveryManager getRecoveryManager() {
 		return recoveryManager;
 	}
@@ -828,16 +766,6 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 				// records/watermarks/timers/callbacks.
 				// We generally try to emit the checkpoint barrier as soon as possible to not affect downstream
 				// checkpoint alignments
-
-				if (!this.recoveryManager.getContext().vertexGraphInformation.hasUpstream()) {
-					this.mainThreadCausalLog.appendDeterminant(reuseSourceCheckpointDeterminant.replace(
-						epochTracker.getRecordCount(),
-						checkpointMetaData.getCheckpointId(),
-						checkpointMetaData.getTimestamp(),
-						checkpointOptions.getCheckpointType(),
-						checkpointOptions.getTargetLocation().getReferenceBytes()
-					), epochTracker.getCurrentEpoch());
-				}
 
 				// Step (1): Prepare the checkpoint, allow operators to do some pre-barrier work.
 				//           The pre-barrier work should be nothing or minimal in the common case.
@@ -887,29 +815,6 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		}
 	}
 
-	@Override
-	public void ignoreCheckpoint(long checkpointId) {
-
-		synchronized (lock) {
-			ignoreCheckpointReuseDeterminant.replace(epochTracker.getRecordCount(), checkpointId);
-			if (isRunning && !recoveryManager.isRecovering()) {
-				LOG.info("Ignoring checkpoint, appending determinant and ignoring.");
-				this.mainThreadCausalLog.appendDeterminant(ignoreCheckpointReuseDeterminant, epochTracker.getCurrentEpoch());
-				CheckpointBarrierHandler handler = getCheckpointBarrierHandler();
-				try {
-					handler.ignoreCheckpoint(checkpointId);
-				} catch (Exception e) {
-					LOG.error(e.getMessage());
-					e.printStackTrace();
-				}
-				// notify the coordinator that we decline this checkpoint
-				getEnvironment().declineCheckpoint(checkpointId, new Exception("Received rpc to cancel"));
-			} else {
-				recoveryManager.getContext().appendRPCRequestDuringRecovery(ignoreCheckpointReuseDeterminant);
-			}
-		}
-
-	}
 
 	protected CheckpointBarrierHandler getCheckpointBarrierHandler() {
 		//default implementation
@@ -1480,8 +1385,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			streamRecordWriters.add(newRecordWriter);
 
 			//TODO do not love this cast.
-			for(ResultSubpartition ps :  newRecordWriter.getResultPartition().getResultSubpartitions())
-				if(ps instanceof PipelinedSubpartition)
+			for (ResultSubpartition ps : newRecordWriter.getResultPartition().getResultSubpartitions())
+				if (ps instanceof PipelinedSubpartition)
 					epochTracker.subscribeToCheckpointCompleteEvents(((PipelinedSubpartition) ps).getInFlightLog());
 		}
 		return streamRecordWriters;
@@ -1514,23 +1419,4 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		return output;
 	}
 
-	//Problem is, we cant move this into PeriodicCausalTimeservice because it does not depend on flink-streaming
-	static class TimeSetterTask implements ProcessingTimeCallback {
-		private final ProcessingTimeCallbackID id = new ProcessingTimeCallbackID("PTS");
-		private final long[] timeToSet;
-
-		public TimeSetterTask(long[] timeToSet) {
-			this.timeToSet = timeToSet;
-		}
-
-		@Override
-		public void onProcessingTime(long timestamp) throws Exception {
-			timeToSet[0] = timestamp;
-		}
-
-		@Override
-		public ProcessingTimeCallbackID getID() {
-			return id;
-		}
-	}
 }
