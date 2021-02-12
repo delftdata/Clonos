@@ -22,8 +22,6 @@ import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.typeutils.CompatibilityResult;
 import org.apache.flink.api.common.typeutils.CompatibilityUtil;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
-import org.apache.flink.runtime.causal.determinant.ProcessingTimeCallbackID;
-import org.apache.flink.runtime.causal.recovery.RecoveryManager;
 import org.apache.flink.runtime.state.InternalPriorityQueue;
 import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.state.KeyGroupedInternalPriorityQueue;
@@ -32,8 +30,6 @@ import org.apache.flink.streaming.runtime.tasks.ProcessingTimeService;
 import org.apache.flink.util.CloseableIterator;
 import org.apache.flink.util.FlinkRuntimeException;
 import org.apache.flink.util.Preconditions;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -100,8 +96,6 @@ public class InternalTimerServiceImpl<K, N> implements InternalTimerService<N>, 
 	/** The restored timers snapshot, if any. */
 	private InternalTimersSnapshot<K, N> restoredTimersSnapshot;
 
-	private final ProcessingTimeCallbackID processingTimeCallbackID;
-
 		InternalTimerServiceImpl(
 			String name,
 			KeyGroupRange localKeyGroupRange,
@@ -121,7 +115,6 @@ public class InternalTimerServiceImpl<K, N> implements InternalTimerService<N>, 
 			startIdx = Math.min(keyGroupIdx, startIdx);
 		}
 		this.localKeyGroupRangeStartIdx = startIdx;
-		this.processingTimeCallbackID = new ProcessingTimeCallbackID(name);
 	}
 
 	/**
@@ -191,7 +184,7 @@ public class InternalTimerServiceImpl<K, N> implements InternalTimerService<N>, 
 
 	@Override
 	public long currentProcessingTime() {
-		return processingTimeService.getCurrentProcessingTimeCausal();
+		return processingTimeService.getCurrentProcessingTime();
 	}
 
 	@Override
@@ -246,11 +239,6 @@ public class InternalTimerServiceImpl<K, N> implements InternalTimerService<N>, 
 		if (timer != null && nextTimer == null) {
 			nextTimer = processingTimeService.registerTimer(timer.getTimestamp(), this);
 		}
-	}
-
-	@Override
-	public ProcessingTimeCallbackID getID() {
-		return processingTimeCallbackID;
 	}
 
 	public void advanceWatermark(long time) throws Exception {

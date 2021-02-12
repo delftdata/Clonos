@@ -86,8 +86,6 @@ public final class EpochTrackerImpl implements EpochTracker {
 
 		if (LOG.isDebugEnabled())
 			LOG.debug("incRecordCount: current={}, target={}", recordCount, recordCountTarget);
-		//Before returning control to the caller, check if we first should execute async nondeterministic event
-		fireAnyAsyncEvent();
 	}
 
 	@Override
@@ -98,8 +96,6 @@ public final class EpochTrackerImpl implements EpochTracker {
 			LOG.debug("resetRecordCount: current={}, target={}", recordCount, recordCountTarget);
 		for (EpochStartListener listener : epochStartListeners)
 			listener.notifyEpochStart(epochID);
-		//check if async event is first event of the epoch
-		fireAnyAsyncEvent();
 	}
 
 	@Override
@@ -107,17 +103,9 @@ public final class EpochTrackerImpl implements EpochTracker {
 		this.recordCountTarget = target;
 		if (LOG.isDebugEnabled())
 			LOG.debug("setRecordCountTarget: current={}, target={}", recordCount, recordCountTarget);
-		fireAnyAsyncEvent();
 	}
 
-	private void fireAnyAsyncEvent() {
-		while (recordCountTarget == recordCount) {
-			if (LOG.isDebugEnabled())
-				LOG.debug("Hit target of {}!", recordCountTarget);
-			recordCountTarget = NO_RECORD_COUNT_TARGET;
-			recoveryManager.getLogReplayer().triggerAsyncEvent();
-		}
-	}
+
 
 	@Override
 	public void subscribeToEpochStartEvents(EpochStartListener listener) {

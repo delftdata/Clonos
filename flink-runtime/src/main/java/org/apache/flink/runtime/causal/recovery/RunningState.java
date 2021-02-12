@@ -25,18 +25,12 @@
 
 package org.apache.flink.runtime.causal.recovery;
 
-import org.apache.flink.runtime.causal.DeterminantResponseEvent;
-import org.apache.flink.runtime.causal.determinant.AsyncDeterminant;
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
-import org.apache.flink.runtime.io.network.api.DeterminantRequestEvent;
 import org.apache.flink.runtime.io.network.partition.PipelinedSubpartition;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannel;
-import org.apache.flink.runtime.io.network.partition.consumer.RemoteInputChannel;
-import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
 
 /**
  * We either start in this state, or transition to it after the full recovery.
@@ -51,15 +45,7 @@ public class RunningState extends AbstractState {
 
 	@Override
 	public void executeEnter() {
-		context.processingTimeForceable.concludeReplay();
 
-		for (AsyncDeterminant delayedRPCRequest : context.unansweredRPCRequests) {
-			//TODO I think this may block? Or at least cause problems.Should probably execute these async
-			logDebugWithVertexID("Executing delayed RPC request: {}", delayedRPCRequest);
-			//delayedRPCRequest.setRecordCount(context.recordCounter.getRecordCount());
-			//delayedRPCRequest.process(context);
-		}
-		context.unansweredRPCRequests.clear();
 	}
 
 	@Override
@@ -77,35 +63,18 @@ public class RunningState extends AbstractState {
 	}
 
 
-	@Override
-	public void notifyDeterminantRequestEvent(DeterminantRequestEvent e, int channelRequestArrivedFrom) {
-		logInfoWithVertexID("Received a determinant request {} on channel {}", e, channelRequestArrivedFrom);
-		//Since we are in running state, we can simply reply
-
-		try {
-			DeterminantResponseEvent responseEvent =
-				context.causalLog.respondToDeterminantRequest(e);
-			logInfoWithVertexID("Responding with: {}", responseEvent);
-
-			context.inputGate.getInputChannel(channelRequestArrivedFrom).sendTaskEvent(responseEvent);
-		} catch (IOException | InterruptedException ex) {
-			ex.printStackTrace();
-		}
-	}
 
 	@Override
 	public void notifyNewInputChannel(InputChannel inputChannel, int consumedSubpartitionIndex,
 									  int numBuffersRemoved) {
 
-		if (!(inputChannel instanceof RemoteInputChannel))
-			return;
-		if (context.causalLog.getDeterminantSharingDepth() == 0) {
-			SingleInputGate singleInputGate = inputChannel.getInputGate();
-			int channelIndex = inputChannel.getChannelIndex();
+		//if (context.causalLog.getDeterminantSharingDepth() == 0) {
+		//	SingleInputGate singleInputGate = inputChannel.getInputGate();
+		//	int channelIndex = inputChannel.getChannelIndex();
 
-			context.invokable.resetInputChannelDeserializer(singleInputGate, channelIndex);
+		//	context.invokable.resetInputChannelDeserializer(singleInputGate, channelIndex);
 
-		}
+		//}
 	}
 
 	@Override

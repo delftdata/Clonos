@@ -22,7 +22,6 @@ import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.state.ListState;
 import org.apache.flink.api.common.state.ListStateDescriptor;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
-import org.apache.flink.runtime.causal.determinant.ProcessingTimeCallbackID;
 import org.apache.flink.runtime.state.StateInitializationContext;
 import org.apache.flink.runtime.state.StateSnapshotContext;
 import org.apache.flink.streaming.api.datastream.AsyncDataStream;
@@ -206,17 +205,7 @@ public class AsyncWaitOperator<IN, OUT>
 
 			final ScheduledFuture<?> timerFuture = getProcessingTimeService().registerTimer(
 				timeoutTimestamp,
-				new ProcessingTimeCallback() {
-					@Override
-					public void onProcessingTime(long timestamp) throws Exception {
-						userFunction.timeout(element.getValue(), streamRecordBufferEntry);
-					}
-
-					@Override
-					public ProcessingTimeCallbackID getID() {
-						return null;
-					}
-				});
+				timestamp -> userFunction.timeout(element.getValue(), streamRecordBufferEntry));
 
 			// Cancel the timer once we've completed the stream record buffer entry. This will remove
 			// the register trigger task

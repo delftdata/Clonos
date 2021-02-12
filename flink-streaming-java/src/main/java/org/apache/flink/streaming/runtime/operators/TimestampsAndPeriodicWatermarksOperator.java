@@ -17,7 +17,6 @@
 
 package org.apache.flink.streaming.runtime.operators;
 
-import org.apache.flink.runtime.causal.determinant.ProcessingTimeCallbackID;
 import org.apache.flink.streaming.api.functions.AssignerWithPeriodicWatermarks;
 import org.apache.flink.streaming.api.operators.AbstractUdfStreamOperator;
 import org.apache.flink.streaming.api.operators.ChainingStrategy;
@@ -42,12 +41,10 @@ public class TimestampsAndPeriodicWatermarksOperator<T>
 
 	private transient long currentWatermark;
 
-	private final ProcessingTimeCallbackID id = new ProcessingTimeCallbackID(ProcessingTimeCallbackID.Type.TIMESTAMP_PERIODIC_WATERMARK_EXTRACTOR);
 
 	public TimestampsAndPeriodicWatermarksOperator(AssignerWithPeriodicWatermarks<T> assigner) {
 		super(assigner);
 		this.chainingStrategy = ChainingStrategy.ALWAYS;
-		this.getProcessingTimeService().registerCallback(this);
 	}
 
 	@Override
@@ -83,11 +80,6 @@ public class TimestampsAndPeriodicWatermarksOperator<T>
 
 		long now = getProcessingTimeService().getCurrentProcessingTime();
 		getProcessingTimeService().registerTimer(now + watermarkInterval, this);
-	}
-
-	@Override
-	public ProcessingTimeCallbackID getID() {
-		return id;
 	}
 
 	/**

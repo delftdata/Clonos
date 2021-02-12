@@ -25,19 +25,13 @@
 
 package org.apache.flink.runtime.causal.recovery;
 
-import org.apache.flink.runtime.causal.DeterminantResponseEvent;
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
-import org.apache.flink.runtime.io.network.api.DeterminantRequestEvent;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannel;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 
 public interface State {
 
 	void executeEnter();
-
-	void notifyDeterminantResponseEvent(DeterminantResponseEvent e);
-
-	void notifyDeterminantRequestEvent(DeterminantRequestEvent e,int channelRequestArrivedFrom);
 
 	void notifyNewInputChannel(InputChannel inputChannel, int consumedSubpartitionIndex, int numBuffersRemoved);
 
@@ -51,7 +45,4 @@ public interface State {
 
 	void notifyStartRecovery();
 
-	//======= Replay ======
-
-    LogReplayer getLogReplayer();
 }

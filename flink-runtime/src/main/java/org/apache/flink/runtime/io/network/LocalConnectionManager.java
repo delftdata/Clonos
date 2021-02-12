@@ -18,11 +18,9 @@
 
 package org.apache.flink.runtime.io.network;
 
-import org.apache.flink.runtime.causal.log.CausalLogManager;
 import org.apache.flink.runtime.io.network.netty.PartitionRequestClient;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionProvider;
 
-import java.io.IOException;
 
 /**
  * A connection manager implementation to bypass setup overhead for task managers running in local

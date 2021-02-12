@@ -104,7 +104,7 @@ public class ProcessOperator<IN, OUT>
 
 		@Override
 		public long currentProcessingTime() {
-			return processingTimeService.getCurrentProcessingTimeCausal();
+			return processingTimeService.getCurrentProcessingTime();
 		}
 
 		@Override

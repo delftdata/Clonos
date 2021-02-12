@@ -80,15 +80,6 @@ public class TestProcessingTimeService extends ProcessingTimeService {
 	}
 
 	@Override
-	public void registerCallback(ProcessingTimeCallback p) {
-	}
-
-	@Override
-	public long getCurrentProcessingTimeCausal() {
-		return currentTime;
-	}
-
-	@Override
 	public ScheduledFuture<?> registerTimer(long timestamp, ProcessingTimeCallback target) {
 		if (isTerminated) {
 			throw new IllegalStateException("terminated");

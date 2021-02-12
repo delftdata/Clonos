@@ -22,7 +22,6 @@ import org.apache.flink.configuration.ConfigOption;
 import org.apache.flink.configuration.ConfigOptions;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.TaskManagerOptions;
-import org.apache.flink.runtime.causal.log.job.serde.DeltaEncodingStrategy;
 import org.apache.flink.runtime.net.SSLUtils;
 
 import org.slf4j.Logger;
@@ -78,29 +77,6 @@ public class NettyConfig {
 			.withDescription("The Netty send and receive buffer size. This defaults to the system buffer size" +
 				" (cat /proc/sys/net/ipv4/tcp_[rw]mem) and is 4 MiB in modern Linux.");
 
-	public static final ConfigOption<Float> DETERMINANT_MEMORY_STEAL = ConfigOptions
-		.key("taskmanager.network.netty.determinantMemorySteal")
-		.defaultValue(0.2f)
-		.withDescription("The percentage of determinant memory to steal from sendReceive memory");
-
-	public static final ConfigOption<Integer> DETERMINANT_BUFFER_SIZE = ConfigOptions
-		.key("taskmanager.network.netty.determinantBufferSize")
-		.defaultValue(16384) // default: 0 => Netty's default
-		.withDescription("The Netty buffer size for determinants");
-	public static final ConfigOption<Integer> DETERMINANT_BUFFERS_PER_JOB = ConfigOptions
-		.key("taskmanager.network.netty.determinantBuffersPerJob")
-		.defaultValue(500)
-		.withDescription("Number of buffers to give any single task.");
-
-	public static final ConfigOption<String> DETERMINANT_DELTA_ENCODING_STRATEGY = ConfigOptions
-		.key("taskmanager.network.netty.determinantDeltaEncodingStrategy")
-		.defaultValue("flat")
-		.withDescription("The strategy used to encode determinant deltas. \"flat\" or \"hierarchical\"");
-
-	public static final ConfigOption<Boolean> ENABLE_DELTA_SHARING_OPTIMIZATIONS = ConfigOptions
-		.key("taskmanager.network.netty.enableDeltaSharingOptimizations")
-		.defaultValue(false)
-		.withDescription("If optimizations like unique channel consumer sharing should be enabled. Disable if slot sharing is enabled.");
 
 	public static final ConfigOption<String> TRANSPORT_TYPE = ConfigOptions
 			.key("taskmanager.network.netty.transport")
@@ -108,17 +84,6 @@ public class NettyConfig {
 			.withDeprecatedKeys("taskmanager.net.transport")
 			.withDescription("The Netty transport type, either \"nio\" or \"epoll\"");
 
-	public DeltaEncodingStrategy getDeltaEncodingStrategy() {
-		final String configValue = config.getString(DETERMINANT_DELTA_ENCODING_STRATEGY);
-		if (configValue.equals("flat"))
-			return DeltaEncodingStrategy.FLAT;
-		else
-			return DeltaEncodingStrategy.HIERARCHICAL;
-	}
-
-	public boolean getEnableDeltaSharingOptimizations() {
-		return config.getBoolean(ENABLE_DELTA_SHARING_OPTIMIZATIONS);
-	}
 
 	// ------------------------------------------------------------------------
 
@@ -205,18 +170,6 @@ public class NettyConfig {
 		return configValue == -1 ? numberOfSlots : configValue;
 	}
 
-
-	public float getDeterminantMemorySteal() {
-		return config.getFloat(DETERMINANT_MEMORY_STEAL);
-	}
-
-	public int getDeterminantBufferSize() {
-		return config.getInteger(DETERMINANT_BUFFER_SIZE);
-	}
-
-	public int getNumDeterminantBuffersPerJob() {
-		return config.getInteger(DETERMINANT_BUFFERS_PER_JOB);
-	}
 
 	public int getClientConnectTimeoutSeconds() {
 		return config.getInteger(CLIENT_CONNECT_TIMEOUT_SECONDS);

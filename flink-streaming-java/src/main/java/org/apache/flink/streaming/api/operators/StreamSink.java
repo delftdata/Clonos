@@ -82,7 +82,7 @@ public class StreamSink<IN> extends AbstractUdfStreamOperator<Object, SinkFuncti
 
 		@Override
 		public long currentProcessingTime() {
-			return processingTimeService.getCurrentProcessingTimeCausal();
+			return processingTimeService.getCurrentProcessingTime();
 		}
 
 		@Override

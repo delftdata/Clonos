@@ -18,7 +18,6 @@
 package org.apache.flink.streaming.api.operators;
 
 import org.apache.flink.runtime.causal.EpochTracker;
-import org.apache.flink.runtime.causal.determinant.ProcessingTimeCallbackID;
 import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
@@ -184,7 +183,7 @@ public class StreamSourceContexts {
 
 		@Override
 		protected void processAndCollect(T element) {
-			lastRecordTime = this.timeService.getCurrentProcessingTimeCausal();
+			lastRecordTime = this.timeService.getCurrentProcessingTime();
 			output.collect(reuse.replace(element, lastRecordTime));
 
 			// this is to avoid lock contention in the lockingObject by
@@ -243,8 +242,6 @@ public class StreamSourceContexts {
 			private final Object lock;
 			private final Output<StreamRecord<T>> output;
 
-			private final ProcessingTimeCallbackID id = new ProcessingTimeCallbackID(ProcessingTimeCallbackID.Type.WATERMARK);
-
 			private WatermarkEmittingTask(
 					ProcessingTimeService timeService,
 					Object checkpointLock,
@@ -252,7 +249,6 @@ public class StreamSourceContexts {
 				this.timeService = timeService;
 				this.lock = checkpointLock;
 				this.output = output;
-				timeService.registerCallback(this);
 			}
 
 			@Override
@@ -260,7 +256,7 @@ public class StreamSourceContexts {
 
 				final long currentTime;
 				synchronized (lock) {
-					currentTime = timeService.getCurrentProcessingTimeCausal();
+					currentTime = timeService.getCurrentProcessingTime();
 					// we should continue to automatically emit watermarks if we are active
 					if (streamStatusMaintainer.getStreamStatus().isActive()) {
 						if (idleTimeout != -1 && currentTime - lastRecordTime > idleTimeout) {
@@ -288,10 +284,6 @@ public class StreamSourceContexts {
 						nextWatermark, new WatermarkEmittingTask(this.timeService, lock, output));
 			}
 
-			@Override
-			public ProcessingTimeCallbackID getID() {
-				return id;
-			}
 		}
 	}
 
@@ -395,7 +387,6 @@ public class StreamSourceContexts {
 			this.checkpointLock = Preconditions.checkNotNull(checkpointLock, "Checkpoint Lock cannot be null.");
 			this.streamStatusMaintainer = Preconditions.checkNotNull(streamStatusMaintainer, "Stream Status Maintainer cannot be null.");
 
-			timeService.registerCallback(new IdlenessDetectionTask());
 			this.recoveryManager = recoveryManager;
 			this.epochTracker = recoveryManager.getContext().getEpochTracker();
 
@@ -476,7 +467,6 @@ public class StreamSourceContexts {
 
 		private class IdlenessDetectionTask implements ProcessingTimeCallback {
 
-			private final ProcessingTimeCallbackID id = new ProcessingTimeCallbackID(ProcessingTimeCallbackID.Type.IDLE);
 
 			@Override
 			public void onProcessingTime(long timestamp) throws Exception {
@@ -494,10 +484,6 @@ public class StreamSourceContexts {
 				}
 			}
 
-			@Override
-			public ProcessingTimeCallbackID getID() {
-				return id;
-			}
 		}
 
 		private void scheduleNextIdleDetectionTask() {

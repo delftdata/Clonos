@@ -226,7 +226,7 @@ public class StreamNetworkBenchmarkEnvironment<T extends IOReadableWritable> {
 			TaskManagerOptions.NETWORK_EXTRA_BUFFERS_PER_GATE.defaultValue(),
 			TaskManagerOptions.SENDER_EXTRA_NETWORK_BUFFERS_PER_CHANNEL.defaultValue(),
 			TaskManagerOptions.SENDER_EXTRA_NETWORK_EXTRA_BUFFERS_PER_GATE.defaultValue(),
-			true, null);
+			true);
 	}
 
 	protected ResultPartitionWriter createResultPartition(

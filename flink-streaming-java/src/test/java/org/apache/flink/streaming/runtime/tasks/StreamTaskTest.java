@@ -31,7 +31,6 @@ import org.apache.flink.runtime.blob.BlobCacheService;
 import org.apache.flink.runtime.blob.PermanentBlobCache;
 import org.apache.flink.runtime.blob.TransientBlobCache;
 import org.apache.flink.runtime.broadcast.BroadcastVariableManager;
-import org.apache.flink.runtime.causal.determinant.ProcessingTimeCallbackID;
 import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
@@ -1250,17 +1249,9 @@ public class StreamTaskTest extends TestLogger {
 
 		@Override
 		protected void init() throws Exception {
-			getProcessingTimeService().registerTimer(0, new ProcessingTimeCallback() {
-				@Override
-				public void onProcessingTime(long timestamp) throws Exception {
-					classLoaders.add(Thread.currentThread().getContextClassLoader());
-					syncLatch.trigger();
-				}
-
-				@Override
-				public ProcessingTimeCallbackID getID() {
-					return null;
-				}
+			getProcessingTimeService().registerTimer(0, timestamp -> {
+				classLoaders.add(Thread.currentThread().getContextClassLoader());
+				syncLatch.trigger();
 			});
 		}
 

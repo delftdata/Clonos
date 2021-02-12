@@ -19,7 +19,6 @@
 package org.apache.flink.streaming.runtime.tasks;
 
 import org.apache.flink.annotation.Internal;
-import org.apache.flink.runtime.causal.determinant.ProcessingTimeCallbackID;
 
 
 /**
@@ -39,6 +38,4 @@ public interface ProcessingTimeCallback {
 	 * @param timestamp The timestamp for which the trigger event was scheduled.
 	 */
 	void onProcessingTime(long timestamp) throws Exception;
-
-	ProcessingTimeCallbackID getID();
 }

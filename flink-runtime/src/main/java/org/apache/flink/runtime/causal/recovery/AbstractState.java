@@ -25,18 +25,12 @@
 
 package org.apache.flink.runtime.causal.recovery;
 
-import org.apache.flink.runtime.causal.DeterminantResponseEvent;
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
-import org.apache.flink.runtime.io.network.api.DeterminantRequestEvent;
-import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
-import org.apache.flink.runtime.io.network.buffer.BufferConsumer;
-import org.apache.flink.runtime.io.network.partition.PipelinedSubpartition;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannel;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -101,71 +95,12 @@ public abstract class AbstractState implements State {
 		this.context.incompleteStateRestorations.remove(checkpointId);
 	}
 
-	@Override
-	public void notifyDeterminantResponseEvent(DeterminantResponseEvent e) {
-		logInfoWithVertexID("Received {}", e);
-		RecoveryManagerContext.UnansweredDeterminantRequest udr =
-			context.unansweredDeterminantRequests.get(e.getVertexID(), e.getCorrelationID());
-		if (udr != null) {
-			udr.incResponsesReceived();
-			udr.getCurrentResponse().merge(e);
-			if (udr.getNumResponsesReceived() == context.getNumberOfDirectDownstreamNeighbourVertexes()) {
-				context.unansweredDeterminantRequests.remove(e.getVertexID(), e.getCorrelationID());
-				try {
-					DeterminantResponseEvent toRespond = udr.getCurrentResponse();
-					context.inputGate.getInputChannel(udr.getRequestingChannel()).sendTaskEvent(toRespond);
-					//TODO udr.getVertexCausalLogDelta().release(); Cant release here because sendTaskEvent is async
-				} catch (IOException | InterruptedException ex) {
-					ex.printStackTrace();
-				}
-			}
-		} else
-			logInfoWithVertexID("Do not know what this determinant response event refers to...");
-
-	}
-
-	@Override
-	public void notifyDeterminantRequestEvent(DeterminantRequestEvent e, int channelRequestArrivedFrom) {
-		logInfoWithVertexID("Received {}", e);
-		//If we are a sink and doing transactional recovery, just answer with nothing
-		if (!context.vertexGraphInformation.hasDownstream() && RecoveryManager.sinkRecoveryStrategy == RecoveryManager.SinkRecoveryStrategy.TRANSACTIONAL) {
-			try {
-				context.inputGate.getInputChannel(channelRequestArrivedFrom).sendTaskEvent(new DeterminantResponseEvent(e));
-			} catch (IOException | InterruptedException ex) {
-				ex.printStackTrace();
-			}
-		} else {
-			context.unansweredDeterminantRequests.put(e.getFailedVertex(), e.getCorrelationID(),
-				new RecoveryManagerContext.UnansweredDeterminantRequest(e, channelRequestArrivedFrom));
-			if(LOG.isDebugEnabled())
-				logInfoWithVertexID("Recurring determinant request");
-			e.setUpstreamCorrelationID(e.getCorrelationID());
-			broadcastDeterminantRequest(e);
-		}
-	}
-
-	protected void broadcastDeterminantRequest(DeterminantRequestEvent e) {
-		for (PipelinedSubpartition ps : context.subpartitionTable.values()) {
-			e.setCorrelationID(random.nextLong());
-			try (BufferConsumer event = EventSerializer.toBufferConsumer(e, context.epochTracker.getCurrentEpoch())) {
-				ps.bypassDeterminantRequest(event.copy());
-			} catch (IOException ex) {
-				ex.printStackTrace();
-			}
-		}
-	}
-
 
 	@Override
 	public void notifyStartRecovery() {
 		LOG.info("Unexpected notification StartRecovery in state " + this.getClass());
 	}
 
-
-	@Override
-	public LogReplayer getLogReplayer() {
-		throw new RuntimeException("Unexpected request of LogReplayer in state" + this.getClass());
-	}
 
 	/**
 	 * Simple utility method for prepending vertex id to a log message

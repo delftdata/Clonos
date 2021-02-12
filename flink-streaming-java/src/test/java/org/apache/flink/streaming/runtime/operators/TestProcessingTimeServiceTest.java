@@ -19,7 +19,6 @@
 package org.apache.flink.streaming.runtime.operators;
 
 import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
-import org.apache.flink.runtime.causal.determinant.ProcessingTimeCallbackID;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.api.operators.StreamMap;
@@ -77,10 +76,7 @@ public class TestProcessingTimeServiceTest {
 
 			}
 
-			@Override
-			public ProcessingTimeCallbackID getID() {
-				return null;
-			}
+
 		});
 
 		mapTask.getProcessingTimeService().registerTimer(40, new ProcessingTimeCallback() {
@@ -89,10 +85,7 @@ public class TestProcessingTimeServiceTest {
 
 			}
 
-			@Override
-			public ProcessingTimeCallbackID getID() {
-				return null;
-			}
+
 		});
 
 		assertEquals(2, tp.getNumActiveTimers());

@@ -25,13 +25,9 @@
 
 package org.apache.flink.runtime.causal.recovery;
 
-import org.apache.flink.runtime.causal.*;
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
-import org.apache.flink.runtime.io.network.api.DeterminantRequestEvent;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannel;
-import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
-import sun.rmi.runtime.Log;
 
 public interface IRecoveryManager {
 
@@ -41,10 +37,6 @@ public interface IRecoveryManager {
 	void notifyNewOutputChannel(IntermediateResultPartitionID partitionId, int index);
 
 	void notifyInFlightLogRequestEvent(InFlightLogRequestEvent e);
-
-	void notifyDeterminantResponseEvent(DeterminantResponseEvent e);
-
-	void notifyDeterminantRequestEvent(DeterminantRequestEvent e,int channelRequestArrivedFrom);
 
 	void notifyStateRestorationStart(long checkpointId);
 
@@ -64,7 +56,4 @@ public interface IRecoveryManager {
 
 	RecoveryManagerContext getContext();
 
-	//====================================================
-
-	LogReplayer getLogReplayer();
 }

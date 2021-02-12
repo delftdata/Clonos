@@ -25,14 +25,12 @@
 
 package org.apache.flink.runtime.causal;
 
-import org.apache.flink.runtime.causal.recovery.WaitingDeterminantsState;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;

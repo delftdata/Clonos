@@ -20,7 +20,6 @@ package org.apache.flink.streaming.api.operators;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.MetricOptions;
-import org.apache.flink.runtime.causal.determinant.ProcessingTimeCallbackID;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
@@ -28,7 +27,6 @@ import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamrecord.LatencyMarker;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatusMaintainer;
-import org.apache.flink.streaming.runtime.tasks.ProcessingTimeCallback;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeService;
 
 import java.util.concurrent.ScheduledFuture;
@@ -158,29 +156,17 @@ public class StreamSource<OUT, SRC extends SourceFunction<OUT>>
 			Object lockingObject) {
 
 			latencyMarkTimer = processingTimeService.scheduleAtFixedRate(
-				new ProcessingTimeCallback() {
-
-					ProcessingTimeCallbackID id = new ProcessingTimeCallbackID(ProcessingTimeCallbackID.Type.LATENCY);
-
-					@Override
-					public void onProcessingTime(long timestamp) throws Exception {
-						synchronized (lockingObject) {
-							try {
-								// ProcessingTimeService callbacks are executed under the checkpointing lock
-								output.emitLatencyMarker(new LatencyMarker(timestamp, operatorId, subtaskIndex));
-							} catch (Throwable t) {
-								// we catch the Throwables here so that we don't trigger the processing
-								// timer services async exception handler
-								LOG.warn("Error while emitting latency marker.", t);
-							}
+				timestamp -> {
+					synchronized (lockingObject) {
+						try {
+							// ProcessingTimeService callbacks are executed under the checkpointing lock
+							output.emitLatencyMarker(new LatencyMarker(timestamp, operatorId, subtaskIndex));
+						} catch (Throwable t) {
+							// we catch the Throwables here so that we don't trigger the processing
+							// timer services async exception handler
+							LOG.warn("Error while emitting latency marker.", t);
 						}
 					}
-
-					@Override
-					public ProcessingTimeCallbackID getID() {
-						return id;
-					}
-
 				},
 				0L,
 				latencyTrackingInterval);

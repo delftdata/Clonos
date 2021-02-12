@@ -25,9 +25,7 @@
 
 package org.apache.flink.runtime.causal.recovery;
 
-import org.apache.flink.runtime.causal.*;
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
-import org.apache.flink.runtime.io.network.api.DeterminantRequestEvent;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannel;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.slf4j.Logger;
@@ -67,16 +65,6 @@ public class RecoveryManager implements IRecoveryManager {
 		this.currentState.notifyStartRecovery();
 	}
 
-
-	@Override
-	public synchronized void notifyDeterminantResponseEvent(DeterminantResponseEvent e) {
-		this.currentState.notifyDeterminantResponseEvent(e);
-	}
-
-	@Override
-	public synchronized void notifyDeterminantRequestEvent(DeterminantRequestEvent e, int channelRequestArrivedFrom) {
-		this.currentState.notifyDeterminantRequestEvent(e, channelRequestArrivedFrom);
-	}
 
 	@Override
 	public synchronized void notifyStateRestorationStart(long checkpointId) {
@@ -140,11 +128,6 @@ public class RecoveryManager implements IRecoveryManager {
 	public State getState() {
 		return currentState;
 	}
-
-	public LogReplayer getLogReplayer() {
-		return currentState.getLogReplayer();
-	}
-
 
 
 

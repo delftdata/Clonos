@@ -20,7 +20,6 @@ package org.apache.flink.streaming.runtime.operators;
 
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
-import org.apache.flink.runtime.causal.determinant.ProcessingTimeCallbackID;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.api.operators.StreamMap;
@@ -70,10 +69,7 @@ public class StreamTaskTimerTest {
 			public void onProcessingTime(long timestamp) {
 			}
 
-			@Override
-			public ProcessingTimeCallbackID getID() {
-				return null;
-			}
+
 		});
 
 		assertEquals(1, StreamTask.TRIGGER_THREAD_GROUP.activeCount());
@@ -177,10 +173,6 @@ public class StreamTaskTimerTest {
 			}
 		}
 
-		@Override
-		public ProcessingTimeCallbackID getID() {
-			return null;
-		}
 	}
 
 	// ------------------------------------------------------------------------
