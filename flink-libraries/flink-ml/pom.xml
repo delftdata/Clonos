@@ -24,7 +24,7 @@
 	<parent>
 		<groupId>org.apache.flink</groupId>
 		<artifactId>flink-libraries</artifactId>
-		<version>1.7-CLONOS-SNAPSHOT</version>
+		<version>1.7-SEEP-SNAPSHOT</version>
 		<relativePath>..</relativePath>
 	</parent>
 

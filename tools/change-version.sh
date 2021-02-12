@@ -17,8 +17,8 @@
 # limitations under the License.
 ################################################################################
 
-OLD="1.7.2"
-NEW="1.7-CLONOS-SNAPSHOT"
+OLD="1.7-CLONOS-SNAPSHOT"
+NEW="1.7-SEEP-SNAPSHOT"
 
 
 HERE=` basename "$PWD"`
