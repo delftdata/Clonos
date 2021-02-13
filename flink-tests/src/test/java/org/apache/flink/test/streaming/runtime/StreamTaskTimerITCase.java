@@ -19,7 +19,6 @@
 package org.apache.flink.test.streaming.runtime;
 
 import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
-import org.apache.flink.runtime.causal.determinant.ProcessingTimeCallbackID;
 import org.apache.flink.runtime.client.JobExecutionException;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.datastream.DataStream;
@@ -214,11 +213,6 @@ public class StreamTaskTimerITCase extends AbstractTestBase {
 			}
 		}
 
-		@Override
-		public ProcessingTimeCallbackID getID() {
-			return null;
-		}
-
 		private void throwIfDone() {
 			if (numTimers > 1000 && numElements > 10_000) {
 				throw new RuntimeException("TEST SUCCESS");
@@ -291,11 +285,6 @@ public class StreamTaskTimerITCase extends AbstractTestBase {
 			} finally {
 				semaphore.release();
 			}
-		}
-
-		@Override
-		public ProcessingTimeCallbackID getID() {
-			return null;
 		}
 
 		private void throwIfDone() {

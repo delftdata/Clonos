@@ -278,12 +278,12 @@ public class EventSerializer {
 		return buffer;
 	}
 
-	public static BufferConsumer toBufferConsumer(AbstractEvent event, long epochID) throws IOException {
+	public static BufferConsumer toBufferConsumer(AbstractEvent event) throws IOException {
 		final ByteBuffer serializedEvent = EventSerializer.toSerializedEvent(event);
 
 		MemorySegment data = MemorySegmentFactory.wrap(serializedEvent.array());
 
-		return new BufferConsumer(data, FreeingBufferRecycler.INSTANCE, false, epochID);
+		return new BufferConsumer(data, FreeingBufferRecycler.INSTANCE, false);
 	}
 
 	public static AbstractEvent fromBuffer(Buffer buffer, ClassLoader classLoader) throws IOException {

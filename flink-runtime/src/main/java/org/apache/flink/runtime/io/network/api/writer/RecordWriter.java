@@ -24,8 +24,6 @@ import org.apache.flink.metrics.SimpleCounter;
 import org.apache.flink.runtime.causal.EpochStartListener;
 import org.apache.flink.api.common.services.RandomService;
 import org.apache.flink.api.common.services.SimpleRandomService;
-import org.apache.flink.runtime.causal.EpochTracker;
-import org.apache.flink.runtime.causal.EpochTrackerImpl;
 import org.apache.flink.runtime.event.AbstractEvent;
 import org.apache.flink.runtime.io.network.api.CheckpointBarrier;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
@@ -34,7 +32,6 @@ import org.apache.flink.runtime.io.network.api.serialization.SpanningRecordSeria
 import org.apache.flink.runtime.io.network.buffer.BufferBuilder;
 import org.apache.flink.runtime.io.network.buffer.BufferConsumer;
 import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
-import org.apache.flink.runtime.state.CheckpointListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -75,8 +72,6 @@ public class RecordWriter<T extends IOReadableWritable> implements EpochStartLis
 
 	protected final boolean flushAlways;
 
-	private final EpochTracker epochTracker;
-
 	protected Counter numBytesOut = new SimpleCounter();
 
 	protected RandomService randomService;
@@ -89,16 +84,15 @@ public class RecordWriter<T extends IOReadableWritable> implements EpochStartLis
 
 	@SuppressWarnings("unchecked")
 	public RecordWriter(ResultPartitionWriter writer, ChannelSelector<T> channelSelector) {
-		this(writer, channelSelector, false, new SimpleRandomService(), new EpochTrackerImpl());
+		this(writer, channelSelector, false, new SimpleRandomService());
 	}
 
-	public RecordWriter(ResultPartitionWriter writer, ChannelSelector<T> channelSelector, boolean flushAlways, RandomService randomService, EpochTracker epochTracker) {
+	public RecordWriter(ResultPartitionWriter writer, ChannelSelector<T> channelSelector, boolean flushAlways, RandomService randomService) {
 		this.flushAlways = flushAlways;
 		this.targetPartition = writer;
 		this.channelSelector = channelSelector;
 		this.channelSelector.setRandomService(randomService);
 		this.randomService = randomService;
-		this.epochTracker = epochTracker;
 		this.numChannels = writer.getNumberOfSubpartitions();
 
 		this.serializer = new SpanningRecordSerializer<T>();
@@ -193,7 +187,7 @@ public class RecordWriter<T extends IOReadableWritable> implements EpochStartLis
 	public void broadcastEvent(AbstractEvent event) throws IOException {
 
 		boolean isBarrier = event instanceof CheckpointBarrier;
-		try (BufferConsumer eventBufferConsumer = EventSerializer.toBufferConsumer(event, epochTracker.getCurrentEpoch())) {
+		try (BufferConsumer eventBufferConsumer = EventSerializer.toBufferConsumer(event)) {
 			for (int targetChannel = 0; targetChannel < numChannels; targetChannel++) {
 				tryFinishCurrentBufferBuilder(targetChannel);
 
@@ -211,7 +205,7 @@ public class RecordWriter<T extends IOReadableWritable> implements EpochStartLis
 
 		boolean isBarrier = event instanceof CheckpointBarrier;
 
-		try (BufferConsumer eventBufferConsumer = EventSerializer.toBufferConsumer(event, epochTracker.getCurrentEpoch())) {
+		try (BufferConsumer eventBufferConsumer = EventSerializer.toBufferConsumer(event)) {
 
 			tryFinishCurrentBufferBuilder(targetChannel);
 
@@ -273,7 +267,7 @@ public class RecordWriter<T extends IOReadableWritable> implements EpochStartLis
 
 		BufferBuilder bufferBuilder = targetPartition.getBufferProvider().requestBufferBuilderBlocking();
 		bufferBuilders[targetChannel] = Optional.of(bufferBuilder);
-		targetPartition.addBufferConsumer(bufferBuilder.createBufferConsumer(epochTracker.getCurrentEpoch()), targetChannel);
+		targetPartition.addBufferConsumer(bufferBuilder.createBufferConsumer(), targetChannel);
 		return bufferBuilder;
 	}
 

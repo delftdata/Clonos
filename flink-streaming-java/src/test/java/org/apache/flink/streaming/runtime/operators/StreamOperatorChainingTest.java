@@ -21,7 +21,6 @@ package org.apache.flink.streaming.runtime.operators;
 import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.services.SimpleRandomService;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.runtime.causal.EpochTrackerImpl;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobgraph.JobVertex;
@@ -271,7 +270,7 @@ public class StreamOperatorChainingTest {
 			StreamConfig streamConfig,
 			Environment environment,
 			StreamTask<IN, OT> task) {
-		return new OperatorChain<>(task, StreamTask.createStreamRecordWriters(streamConfig, environment, new SimpleRandomService(), new EpochTrackerImpl()));
+		return new OperatorChain<>(task, StreamTask.createStreamRecordWriters(streamConfig, environment, new SimpleRandomService()));
 	}
 
 	private <IN, OT extends StreamOperator<IN>> StreamTask<IN, OT> createMockTask(

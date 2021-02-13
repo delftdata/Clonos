@@ -21,8 +21,6 @@ import org.apache.flink.annotation.Internal;
 import org.apache.flink.core.io.IOReadableWritable;
 import org.apache.flink.api.common.services.RandomService;
 import org.apache.flink.api.common.services.SimpleRandomService;
-import org.apache.flink.runtime.causal.EpochTracker;
-import org.apache.flink.runtime.causal.EpochTrackerImpl;
 import org.apache.flink.runtime.io.network.api.writer.ChannelSelector;
 import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
@@ -56,15 +54,15 @@ public class StreamRecordWriter<T extends IOReadableWritable> extends RecordWrit
 	private Throwable flusherException;
 
 	public StreamRecordWriter(ResultPartitionWriter writer, ChannelSelector<T> channelSelector, long timeout) {
-		this(writer, channelSelector, timeout, null, new SimpleRandomService(), new EpochTrackerImpl());
+		this(writer, channelSelector, timeout, null, new SimpleRandomService());
 	}
 
 	public StreamRecordWriter(
 		ResultPartitionWriter writer,
 		ChannelSelector<T> channelSelector,
 		long timeout,
-		String taskName, RandomService randomService, EpochTracker epochTracker) {
-		super(writer, channelSelector, timeout == 0, randomService, epochTracker);
+		String taskName, RandomService randomService) {
+		super(writer, channelSelector, timeout == 0, randomService);
 
 		checkArgument(timeout >= -1);
 

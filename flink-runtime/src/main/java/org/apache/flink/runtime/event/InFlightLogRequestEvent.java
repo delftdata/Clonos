@@ -31,8 +31,6 @@ public class InFlightLogRequestEvent extends TaskEvent {
 
 	private IntermediateResultPartitionID intermediateResultPartitionID;
 	private int subpartitionIndex;
-	private long checkpointId;
-	private int numberOfBuffersToSkip;
 
 	/**
 	 * Default constructor (should only be used for deserialization).
@@ -43,16 +41,11 @@ public class InFlightLogRequestEvent extends TaskEvent {
 	}
 
 
-	public InFlightLogRequestEvent(IntermediateResultPartitionID intermediateResultPartitionID, int consumedSubpartitionIndex, long finalRestoreStateCheckpointId) {
-		this(intermediateResultPartitionID, consumedSubpartitionIndex, finalRestoreStateCheckpointId, 0);
-	}
 
-	public InFlightLogRequestEvent(IntermediateResultPartitionID intermediateResultPartitionID, int consumedSubpartitionIndex, long finalRestoreStateCheckpointId, int numberOfBuffersToSkip) {
+	public InFlightLogRequestEvent(IntermediateResultPartitionID intermediateResultPartitionID, int consumedSubpartitionIndex) {
 		super();
 		this.intermediateResultPartitionID = intermediateResultPartitionID;
 		this.subpartitionIndex = consumedSubpartitionIndex;
-		this.checkpointId = finalRestoreStateCheckpointId;
-		this.numberOfBuffersToSkip = numberOfBuffersToSkip;
 	}
 
 	public IntermediateResultPartitionID getIntermediateResultPartitionID() {
@@ -63,21 +56,12 @@ public class InFlightLogRequestEvent extends TaskEvent {
 		return subpartitionIndex;
 	}
 
-	public long getCheckpointId() {
-		return checkpointId;
-	}
-
-	public int getNumberOfBuffersToSkip(){
-		return numberOfBuffersToSkip;
-	}
 
 	@Override
 	public void write(final DataOutputView out) throws IOException {
 		out.writeLong(intermediateResultPartitionID.getUpperPart());
 		out.writeLong(intermediateResultPartitionID.getLowerPart());
 		out.writeInt(this.subpartitionIndex);
-		out.writeLong(this.checkpointId);
-		out.writeInt(numberOfBuffersToSkip);
 	}
 
 	@Override
@@ -87,8 +71,6 @@ public class InFlightLogRequestEvent extends TaskEvent {
 		this.intermediateResultPartitionID = new IntermediateResultPartitionID(lower, upper);
 
 		this.subpartitionIndex = in.readInt();
-		this.checkpointId = in.readLong();
-		this.numberOfBuffersToSkip = in.readInt();
 	}
 
 	@Override
@@ -96,8 +78,6 @@ public class InFlightLogRequestEvent extends TaskEvent {
 		return "InFlightLogRequestEvent{" +
 			"intermediateResultPartitionID=" + intermediateResultPartitionID +
 			", subpartitionIndex=" + subpartitionIndex +
-			", checkpointId=" + checkpointId +
-			", numberBuffersSkip=" + numberOfBuffersToSkip +
 			'}';
 	}
 }

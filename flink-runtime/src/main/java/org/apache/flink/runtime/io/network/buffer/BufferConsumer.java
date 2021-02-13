@@ -46,52 +46,37 @@ public class BufferConsumer implements Closeable {
 
 	private final CachedPositionMarker writerPosition;
 
-	private final long epochID;
 
 	private int currentReaderPosition;
 
-	public BufferConsumer(
-		MemorySegment memorySegment,
-		BufferRecycler recycler,
-		PositionMarker currentWriterPosition) {
-		this(memorySegment, recycler, currentWriterPosition, 0L);
-	}
 	/**
 	 * Constructs {@link BufferConsumer} instance with content that can be changed by {@link BufferBuilder}.
 	 */
 	public BufferConsumer(
 			MemorySegment memorySegment,
 			BufferRecycler recycler,
-			PositionMarker currentWriterPosition, long epochID) {
+			PositionMarker currentWriterPosition) {
 		this(
 			new NetworkBuffer(checkNotNull(memorySegment), checkNotNull(recycler), true),
 			currentWriterPosition,
-			0, epochID);
+			0);
 	}
 
-	public BufferConsumer(MemorySegment memorySegment, BufferRecycler recycler, boolean isBuffer) {
-		this(memorySegment, recycler, isBuffer,0L);
-	}
 	/**
 	 * Constructs {@link BufferConsumer} instance with static content.
 	 */
-	public BufferConsumer(MemorySegment memorySegment, BufferRecycler recycler, boolean isBuffer, long epochID) {
+	public BufferConsumer(MemorySegment memorySegment, BufferRecycler recycler, boolean isBuffer) {
 		this(new NetworkBuffer(checkNotNull(memorySegment), checkNotNull(recycler), isBuffer),
 			() -> -memorySegment.size(),
-			0, epochID);
+			0);
 		checkState(memorySegment.size() > 0);
 		checkState(isFinished(), "BufferConsumer with static size must be finished after construction!");
 	}
 
-	private BufferConsumer(Buffer buffer, BufferBuilder.PositionMarker currentWriterPosition, int currentReaderPosition, long epochID) {
+	private BufferConsumer(Buffer buffer, BufferBuilder.PositionMarker currentWriterPosition, int currentReaderPosition) {
 		this.buffer = checkNotNull(buffer);
 		this.writerPosition = new CachedPositionMarker(checkNotNull(currentWriterPosition));
 		this.currentReaderPosition = currentReaderPosition;
-		this.epochID = epochID;
-	}
-
-	public long getEpochID() {
-		return epochID;
 	}
 
 	/**
@@ -146,7 +131,7 @@ public class BufferConsumer implements Closeable {
 	 */
 	public BufferConsumer copy() {
 		LOG.debug("Copy buffer {} (memorySegment hash: {}): writerPosition after: {}, readerPosition after: {}", buffer, System.identityHashCode(buffer.getMemorySegment()), writerPosition.getCached(), currentReaderPosition);
-		return new BufferConsumer(buffer.retainBuffer(), writerPosition.positionMarker, currentReaderPosition, epochID);
+		return new BufferConsumer(buffer.retainBuffer(), writerPosition.positionMarker, currentReaderPosition);
 	}
 
 	public boolean isBuffer() {

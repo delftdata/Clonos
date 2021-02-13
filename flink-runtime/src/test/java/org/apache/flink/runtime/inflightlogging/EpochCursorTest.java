@@ -37,147 +37,147 @@ import java.util.TreeMap;
 
 public class EpochCursorTest {
 
-	public NetworkBuffer getBuffer(int data){
-		MemorySegment segment = MemorySegmentFactory.allocateUnpooledSegment(4);
-		NetworkBuffer buffer = new NetworkBuffer(segment,
-			FreeingBufferRecycler.INSTANCE);
+	//public NetworkBuffer getBuffer(int data){
+	//	MemorySegment segment = MemorySegmentFactory.allocateUnpooledSegment(4);
+	//	NetworkBuffer buffer = new NetworkBuffer(segment,
+	//		FreeingBufferRecycler.INSTANCE);
 
-		buffer.writeInt(data);
-		return buffer;
-	}
+	//	buffer.writeInt(data);
+	//	return buffer;
+	//}
 
-	@Test
-	public void testEpochCursor(){
-		SpilledReplayIterator.EpochCursor cursor = getEpochCursor();
+	//@Test
+	//public void testEpochCursor(){
+	//	SpilledReplayIterator.EpochCursor cursor = getEpochCursor();
 
-		cursor.next();
-		cursor.previous();
-		assert cursor.hasNext();
+	//	cursor.next();
+	//	cursor.previous();
+	//	assert cursor.hasNext();
 
-		assert cursor.getRemaining() == 9;
-		assert cursor.getNextEpochOffset() == 0;
-		assert cursor.getNextEpoch() == 0;
+	//	assert cursor.getRemaining() == 9;
+	//	assert cursor.getNextEpochOffset() == 0;
+	//	assert cursor.getNextEpoch() == 0;
 
-		assert cursor.hasNext();
-		assert cursor.next().asByteBuf().readInt() == 0;
+	//	assert cursor.hasNext();
+	//	assert cursor.next().asByteBuf().readInt() == 0;
 
-		cursor.next();
-		cursor.previous();
-		assert cursor.hasNext();
+	//	cursor.next();
+	//	cursor.previous();
+	//	assert cursor.hasNext();
 
-		assert cursor.getRemaining() == 8;
-		assert cursor.getNextEpochOffset() == 1;
-		assert cursor.getNextEpoch() == 0;
+	//	assert cursor.getRemaining() == 8;
+	//	assert cursor.getNextEpochOffset() == 1;
+	//	assert cursor.getNextEpoch() == 0;
 
-		assert cursor.hasNext();
-		assert cursor.next().asByteBuf().readInt() == 1;
+	//	assert cursor.hasNext();
+	//	assert cursor.next().asByteBuf().readInt() == 1;
 
-		assert cursor.hasNext();
-		assert cursor.next().asByteBuf().readInt() == 2;
-
-
-		cursor.next();
-		cursor.previous();
-		assert cursor.hasNext();
-
-		assert cursor.getRemaining() == 6;
-		assert cursor.getNextEpochOffset() == 0;
-		assert cursor.getNextEpoch() == 1;
-
-		assert cursor.hasNext();
-		assert cursor.next().asByteBuf().readInt() == 3;
+	//	assert cursor.hasNext();
+	//	assert cursor.next().asByteBuf().readInt() == 2;
 
 
-		cursor.next();
-		cursor.previous();
-		assert cursor.hasNext();
+	//	cursor.next();
+	//	cursor.previous();
+	//	assert cursor.hasNext();
 
-		assert cursor.getRemaining() == 5;
-		assert cursor.getNextEpochOffset() == 1;
-		assert cursor.getNextEpoch() == 1;
+	//	assert cursor.getRemaining() == 6;
+	//	assert cursor.getNextEpochOffset() == 0;
+	//	assert cursor.getNextEpoch() == 1;
 
-		assert cursor.hasNext();
-		assert cursor.next().asByteBuf().readInt() == 4;
-
-		assert cursor.hasNext();
-		assert cursor.next().asByteBuf().readInt() == 5;
-
-		assert cursor.hasNext();
-		assert cursor.next().asByteBuf().readInt() == 6;
-
-		assert cursor.hasNext();
-		assert cursor.next().asByteBuf().readInt() == 7;
-
-		assert cursor.hasNext();
-		assert cursor.next().asByteBuf().readInt() == 8;
-
-		assert !cursor.hasNext();
-	}
-
-	@Test
-	public void testAddingWhileReplaying(){
-		SortedMap<Long, SpillableSubpartitionInFlightLogger.Epoch> log = new TreeMap<>();
-		SpillableSubpartitionInFlightLogger.Epoch epoch0 = new SpillableSubpartitionInFlightLogger.Epoch(null, 0);
-		epoch0.append(getBuffer(0));
-		epoch0.append(getBuffer(1));
-		epoch0.append(getBuffer(2));
-
-		log.put(0L, epoch0);
-		SpilledReplayIterator.EpochCursor cursor = new SpilledReplayIterator.EpochCursor(log);
-
-		cursor.next();
-		cursor.next();
-
-		log.get(0L).append(getBuffer(3));
-		cursor.notifyNewBuffer(0);
-
-		cursor.next();
-		assert cursor.hasNext();
-
-		cursor.next();
-
-		assert !cursor.hasNext();
-
-		log.get(0L).append(getBuffer(4));
-		cursor.notifyNewBuffer(0);
-
-		assert cursor.hasNext();
-		assert cursor.next().asByteBuf().readInt() == 4;
-		assert !cursor.hasNext();
-
-		SpillableSubpartitionInFlightLogger.Epoch epoch1 = new SpillableSubpartitionInFlightLogger.Epoch(null, 1);
-		epoch1.append(getBuffer(5));
-		log.put(1L, epoch1);
-		cursor.notifyNewBuffer(1);
-
-		assert cursor.hasNext();
-		assert cursor.next().asByteBuf().readInt() == 5;
-		assert !cursor.hasNext();
+	//	assert cursor.hasNext();
+	//	assert cursor.next().asByteBuf().readInt() == 3;
 
 
-	}
+	//	cursor.next();
+	//	cursor.previous();
+	//	assert cursor.hasNext();
 
-	private SpilledReplayIterator.EpochCursor getEpochCursor() {
-		SortedMap<Long, SpillableSubpartitionInFlightLogger.Epoch> log = new TreeMap<>();
-		SpillableSubpartitionInFlightLogger.Epoch epoch0 = new SpillableSubpartitionInFlightLogger.Epoch(null, 0);
-		epoch0.append(getBuffer(0));
-		epoch0.append(getBuffer(1));
-		epoch0.append(getBuffer(2));
+	//	assert cursor.getRemaining() == 5;
+	//	assert cursor.getNextEpochOffset() == 1;
+	//	assert cursor.getNextEpoch() == 1;
 
-		SpillableSubpartitionInFlightLogger.Epoch epoch1 = new SpillableSubpartitionInFlightLogger.Epoch(null, 0);
-		epoch1.append(getBuffer(3));
-		epoch1.append(getBuffer(4));
-		epoch1.append(getBuffer(5));
+	//	assert cursor.hasNext();
+	//	assert cursor.next().asByteBuf().readInt() == 4;
 
-		SpillableSubpartitionInFlightLogger.Epoch epoch2 = new SpillableSubpartitionInFlightLogger.Epoch(null, 0);
-		epoch2.append(getBuffer(6));
-		epoch2.append(getBuffer(7));
-		epoch2.append(getBuffer(8));
+	//	assert cursor.hasNext();
+	//	assert cursor.next().asByteBuf().readInt() == 5;
 
-		log.put(0L, epoch0);
-		log.put(1L, epoch1);
-		log.put(2L, epoch2);
+	//	assert cursor.hasNext();
+	//	assert cursor.next().asByteBuf().readInt() == 6;
 
-		return new SpilledReplayIterator.EpochCursor(log);
-	}
+	//	assert cursor.hasNext();
+	//	assert cursor.next().asByteBuf().readInt() == 7;
+
+	//	assert cursor.hasNext();
+	//	assert cursor.next().asByteBuf().readInt() == 8;
+
+	//	assert !cursor.hasNext();
+	//}
+
+	//@Test
+	//public void testAddingWhileReplaying(){
+	//	SortedMap<Long, SpillableSubpartitionInFlightLogger.Epoch> log = new TreeMap<>();
+	//	SpillableSubpartitionInFlightLogger.Epoch epoch0 = new SpillableSubpartitionInFlightLogger.Epoch(null, 0);
+	//	epoch0.append(getBuffer(0));
+	//	epoch0.append(getBuffer(1));
+	//	epoch0.append(getBuffer(2));
+
+	//	log.put(0L, epoch0);
+	//	SpilledReplayIterator.EpochCursor cursor = new SpilledReplayIterator.EpochCursor(log);
+
+	//	cursor.next();
+	//	cursor.next();
+
+	//	log.get(0L).append(getBuffer(3));
+	//	cursor.notifyNewBuffer(0);
+
+	//	cursor.next();
+	//	assert cursor.hasNext();
+
+	//	cursor.next();
+
+	//	assert !cursor.hasNext();
+
+	//	log.get(0L).append(getBuffer(4));
+	//	cursor.notifyNewBuffer(0);
+
+	//	assert cursor.hasNext();
+	//	assert cursor.next().asByteBuf().readInt() == 4;
+	//	assert !cursor.hasNext();
+
+	//	SpillableSubpartitionInFlightLogger.Epoch epoch1 = new SpillableSubpartitionInFlightLogger.Epoch(null, 1);
+	//	epoch1.append(getBuffer(5));
+	//	log.put(1L, epoch1);
+	//	cursor.notifyNewBuffer(1);
+
+	//	assert cursor.hasNext();
+	//	assert cursor.next().asByteBuf().readInt() == 5;
+	//	assert !cursor.hasNext();
+
+
+	//}
+
+	//private SpilledReplayIterator.EpochCursor getEpochCursor() {
+	//	SortedMap<Long, SpillableSubpartitionInFlightLogger.Epoch> log = new TreeMap<>();
+	//	SpillableSubpartitionInFlightLogger.Epoch epoch0 = new SpillableSubpartitionInFlightLogger.Epoch(null, 0);
+	//	epoch0.append(getBuffer(0));
+	//	epoch0.append(getBuffer(1));
+	//	epoch0.append(getBuffer(2));
+
+	//	SpillableSubpartitionInFlightLogger.Epoch epoch1 = new SpillableSubpartitionInFlightLogger.Epoch(null, 0);
+	//	epoch1.append(getBuffer(3));
+	//	epoch1.append(getBuffer(4));
+	//	epoch1.append(getBuffer(5));
+
+	//	SpillableSubpartitionInFlightLogger.Epoch epoch2 = new SpillableSubpartitionInFlightLogger.Epoch(null, 0);
+	//	epoch2.append(getBuffer(6));
+	//	epoch2.append(getBuffer(7));
+	//	epoch2.append(getBuffer(8));
+
+	//	log.put(0L, epoch0);
+	//	log.put(1L, epoch1);
+	//	log.put(2L, epoch2);
+
+	//	return new SpilledReplayIterator.EpochCursor(log);
+	//}
 }

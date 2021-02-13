@@ -197,7 +197,7 @@ public class SpillableSubpartitionTest extends SubpartitionTestBase {
 
 		BufferConsumer bufferConsumer = createFilledBufferConsumer(BUFFER_DATA_SIZE, BUFFER_DATA_SIZE);
 		BufferConsumer eventBufferConsumer =
-			EventSerializer.toBufferConsumer(new CancelCheckpointMarker(1), 0);
+			EventSerializer.toBufferConsumer(new CancelCheckpointMarker(1));
 		final int eventSize = eventBufferConsumer.getWrittenBytes();
 
 		partition.add(bufferConsumer.copy());
@@ -274,7 +274,7 @@ public class SpillableSubpartitionTest extends SubpartitionTestBase {
 		).toArray(BufferConsumer[]::new);
 
 		BufferConsumer eventBufferConsumer =
-			EventSerializer.toBufferConsumer(new CancelCheckpointMarker(1), 0);
+			EventSerializer.toBufferConsumer(new CancelCheckpointMarker(1));
 		final int eventSize = eventBufferConsumer.getWrittenBytes();
 
 		// note: only the newest buffer may be unfinished!
@@ -341,7 +341,7 @@ public class SpillableSubpartitionTest extends SubpartitionTestBase {
 
 		BufferConsumer bufferConsumer = createFilledBufferConsumer(BUFFER_DATA_SIZE, BUFFER_DATA_SIZE);
 		BufferConsumer eventBufferConsumer =
-			EventSerializer.toBufferConsumer(new CancelCheckpointMarker(1),0);
+			EventSerializer.toBufferConsumer(new CancelCheckpointMarker(1));
 		final int eventSize = eventBufferConsumer.getWrittenBytes();
 
 		partition.add(bufferConsumer.copy());

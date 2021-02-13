@@ -27,11 +27,6 @@ public abstract class InFlightLogIterator<T> implements ListIterator<T> {
 	 */
 	public abstract int numberRemaining();
 
-	/**
-	 *
-	 * @return the epoch currently being replayed
-	 */
-	public abstract long getEpoch();
 
 	/**
 	 * Returns , but does not remove, the next buffer to be replayed.

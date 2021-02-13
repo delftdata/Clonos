@@ -21,8 +21,6 @@ package org.apache.flink.streaming.connectors.kafka.internals;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.metrics.Gauge;
 import org.apache.flink.metrics.MetricGroup;
-import org.apache.flink.runtime.causal.determinant.ProcessingTimeCallbackID;
-import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 import org.apache.flink.streaming.api.functions.AssignerWithPeriodicWatermarks;
 import org.apache.flink.streaming.api.functions.AssignerWithPunctuatedWatermarks;
 import org.apache.flink.streaming.api.functions.source.SourceFunction.SourceContext;
@@ -688,8 +686,6 @@ public abstract class AbstractFetcher<T, KPH> {
 
 		private long lastWatermarkTimestamp;
 
-		private final ProcessingTimeCallbackID id  = new ProcessingTimeCallbackID(ProcessingTimeCallbackID.Type.WATERMARK);
-
 		//-------------------------------------------------
 
 		PeriodicWatermarkEmitter(
@@ -702,7 +698,6 @@ public abstract class AbstractFetcher<T, KPH> {
 			this.timerService = checkNotNull(timerService);
 			this.interval = autoWatermarkInterval;
 			this.lastWatermarkTimestamp = Long.MIN_VALUE;
-			timerService.registerCallback(this);
 		}
 
 		//-------------------------------------------------
@@ -740,9 +735,5 @@ public abstract class AbstractFetcher<T, KPH> {
 			timerService.registerTimer(timerService.getCurrentProcessingTime() + interval, this);
 		}
 
-		@Override
-		public ProcessingTimeCallbackID getID() {
-			return id;
-		}
 	}
 }

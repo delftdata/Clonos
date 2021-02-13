@@ -120,7 +120,7 @@ public class PartialConsumePipelinedResultTest extends TestLogger {
 
 			for (int i = 0; i < 8; i++) {
 				final BufferBuilder bufferBuilder = writer.getBufferProvider().requestBufferBuilderBlocking();
-				writer.addBufferConsumer(bufferBuilder.createBufferConsumer(0), 0);
+				writer.addBufferConsumer(bufferBuilder.createBufferConsumer(), 0);
 				Thread.sleep(50);
 				bufferBuilder.finish();
 			}

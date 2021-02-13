@@ -96,8 +96,8 @@ public class SystemProcessingTimeService extends ProcessingTimeService {
 
 	@Override
 	public long getCurrentProcessingTime() {
-		//throw new RuntimeException("Cannot access physical processing time as this is nondeterministic");
-		return System.currentTimeMillis();
+		throw new RuntimeException("Cannot access physical processing time as this is nondeterministic");
+		//return System.currentTimeMillis();
 	}
 
 	/**
@@ -111,15 +111,16 @@ public class SystemProcessingTimeService extends ProcessingTimeService {
 	 */
 	@Override
 	public ScheduledFuture<?> registerTimer(long timestamp, ProcessingTimeCallback target) {
-		// delay the firing of the timer by 1 ms to align the semantics with watermark. A watermark
-		// T says we won't see elements in the future with a timestamp smaller or equal to T.
-		// With processing time, we therefore need to delay firing the timer by one ms.
-		long delay = Math.max(timestamp - System.currentTimeMillis(), 0) + 1;
-		ScheduledFuture<?> future;
-		TriggerTask toRegister = new TriggerTask(status, task, checkpointLock, target, timestamp);
-		future = registerTimerRunning(toRegister, delay);
+		throw new RuntimeException("Cannot register timers as this is nondeterministic");
+		//// delay the firing of the timer by 1 ms to align the semantics with watermark. A watermark
+		//// T says we won't see elements in the future with a timestamp smaller or equal to T.
+		//// With processing time, we therefore need to delay firing the timer by one ms.
+		//long delay = Math.max(timestamp - System.currentTimeMillis(), 0) + 1;
+		//ScheduledFuture<?> future;
+		//TriggerTask toRegister = new TriggerTask(status, task, checkpointLock, target, timestamp);
+		//future = registerTimerRunning(toRegister, delay);
 
-		return future;
+		//return future;
 	}
 
 
@@ -146,13 +147,14 @@ public class SystemProcessingTimeService extends ProcessingTimeService {
 
 	@Override
 	public ScheduledFuture<?> scheduleAtFixedRate(ProcessingTimeCallback callback, long initialDelay, long period) {
-		long nextTimestamp = System.currentTimeMillis() + initialDelay;
+		throw new RuntimeException("Cannot register timers as this is nondeterministic");
+		//long nextTimestamp = System.currentTimeMillis() + initialDelay;
 
-		RepeatedTriggerTask toRegister = new RepeatedTriggerTask(status, task, checkpointLock, callback, nextTimestamp,
-			period);
-		ScheduledFuture<?> future;
-		future = registerAtFixedRateRunning(initialDelay, period, toRegister);
-		return future;
+		//RepeatedTriggerTask toRegister = new RepeatedTriggerTask(status, task, checkpointLock, callback, nextTimestamp,
+		//	period);
+		//ScheduledFuture<?> future;
+		//future = registerAtFixedRateRunning(initialDelay, period, toRegister);
+		//return future;
 	}
 
 

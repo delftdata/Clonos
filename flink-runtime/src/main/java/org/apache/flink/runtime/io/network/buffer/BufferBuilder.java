@@ -60,21 +60,18 @@ public class BufferBuilder {
 		LOG.debug("Created {} from {}. Copied {} to {}.", this, bufferBuilder, bufferBuilder.memorySegment, memorySegment);
 	}
 
-	public BufferConsumer createBufferConsumer() {
-		return createBufferConsumer(0);
-	}
 	/**
 	 * @return created matching instance of {@link BufferConsumer} to this {@link BufferBuilder}. There can exist only
 	 * one {@link BufferConsumer} per each {@link BufferBuilder} and vice versa.
 	 */
-	public BufferConsumer createBufferConsumer(long epochID) {
+	public BufferConsumer createBufferConsumer() {
 		checkState(!bufferConsumerCreated, "There can not exists two BufferConsumer for one BufferBuilder");
 		bufferConsumerCreated = true;
 		LOG.debug("New BufferConsumer wrapping memory segment {} (hash: {}) with positionMarker {}", memorySegment, System.identityHashCode(memorySegment), positionMarker.getCached());
 		return new BufferConsumer(
 			memorySegment,
 			recycler,
-			positionMarker, epochID);
+			positionMarker);
 	}
 
 	/**

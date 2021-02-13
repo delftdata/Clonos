@@ -222,7 +222,6 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	private final TimeService timeService;
 	private final RandomService randomService;
 	private final SerializableServiceFactory serializableServiceFactory;
-	private final EpochTracker epochTracker;
 
 	// ------------------------------------------------------------------------
 
@@ -266,26 +265,23 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 		VertexGraphInformation vertexGraphInformation = new VertexGraphInformation(environment);
 
-		epochTracker = new EpochTrackerImpl();
 
 		SingleInputGate[] inputGates = environment.getContainingTask().getAllInputGates();
 
 
 		RecoveryManagerContext rmContext = new RecoveryManagerContext(this,
-			readyToReplayFuture, vertexGraphInformation, epochTracker,
-			this, environment.getContainingTask().getProducedPartitions());
+			readyToReplayFuture, vertexGraphInformation,
+			environment.getContainingTask().getProducedPartitions());
 
 		this.recoveryManager = new RecoveryManager(rmContext);
-		epochTracker.setRecoveryManager(recoveryManager);
 
 		this.timeService = new SimpleTimeService();
 		this.randomService = new SimpleRandomService();
 		this.serializableServiceFactory = new SimpleSerializableServiceFactory();
 
 
-		this.streamRecordWriters = createStreamRecordWriters(configuration, environment, randomService, epochTracker);
-		for (StreamRecordWriter<SerializationDelegate<StreamRecord<OUT>>> streamRecordWriter : streamRecordWriters)
-			epochTracker.subscribeToEpochStartEvents(streamRecordWriter);
+		this.streamRecordWriters = createStreamRecordWriters(configuration, environment, randomService);
+
 
 
 		for (SingleInputGate inputGate : inputGates) {
@@ -294,7 +290,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 		for (ResultPartition partition : environment.getContainingTask().getProducedPartitions()) {
 			for (ResultSubpartition subpartition : partition.getResultSubpartitions()) {
-				((PipelinedSubpartition) subpartition).setCausalComponents(recoveryManager);
+				((PipelinedSubpartition) subpartition).setRecoveryManager(recoveryManager);
 			}
 
 			InFlightLogRequestEventListener iflrel =
@@ -403,7 +399,6 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			//This will restore the periodic timer timestamp, which may be needed in open...
 			//But the "open" timestamp requests did not happen prior to failure, so maybe nondeterministic.
 			//On the other hand, execution of the timers must come after the call to open.
-			epochTracker.startNewEpoch(getEnvironment().getTaskStateManager().getCurrentCheckpointRestoreID());
 
 			// final check to exit early before starting to run
 			if (canceled) {
@@ -744,10 +739,6 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		return recoveryManager;
 	}
 
-	public EpochTracker getRecordCounter() {
-		return epochTracker;
-	}
-
 	@Override
 	public boolean performCheckpoint(
 		CheckpointMetaData checkpointMetaData,
@@ -780,9 +771,6 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 				// Step (3): Take the state snapshot. This should be largely asynchronous, to not
 				//           impact progress of the streaming topology
 				checkpointState(checkpointMetaData, checkpointOptions, checkpointMetrics);
-
-				//Needs to happen before barrier broadcast, so the pipelined subpartitions are aware of incoming barrier
-				epochTracker.startNewEpoch(checkpointMetaData.getCheckpointId());
 
 				return true;
 			} else {
@@ -837,8 +825,6 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 						operator.notifyCheckpointComplete(checkpointId);
 					}
 				}
-
-				epochTracker.notifyCheckpointComplete(checkpointId);
 			} else {
 				LOG.debug("Ignoring notification of complete checkpoint for not-running task {}", getName());
 			}
@@ -1367,7 +1353,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	@VisibleForTesting
 	public static <OUT> List<StreamRecordWriter<SerializationDelegate<StreamRecord<OUT>>>> createStreamRecordWriters(
 		StreamConfig configuration,
-		Environment environment, RandomService randomService, EpochTracker epochTracker) {
+		Environment environment, RandomService randomService) {
 		List<StreamRecordWriter<SerializationDelegate<StreamRecord<OUT>>>> streamRecordWriters = new ArrayList<>();
 		List<StreamEdge> outEdgesInOrder = configuration.getOutEdgesInOrder(environment.getUserClassLoader());
 		Map<Integer, StreamConfig> chainedConfigs =
@@ -1381,13 +1367,10 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 				i,
 				environment,
 				environment.getTaskInfo().getTaskName(),
-				chainedConfigs.get(edge.getSourceId()).getBufferTimeout(), randomService, epochTracker);
+				chainedConfigs.get(edge.getSourceId()).getBufferTimeout(), randomService);
 			streamRecordWriters.add(newRecordWriter);
 
-			//TODO do not love this cast.
-			for (ResultSubpartition ps : newRecordWriter.getResultPartition().getResultSubpartitions())
-				if (ps instanceof PipelinedSubpartition)
-					epochTracker.subscribeToCheckpointCompleteEvents(((PipelinedSubpartition) ps).getInFlightLog());
+
 		}
 		return streamRecordWriters;
 	}
@@ -1397,7 +1380,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		int outputIndex,
 		Environment environment,
 		String taskName,
-		long bufferTimeout, RandomService randomService, EpochTracker epochTracker) {
+		long bufferTimeout, RandomService randomService) {
 		@SuppressWarnings("unchecked")
 		StreamPartitioner<OUT> outputPartitioner = (StreamPartitioner<OUT>) edge.getPartitioner();
 
@@ -1414,7 +1397,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		}
 
 		StreamRecordWriter<SerializationDelegate<StreamRecord<OUT>>> output =
-			new StreamRecordWriter<>(bufferWriter, outputPartitioner, bufferTimeout, taskName, randomService, epochTracker);
+			new StreamRecordWriter<>(bufferWriter, outputPartitioner, bufferTimeout, taskName, randomService);
 		output.setMetricGroup(environment.getMetricGroup().getIOMetricGroup());
 		return output;
 	}

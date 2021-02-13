@@ -50,9 +50,6 @@ public class RecoveryManagerContext {
 	InputGate inputGate;
 	Table<IntermediateResultPartitionID, Integer, PipelinedSubpartition> subpartitionTable;
 
-	final EpochTracker epochTracker;
-
-	CheckpointForceable checkpointForceable;
 
 	final Table<IntermediateResultPartitionID, Integer, InFlightLogRequestEvent> unansweredInFlightLogRequests;
 
@@ -62,7 +59,7 @@ public class RecoveryManagerContext {
 
 	public RecoveryManagerContext(AbstractInvokable invokable,
 								  CompletableFuture<Void> readyToReplayFuture, VertexGraphInformation vertexGraphInformation,
-								  EpochTracker epochTracker, CheckpointForceable checkpointForceable,
+
 								  ResultPartition[] partitions) {
 		this.invokable = invokable;
 		this.readyToReplayFuture = readyToReplayFuture;
@@ -71,9 +68,6 @@ public class RecoveryManagerContext {
 
 
 		this.incompleteStateRestorations = new HashSet<>();
-
-		this.epochTracker = epochTracker;
-		this.checkpointForceable = checkpointForceable;
 
 		int maxNumSubpart =
 			Arrays.stream(partitions).mapToInt(ResultPartition::getNumberOfSubpartitions).max().orElse(0);
@@ -97,16 +91,8 @@ public class RecoveryManagerContext {
 		this.owner = owner;
 	}
 
-	public CheckpointForceable getCheckpointForceable() {
-		return checkpointForceable;
-	}
-
 	public short getTaskVertexID() {
 		return vertexID;
-	}
-
-	public EpochTracker getEpochTracker() {
-		return this.epochTracker;
 	}
 
 	public void setInputGate(InputGate inputGate) {

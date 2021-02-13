@@ -17,7 +17,6 @@
 
 package org.apache.flink.streaming.api.operators;
 
-import org.apache.flink.runtime.causal.EpochTracker;
 import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
@@ -95,14 +94,12 @@ public class StreamSourceContexts {
 		private final Output<StreamRecord<T>> output;
 		private final StreamRecord<T> reuse;
 
-		private final EpochTracker epochTracker;
 
 		private NonTimestampContext(Object checkpointLock, Output<StreamRecord<T>> output, IRecoveryManager recoveryManager) {
 			this.lock = Preconditions.checkNotNull(checkpointLock, "The checkpoint lock cannot be null.");
 			this.output = Preconditions.checkNotNull(output, "The output cannot be null.");
 			this.reuse = new StreamRecord<>(null);
 
-			this.epochTracker = recoveryManager.getContext().getEpochTracker();
 		}
 
 		@Override
@@ -110,7 +107,6 @@ public class StreamSourceContexts {
 
 			synchronized (lock) {
 				output.collect(reuse.replace(element));
-				epochTracker.incRecordCount();
 			}
 		}
 
@@ -367,7 +363,6 @@ public class StreamSourceContexts {
 		 */
 		private volatile boolean failOnNextCheck;
 
-		private final EpochTracker epochTracker;
 		protected final IRecoveryManager recoveryManager;
 
 		/**
@@ -388,7 +383,6 @@ public class StreamSourceContexts {
 			this.streamStatusMaintainer = Preconditions.checkNotNull(streamStatusMaintainer, "Stream Status Maintainer cannot be null.");
 
 			this.recoveryManager = recoveryManager;
-			this.epochTracker = recoveryManager.getContext().getEpochTracker();
 
 			if (idleTimeout != -1) {
 				Preconditions.checkArgument(idleTimeout >= 1, "The idle timeout cannot be smaller than 1 ms.");
@@ -410,7 +404,6 @@ public class StreamSourceContexts {
 				}
 
 				processAndCollect(element);
-				epochTracker.incRecordCount();
 			}
 		}
 
@@ -426,7 +419,6 @@ public class StreamSourceContexts {
 				}
 
 				processAndCollectWithTimestamp(element, timestamp);
-				epochTracker.incRecordCount();
 			}
 		}
 
@@ -443,7 +435,6 @@ public class StreamSourceContexts {
 					}
 
 					processAndEmitWatermark(mark);
-					epochTracker.incRecordCount();
 				}
 			}
 		}

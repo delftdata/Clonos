@@ -19,12 +19,9 @@
 package org.apache.flink.runtime.io.network.partition;
 
 import org.apache.flink.api.common.JobID;
-import org.apache.flink.runtime.causal.EpochTracker;
 import org.apache.flink.runtime.executiongraph.IntermediateResultPartition;
 import org.apache.flink.runtime.inflightlogging.InFlightLog;
-import org.apache.flink.runtime.inflightlogging.InFlightLogConfig;
 import org.apache.flink.runtime.inflightlogging.InFlightLogFactory;
-import org.apache.flink.runtime.inflightlogging.SpillableSubpartitionInFlightLogger;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
@@ -41,11 +38,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.Arrays;
-import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Collectors;
 
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkElementIndex;
@@ -134,10 +128,6 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 
 	private volatile Throwable cause;
 
-	private final float availabilityFillFactor;
-
-	private FlushRunnable inFlightLogFlusherRunnable;
-
 	public ResultPartition(
 		String owningTaskName,
 		TaskActions taskActions, // actions on the owning task
@@ -169,7 +159,6 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 				for (int i = 0; i < subpartitions.length; i++) {
 					subpartitions[i] = new SpillableSubpartition(i, this, ioManager);
 				}
-				availabilityFillFactor = 0;
 
 				break;
 
@@ -178,16 +167,6 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 				for (int i = 0; i < subpartitions.length; i++) {
 					InFlightLog inFlightLog = inFlightLogFactory.build();
 					subpartitions[i] = new PipelinedSubpartition(i, this, inFlightLog);
-				}
-				InFlightLogConfig inFlightLogConfig = inFlightLogFactory.getInFlightLogConfig();
-				availabilityFillFactor = inFlightLogConfig.getAvailabilityPolicyFillFactor();
-				long inFlightLogFlusherThreadSleepTime = inFlightLogConfig.getInFlightLogSleepTime();
-				if (inFlightLogConfig.getType() == InFlightLogConfig.Type.SPILLABLE
-					&& inFlightLogConfig.getSpillPolicy() == InFlightLogConfig.Policy.AVAILABILITY) {
-					inFlightLogFlusherRunnable = new FlushRunnable(this, inFlightLogFlusherThreadSleepTime);
-					Thread t = new Thread(inFlightLogFlusherRunnable);
-					t.setDaemon(true);
-					t.start();
 				}
 				break;
 
@@ -364,8 +343,7 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 					LOG.error("Error during release of result subpartition: " + t.getMessage(), t);
 				}
 			}
-			if (inFlightLogFlusherRunnable != null)
-				inFlightLogFlusherRunnable.stop();
+
 		}
 	}
 
@@ -516,54 +494,5 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 		}
 	}
 
-	public boolean isPoolAvailabilityLow() {
-		if (inFlightBufferPool == null || inFlightBufferPool.isDestroyed())
-			return false;
-		int used = inFlightBufferPool.bestEffortGetNumOfUsedBuffers();
-		int total = inFlightBufferPool.getNumBuffers();
-
-		float availability = (1- ((float)used) / total);
-
-		LOG.info("In-Flight Availability: used: {}, total: {}, available: {}, spillTrigger: {} ", used, total,availability, availabilityFillFactor);
-
-		return availability <= availabilityFillFactor;
-	}
-
-	private static class FlushRunnable implements Runnable {
-
-		private final List<SpillableSubpartitionInFlightLogger> inFlightLoggers;
-		private final long flusherSleep;
-		private boolean running;
-		private ResultPartition toMonitor;
-
-		public FlushRunnable(ResultPartition toMonitor,
-							 long flusherSleep) {
-			this.toMonitor = toMonitor;
-			this.inFlightLoggers = Arrays.stream(toMonitor.getResultSubpartitions())
-				.map(s -> (SpillableSubpartitionInFlightLogger) ((PipelinedSubpartition) s).getInFlightLog())
-				.collect(Collectors.toList());
-			this.flusherSleep = flusherSleep;
-			this.running = true;
-		}
-
-		public void stop() {
-			running = false;
-		}
-
-		@Override
-		public void run() {
-			while (running) {
-				try {
-					if (toMonitor.isPoolAvailabilityLow())
-						for (SpillableSubpartitionInFlightLogger inFlightLogger : inFlightLoggers)
-							inFlightLogger.flushAllUnflushed();
-
-					Thread.sleep(flusherSleep);
-				} catch (InterruptedException e) {
-					break;
-				}
-			}
-		}
-	}
 
 }

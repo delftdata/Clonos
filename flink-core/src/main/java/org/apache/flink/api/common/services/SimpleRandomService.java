@@ -37,11 +37,11 @@ public class SimpleRandomService implements RandomService {
 
 	@Override
 	public int nextInt() {
-		return rng.nextInt();
+		throw new RuntimeException("Nondeterministic action, cannot use");
 	}
 
 	@Override
 	public int nextInt(int maxExclusive) {
-		return rng.nextInt(maxExclusive);
+		throw new RuntimeException("Nondeterministic action, cannot use");
 	}
 }

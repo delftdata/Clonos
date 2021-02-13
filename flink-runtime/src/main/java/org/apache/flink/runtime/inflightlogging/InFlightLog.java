@@ -29,23 +29,22 @@ import org.apache.flink.runtime.state.CheckpointListener;
  * Epoch with ID checkpointID is saved as it starts after this checkpoint.
  * Decreases reference counts of stored buffers.
 /*/
-public interface InFlightLog extends CheckpointListener {
+public interface InFlightLog {
 
 	void registerBufferPool(BufferPool bufferPool);
 
 	/**
 	 * Appends the provided buffer to the log slice of the provided epochID
 	 */
-	void log(Buffer buffer, long epochID, boolean isFinished);
+	void log(Buffer buffer, boolean isFinished);
 
-
-
+	void notifyDownstreamCheckpointComplete(int numBuffersProcessedDownstream);
 	/**
 	 * Creates an Iterator starting at the provided epoch.
 	 * Also increases the reference counts of stored buffers, as they are freed downstream in the network stack.
 	 * Skips the first <code>ignoreBuffers</code> buffers
 	 */
-	InFlightLogIterator<Buffer> getInFlightIterator(long epochID, int ignoreBuffers);
+	InFlightLogIterator<Buffer> getInFlightIterator();
 
     void destroyBufferPools();
 

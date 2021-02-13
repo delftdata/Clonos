@@ -28,6 +28,6 @@ package org.apache.flink.api.common.services;
 public class SimpleTimeService implements TimeService {
 	@Override
 	public long currentTimeMillis() {
-		return System.currentTimeMillis();
+		throw new RuntimeException("Nondeterministic action, cannot use");
 	}
 }

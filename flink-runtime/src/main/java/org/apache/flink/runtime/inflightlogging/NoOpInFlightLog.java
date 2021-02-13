@@ -35,12 +35,17 @@ public class NoOpInFlightLog implements InFlightLog {
 	}
 
 	@Override
-	public void log(Buffer buffer, long epochID, boolean isFinished) {
+	public void log(Buffer buffer, boolean isFinished) {
 
 	}
 
 	@Override
-	public InFlightLogIterator<Buffer> getInFlightIterator(long epochID, int ignoreBuffers) {
+	public void notifyDownstreamCheckpointComplete(int numBuffersProcessedDownstream) {
+
+	}
+
+	@Override
+	public InFlightLogIterator<Buffer> getInFlightIterator() {
 		return null;
 	}
 
@@ -59,8 +64,4 @@ public class NoOpInFlightLog implements InFlightLog {
 		return null;
 	}
 
-	@Override
-	public void notifyCheckpointComplete(long checkpointId) throws Exception {
-
-	}
 }

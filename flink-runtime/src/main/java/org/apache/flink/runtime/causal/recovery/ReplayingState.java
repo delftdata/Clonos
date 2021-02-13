@@ -73,8 +73,7 @@ public class ReplayingState extends AbstractState {
 			return;
 		IntermediateResultPartitionID id = inputChannel.getPartitionId().getPartitionId();
 		try {
-			inputChannel.sendTaskEvent(new InFlightLogRequestEvent(id, consumedSubpartitionIndex,
-				context.getEpochTracker().getCurrentEpoch(), numberOfBuffersRemoved));
+			inputChannel.sendTaskEvent(new InFlightLogRequestEvent(id, consumedSubpartitionIndex));
 		} catch (IOException | InterruptedException e) {
 			e.printStackTrace();
 		}
@@ -87,7 +86,6 @@ public class ReplayingState extends AbstractState {
 	}
 
 
-
 	private void sendInFlightLogReplayRequests() {
 		try {
 			if (context.vertexGraphInformation.hasUpstream()) {
@@ -97,8 +95,8 @@ public class ReplayingState extends AbstractState {
 						InputChannel inputChannel = singleInputGate.getInputChannel(i);
 						InFlightLogRequestEvent inFlightLogRequestEvent =
 							new InFlightLogRequestEvent(inputChannel.getPartitionId().getPartitionId(),
-								consumedIndex,
-								context.getEpochTracker().getCurrentEpoch());
+								consumedIndex
+							);
 						logInfoWithVertexID("Sending inFlightLog request {} through input gate {}, channel {}.",
 							inFlightLogRequestEvent, singleInputGate, i);
 						inputChannel.sendTaskEvent(inFlightLogRequestEvent);

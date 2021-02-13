@@ -58,7 +58,7 @@ public class RunningState extends AbstractState {
 		else {
 			logInfoWithVertexID("Received an InflightLogRequest {}", e);
 			logDebugWithVertexID("intermediateResultPartition to request replay from: {}", e.getIntermediateResultPartitionID());
-			subpartition.requestReplay(e.getCheckpointId(), e.getNumberOfBuffersToSkip());
+			subpartition.requestReplay();
 		}
 	}
 

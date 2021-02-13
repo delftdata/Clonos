@@ -38,6 +38,6 @@ public class SimpleSerializableService<I,O extends Serializable> implements Seri
 
 	@Override
 	public O apply(I i) {
-		return f.apply(i);
+		throw new RuntimeException("Nondeterministic action, cannot use");
 	}
 }

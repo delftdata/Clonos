@@ -20,11 +20,8 @@ package org.apache.flink.runtime.io.network.partition;
 
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.JobID;
-import org.apache.flink.runtime.causal.EpochStartListener;
-import org.apache.flink.runtime.causal.EpochTracker;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferConsumer;
-import org.apache.flink.runtime.state.CheckpointListener;
 
 import javax.annotation.concurrent.GuardedBy;
 

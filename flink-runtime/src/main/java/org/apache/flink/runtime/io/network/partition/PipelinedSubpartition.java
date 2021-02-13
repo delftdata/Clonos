@@ -18,7 +18,6 @@
 
 package org.apache.flink.runtime.io.network.partition;
 
-import org.apache.flink.runtime.causal.EpochTracker;
 import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 import org.apache.flink.runtime.inflightlogging.*;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
@@ -81,7 +80,6 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 	private final InFlightLog inFlightLog;
 	private IRecoveryManager recoveryManager;
-	private EpochTracker epochTracker;
 
 	private final AtomicBoolean downstreamFailed;
 
@@ -102,9 +100,8 @@ public class PipelinedSubpartition extends ResultSubpartition {
 	}
 
 
-	public void setCausalComponents(IRecoveryManager recoveryManager) {
+	public void setRecoveryManager(IRecoveryManager recoveryManager) {
 		this.recoveryManager = recoveryManager;
-		this.epochTracker = recoveryManager.getContext().getEpochTracker();
 	}
 
 	public InFlightLog getInFlightLog() {
@@ -132,7 +129,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 	@Override
 	public void finish() throws IOException {
-		add(EventSerializer.toBufferConsumer(EndOfPartitionEvent.INSTANCE, epochTracker.getCurrentEpoch()), true);
+		add(EventSerializer.toBufferConsumer(EndOfPartitionEvent.INSTANCE), true);
 		LOG.debug("{}: Finished {}.", parent.getOwningTaskName(), this);
 	}
 
@@ -263,7 +260,6 @@ public class PipelinedSubpartition extends ResultSubpartition {
 			LOG.debug("Call to getBufferFromQueued, but no buffer consumers to close");
 		while (!buffers.isEmpty()) {
 			BufferConsumer bufferConsumer = buffers.peek();
-			epochID = bufferConsumer.getEpochID();
 
 			buffer = bufferConsumer.build();
 
@@ -299,7 +295,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 		//subpartitionThreadCausalLog.appendDeterminant(reuseBufferBuiltDeterminant.replace(buffer.readableBytes())
 		//	, epochID);
-		inFlightLog.log(buffer, epochID, isFinished);
+		inFlightLog.log(buffer, isFinished);
 
 		updateStatistics(buffer);
 		BufferAndBacklog result = new BufferAndBacklog(buffer, isAvailableUnsafe(), getBuffersInBacklog(),
@@ -415,18 +411,13 @@ public class PipelinedSubpartition extends ResultSubpartition {
 			0), 0);
 	}
 
-	public void requestReplay(long checkpointId, int ignoreMessages) {
+	public void requestReplay() {
 		LOG.debug("Replay requested");
 		synchronized (buffers) {
 			if (inflightReplayIterator != null)
 				inflightReplayIterator.close();
-			inflightReplayIterator = inFlightLog.getInFlightIterator(checkpointId, ignoreMessages);
+			inflightReplayIterator = inFlightLog.getInFlightIterator();
 			if (inflightReplayIterator != null) {
-				LOG.debug("Replay has been requested for pipelined subpartition of id {}, index {}, skipping {} " +
-						"buffers, " +
-						"buffers to replay {}. Setting downstreamFailed to false", this.parent.getPartitionId(),
-					this.index,
-					ignoreMessages, inflightReplayIterator.numberRemaining());
 				if (!inflightReplayIterator.hasNext())
 					inflightReplayIterator = null;
 			}
@@ -504,7 +495,6 @@ public class PipelinedSubpartition extends ResultSubpartition {
 	private void buildRequestedBuffer(int bufferSize, BufferConsumer consumer) {
 		LOG.debug("There are enough bytes to build the requested buffer!");
 
-		long epochID = consumer.getEpochID();
 		//This assumes that the input buffers which are before this close in the determinant log have
 		// been
 		// fully processed, thus the bufferconsumer will have this amount of data.
@@ -524,7 +514,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 
 		updateStatistics(buffer);
-		inFlightLog.log(buffer, epochID, true);
+		inFlightLog.log(buffer, true);
 		buffer.recycleBuffer(); //It is not sent downstream, so we must recycle it here.
 	}
 
