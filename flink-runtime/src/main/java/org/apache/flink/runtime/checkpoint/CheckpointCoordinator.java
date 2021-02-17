@@ -796,7 +796,50 @@ public class CheckpointCoordinator {
 				return false;
 			}
 
-			final PendingCheckpoint checkpoint = pendingCheckpoints.get(checkpointId);
+			PendingCheckpoint checkpoint = pendingCheckpoints.get(checkpointId);
+
+			// SEEP: create a pending checkpoint when the first task acknowledges it.
+			if (checkpoint == null) {
+
+				long checkpointTimestamp = System.currentTimeMillis(); // Very delayed, but better than 0.
+				Map<ExecutionAttemptID, ExecutionVertex> ackTasks = new HashMap<>(tasksToWaitFor.length);
+
+				for (ExecutionVertex ev : tasksToWaitFor) {
+					if (ev.getNumberOfInputs() == 0) continue; // Leave out sources
+					Execution ee = ev.getCurrentExecutionAttempt();
+					if (ee != null) {
+						ackTasks.put(ee.getAttemptId(), ev);
+					} else {
+						LOG.info("Checkpoint acknowledging task {} of job {} is not being executed at the moment. Aborting " +
+							"checkpoint.", ev.getTaskNameWithSubtaskIndex(), job);
+					}
+				}
+
+				try {
+
+					checkpoint = new PendingCheckpoint(
+						job,
+						checkpointId,
+						checkpointTimestamp, // trigger timestamp
+						ackTasks,
+						checkpointProperties,
+						checkpointStorage.initializeLocationForCheckpoint(checkpointId),
+						executor);
+					pendingCheckpoints.put(checkpointId, checkpoint);
+					LOG.info("New {} in response to checkpoint acknowledge message. See below.", checkpoint);
+
+					if (statsTracker != null) {
+						PendingCheckpointStats callback = statsTracker.reportPendingCheckpoint(
+							checkpointId, checkpointTimestamp, checkpointProperties);
+
+						checkpoint.setStatsCallback(callback);
+					}
+				} catch (Throwable t) {
+					int numUnsuccessful = numUnsuccessfulCheckpointsTriggers.incrementAndGet();
+					LOG.warn("Failed to trigger checkpoint for job {} ({} consecutive failed attempts so far).",
+						job, numUnsuccessful, t);
+				}
+			}
 
 			if (checkpoint != null && !checkpoint.isDiscarded()) {
 
@@ -1395,7 +1438,8 @@ public class CheckpointCoordinator {
 		@Override
 		public void run() {
 			try {
-				triggerCheckpoint(System.currentTimeMillis(), true);
+				// SEEP: Do not trigger global checkpoints
+				// triggerCheckpoint(System.currentTimeMillis(), true);
 			} catch (Exception e) {
 				LOG.error("Exception while triggering checkpoint for job {}.", job, e);
 			}
