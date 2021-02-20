@@ -22,21 +22,34 @@
 JOB_MANAGER_RPC_ADDRESS=${JOB_MANAGER_RPC_ADDRESS:-$(hostname -f)}
 ###
 
-if [ "$1" == "--help" -o "$1" == "-h" ]; then
+drop_privs_cmd() {
+    if [ $(id -u) != 0 ]; then
+        # Don't need to drop privs if EUID != 0
+        return
+    elif [ -x /sbin/su-exec ]; then
+        # Alpine
+        echo su-exec flink
+    else
+        # Others
+        echo gosu flink
+    fi
+}
+
+if [ "$1" = "help" ]; then
     echo "Usage: $(basename $0) (jobmanager|taskmanager)"
     exit 0
-elif [ "$1" == "jobmanager" ]; then
+elif [ "$1" = "jobmanager" ]; then
     echo "Starting Job Manager"
     sed -i -e "s/jobmanager.rpc.address: localhost/jobmanager.rpc.address: ${JOB_MANAGER_RPC_ADDRESS}/g" $FLINK_HOME/conf/flink-conf.yaml
 
-    exec $FLINK_HOME/bin/jobmanager.sh start-foreground
-elif [ "$1" == "taskmanager" ]; then
+    exec $(drop_privs_cmd) "$FLINK_HOME/bin/jobmanager.sh" start-foreground
+elif [ "$1" = "taskmanager" ]; then
 
     sed -i -e "s/jobmanager.rpc.address: localhost/jobmanager.rpc.address: ${JOB_MANAGER_RPC_ADDRESS}/g" $FLINK_HOME/conf/flink-conf.yaml
-    sed -i -e "s/taskmanager.numberOfTaskSlots: 1/taskmanager.numberOfTaskSlots: $(grep -c ^processor /proc/cpuinfo)/g" $FLINK_HOME/conf/flink-conf.yaml
+    #sed -i -e "s/taskmanager.numberOfTaskSlots: 1/taskmanager.numberOfTaskSlots: $(grep -c ^processor /proc/cpuinfo)/g" $FLINK_HOME/conf/flink-conf.yaml
 
     echo "Starting Task Manager"
-    exec $FLINK_HOME/bin/taskmanager.sh start-foreground
+    exec $(drop_privs_cmd) "$FLINK_HOME/bin/taskmanager.sh" start-foreground
 fi
 
 exec "$@"
