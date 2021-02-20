@@ -29,7 +29,7 @@ public class InMemorySubpartitionInFlightLogger implements InFlightLog {
 
 	private static final Logger LOG = LoggerFactory.getLogger(InMemorySubpartitionInFlightLogger.class);
 
-	private final  List<Buffer> log;
+	private final ArrayList<Buffer> log;
 	private BufferPool inFlightBufferPool;
 	private final Object fakeLock = new Object();
 
@@ -50,12 +50,11 @@ public class InMemorySubpartitionInFlightLogger implements InFlightLog {
 	}
 
 	@Override
-	public void notifyDownstreamCheckpointComplete(int numBuffersProcessedDownstream) {
-		List<Buffer> toRemove = log.subList(0, numBuffersProcessedDownstream);
-		log.removeAll(toRemove);
-		for(Buffer b : toRemove)
-			b.recycleBuffer();
-
+	public synchronized void notifyDownstreamCheckpointComplete(int numBuffersProcessedDownstream) {
+		for (int i = 0; i < numBuffersProcessedDownstream; i++)
+			log.get(i).recycleBuffer();
+		log.subList(0, numBuffersProcessedDownstream).clear();
+		LOG.info("InFlightLog: Removed {} buffers.", numBuffersProcessedDownstream);
 	}
 
 	@Override

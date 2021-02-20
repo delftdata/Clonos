@@ -111,7 +111,7 @@ public class StreamInputProcessor<IN> {
 
 	private boolean isFinished;
 
-	private long checkpointTimer = 0L;
+	private long checkpointTimer;
 
 	private StreamTask<?,?> checkpointedTask;
 
@@ -166,6 +166,8 @@ public class StreamInputProcessor<IN> {
 		metrics.gauge("checkpointAlignmentTime", barrierHandler::getAlignmentDurationNanos);
 
 		this.checkpointedTask = checkpointedTask;
+
+		this.checkpointTimer = System.currentTimeMillis();
 	}
 
 	public boolean processInput() throws Exception {

@@ -313,6 +313,20 @@ public class UnionInputGate implements InputGate, InputGateListener {
 	}
 
 	@Override
+	public InputChannel getInputChannelById(int i) {
+		InputChannel result = null;
+		for (InputGate gate : inputGates) {
+			if (gate.getNumberOfInputChannels() <= i)
+				i -= gate.getNumberOfInputChannels();
+			else {
+				result = gate.getInputChannelById(i);
+				break;
+			}
+		}
+		return result;
+	}
+
+	@Override
 	public int getAbsoluteChannelIndex(InputGate gate, int channelIndex) {
 		return inputGateToIndexOffsetMap.get(gate) + channelIndex;
 	}

@@ -36,6 +36,8 @@ import org.apache.flink.runtime.checkpoint.CheckpointRetentionPolicy;
 import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
 import org.apache.flink.runtime.event.InFlightLogRequestEventListener;
+import org.apache.flink.runtime.event.CheckpointCompletedEvent;
+import org.apache.flink.runtime.event.CheckpointCompletedEventListener;
 import org.apache.flink.runtime.execution.CancelTaskException;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.io.network.api.CancelCheckpointMarker;
@@ -160,7 +162,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	/**
 	 * The external storage where checkpoint data is persisted.
 	 */
-	private CheckpointStorage checkpointStorage;
+	protected CheckpointStorage checkpointStorage;
 
 	/**
 	 * The internal {@link ProcessingTimeService} used to define the current
@@ -172,7 +174,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	/**
 	 * SEEP: Local checkpoint counter
 	 */
-	private long checkpointID = 0;
+	protected long checkpointID = 0;
 
 	/**
 	 * The map of user-defined accumulators of this task.
@@ -305,6 +307,12 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			environment.getTaskEventDispatcher().subscribeToEvent(partition.getPartitionId(), iflrel,
 				InFlightLogRequestEvent.class);
 			LOG.info("Set InFlightLogRequestEventListener {} for resultPartition {}.", iflrel, partition);
+
+			CheckpointCompletedEventListener ccel =
+				new CheckpointCompletedEventListener(environment.getUserClassLoader(), recoveryManager);
+			environment.getTaskEventDispatcher().subscribeToEvent(partition.getPartitionId(), ccel,
+				CheckpointCompletedEvent.class);
+			LOG.info("Set CheckpointCompletedEventListener {} for resultPartition {}.", ccel, partition);
 		}
 
 
@@ -690,6 +698,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 	// SEEP: trigger local checkpoint
 	public void triggerCheckpoint() {
+		if (!isRunning) return;
+
 		checkpointID++;
 		final CheckpointMetaData checkpointMetaData = new CheckpointMetaData(checkpointID,
 				System.currentTimeMillis());
@@ -704,8 +714,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			LOG.info("Trigger checkpoint {} for {}.", checkpointID, this);
 			triggerCheckpoint(checkpointMetaData, checkpointOptions);
 		} catch (Throwable t) {
-			LOG.warn("Failed to trigger checkpoint for job {}.",
-				this, t);
+			LOG.warn("Failed to trigger checkpoint for job {}.", this, t);
 		}
 	}
 
@@ -769,6 +778,10 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		return recoveryManager;
 	}
 
+	public OperatorChain getOperatorChain() {
+		return operatorChain;
+	}
+
 	@Override
 	public boolean performCheckpoint(
 		CheckpointMetaData checkpointMetaData,
@@ -793,11 +806,6 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 				operatorChain.prepareSnapshotPreBarrier(checkpointMetaData.getCheckpointId());
 
 				// Step (2): Send the checkpoint barrier downstream
-				// SEEP: Remove the checkpoint barrier propagation
-				// operatorChain.broadcastCheckpointBarrier(
-				//	checkpointMetaData.getCheckpointId(),
-				//	checkpointMetaData.getTimestamp(),
-				//	checkpointOptions);
 
 				// Step (3): Take the state snapshot. This should be largely asynchronous, to not
 				//           impact progress of the streaming topology
@@ -1030,6 +1038,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 		private final CheckpointMetaData checkpointMetaData;
 		private final CheckpointMetrics checkpointMetrics;
+		private final CheckpointOptions checkpointOptions;
 
 		private final long asyncStartNanos;
 
@@ -1042,12 +1051,14 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			Map<OperatorID, OperatorSnapshotFutures> operatorSnapshotsInProgress,
 			CheckpointMetaData checkpointMetaData,
 			CheckpointMetrics checkpointMetrics,
+			CheckpointOptions checkpointOptions,
 			long asyncStartNanos) {
 
 			this.owner = Preconditions.checkNotNull(owner);
 			this.operatorSnapshotsInProgress = Preconditions.checkNotNull(operatorSnapshotsInProgress);
 			this.checkpointMetaData = Preconditions.checkNotNull(checkpointMetaData);
 			this.checkpointMetrics = Preconditions.checkNotNull(checkpointMetrics);
+			this.checkpointOptions = Preconditions.checkNotNull(checkpointOptions);
 			this.asyncStartNanos = asyncStartNanos;
 		}
 
@@ -1138,7 +1149,20 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 			// SEEP checkpoint complete: make RPC call to downstream task(s) to
 			// get number of buffers to discard and also signal downstream to reset TimestampTracker
+			owner.getRecoveryManager().notifyCheckpointCompletedUpstreamTasks();
+
+			// SEEP: Perform checkpoint barrier propagation to reset SequenceNumberTrackers downstream
+			try {
+				owner.getOperatorChain().broadcastCheckpointBarrier(
+					checkpointMetaData.getCheckpointId(),
+					checkpointMetaData.getTimestamp(),
+					checkpointOptions);
+			} catch (Exception e) {
+				LOG.error("Broadcast checkpoint barrier for checkpoint {} from {} failed",
+						checkpointMetaData.getCheckpointId(), owner.getName(), e);
+			}
 		}
+
 
 		private void handleExecutionException(Exception e) {
 
@@ -1294,6 +1318,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 					operatorSnapshotsInProgress,
 					checkpointMetaData,
 					checkpointMetrics,
+					checkpointOptions,
 					startAsyncPartNano);
 
 				owner.cancelables.registerCloseable(asyncCheckpointRunnable);

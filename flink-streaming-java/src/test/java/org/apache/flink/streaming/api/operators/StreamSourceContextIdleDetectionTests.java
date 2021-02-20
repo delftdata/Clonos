@@ -20,6 +20,7 @@ package org.apache.flink.streaming.api.operators;
 
 import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
 import org.apache.flink.runtime.causal.recovery.RecoveryManagerContext;
+import org.apache.flink.runtime.event.CheckpointCompletedEvent;
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannel;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
@@ -104,6 +105,12 @@ public class StreamSourceContextIdleDetectionTests {
 			new CollectorOutput<String>(output),
 			0,
 			idleTimeout, new IRecoveryManager() {
+				@Override
+				public void notifyCheckpointCompletedEvent(CheckpointCompletedEvent e) {}
+
+				@Override
+				public void notifyCheckpointCompletedUpstreamTasks() {}
+
 				@Override
 				public void notifyNewInputChannel(InputChannel inputChannel, int consumedSupartitionIndex,
 												  int numberBuffersRemoved) {
@@ -250,6 +257,12 @@ public class StreamSourceContextIdleDetectionTests {
 			new CollectorOutput<String>(output),
 			watermarkInterval,
 			idleTimeout, new IRecoveryManager() {
+				@Override
+				public void notifyCheckpointCompletedEvent(CheckpointCompletedEvent e) {}
+
+				@Override
+				public void notifyCheckpointCompletedUpstreamTasks() {}
+
 				@Override
 				public void notifyNewInputChannel(InputChannel inputChannel, int consumedSupartitionIndex,
 												  int numberBuffersRemoved) {

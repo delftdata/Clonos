@@ -115,8 +115,6 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 	@GuardedBy("bufferQueue")
 	private boolean isWaitingForFloatingBuffers;
 
-	private int numBuffersRemoved;
-
 	public RemoteInputChannel(
 		SingleInputGate inputGate,
 		int channelIndex,
@@ -142,8 +140,6 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 
 		this.connectionId = checkNotNull(connectionId);
 		this.connectionManager = checkNotNull(connectionManager);
-		this.numBuffersRemoved = 0;
-
 	}
 
 	public RemoteInputChannel(
@@ -238,9 +234,17 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 		synchronized (receivedBuffers) {
 			next = receivedBuffers.poll();
 			moreAvailable = !receivedBuffers.isEmpty();
-		}
 
-		numBuffersRemoved++;
+			// SEEP: Deduplicate/skip buffers on recovery of upstream operator
+			if (deduplicating) {
+				numBuffersDeduplicate--;
+				if (numBuffersDeduplicate == 0) deduplicating = false;
+				return Optional.empty();
+			} else {
+				numBuffersRemoved++;
+				numBuffersDeduplicate++;
+			}
+		}
 
 		numBytesIn.inc(next.getSizeUnsafe());
 		numBuffersIn.inc();
@@ -260,10 +264,14 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 		checkError();
 
 		// If subpartition not yet requested, i.e. partitionRequestClient == null, allow only InFLightLogEvent to go through
-		if (partitionRequestClient == null && event instanceof InFlightLogRequestEvent) {
-			// Create a client
-			partitionRequestClient = connectionManager
-				.createPartitionRequestClient(connectionId);
+		if (partitionRequestClient == null) {
+		       if (event instanceof InFlightLogRequestEvent) {
+				// Create a client
+				partitionRequestClient = connectionManager.createPartitionRequestClient(connectionId);
+			} else {
+				LOG.error("PartitionRequestClient is not yet in place (null). Cannot send task event. Abort!");
+				return;
+			}
 		}
 
 		partitionRequestClient.sendTaskEvent(partitionId, event, this);
@@ -387,6 +395,45 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 
 	public int getSenderBacklog() {
 		return numRequiredBuffers - initialCredit;
+	}
+
+	@Override
+	public int getResetNumberBuffersRemoved() {
+		synchronized (receivedBuffers) {
+			LOG.info("Get and reset {} buffers in {} to truncate upstream inflight log.", numBuffersRemoved, this);
+			int nbr = numBuffersRemoved;
+			numBuffersRemoved = 0;
+			return nbr;
+		}
+	}
+
+	@Override
+	public void resetNumberBuffersDeduplicate() {
+		synchronized (receivedBuffers) {
+			LOG.info("Reset {} buffers for deduplication in {}.", numBuffersDeduplicate, this);
+			numBuffersDeduplicate = 0;
+		}
+	}
+
+	@Override
+	public int getNumberBuffersDeduplicate() {
+		synchronized (receivedBuffers) {
+			LOG.info("Get {} buffers for deduplication in {}.", numBuffersDeduplicate, this);
+			return numBuffersDeduplicate;
+		}
+	}
+
+	@Override
+	public void setNumberBuffersDeduplicate(int nbd) {
+		synchronized (receivedBuffers) {
+			numBuffersDeduplicate = nbd;
+			LOG.info("Set {} buffers for deduplication in {}.", numBuffersDeduplicate, this);
+		}
+	}
+
+	@Override
+	public void setDeduplicating() {
+		deduplicating = true;
 	}
 
 	@VisibleForTesting
@@ -763,9 +810,5 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 		releaseAllResources();
 		return new LocalInputChannel(inputGate, channelIndex, newPartitionId,
 				partitionManager, taskEventDispatcher, initialBackoff, maxBackoff, metrics);
-	}
-
-	public int getNumberOfBuffersRemoved(){
-		return numBuffersRemoved;
 	}
 }

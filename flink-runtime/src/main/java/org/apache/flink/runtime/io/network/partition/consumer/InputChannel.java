@@ -70,6 +70,11 @@ public abstract class InputChannel {
 	/** The current backoff (in ms). */
 	private int currentBackoff;
 
+	protected int numBuffersRemoved;
+
+	protected int numBuffersDeduplicate;
+
+	protected boolean deduplicating;
 
 	protected InputChannel(
 			SingleInputGate inputGate,
@@ -97,6 +102,10 @@ public abstract class InputChannel {
 
 		this.numBytesIn = numBytesIn;
 		this.numBuffersIn = numBuffersIn;
+
+		this.numBuffersRemoved = 0;
+		this.numBuffersDeduplicate = 0;
+		this.deduplicating = false;
 	}
 
 	// ------------------------------------------------------------------------
@@ -128,6 +137,16 @@ public abstract class InputChannel {
 	protected void notifyChannelNonEmpty() {
 		inputGate.notifyChannelNonEmpty(this);
 	}
+
+	public abstract int getResetNumberBuffersRemoved();
+
+	public abstract void resetNumberBuffersDeduplicate();
+
+	public abstract int getNumberBuffersDeduplicate();
+
+	public abstract void setNumberBuffersDeduplicate(int nbd);
+
+	public abstract void setDeduplicating();
 
 	// ------------------------------------------------------------------------
 	// Consume

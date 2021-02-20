@@ -805,7 +805,6 @@ public class CheckpointCoordinator {
 				Map<ExecutionAttemptID, ExecutionVertex> ackTasks = new HashMap<>(tasksToWaitFor.length);
 
 				for (ExecutionVertex ev : tasksToWaitFor) {
-					if (ev.getNumberOfInputs() == 0) continue; // Leave out sources
 					Execution ee = ev.getCurrentExecutionAttempt();
 					if (ee != null) {
 						ackTasks.put(ee.getAttemptId(), ev);

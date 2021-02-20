@@ -200,6 +200,8 @@ public class LocalInputChannel extends InputChannel implements BufferAvailabilit
 
 		numBytesIn.inc(next.buffer().getSizeUnsafe());
 		numBuffersIn.inc();
+		numBuffersRemoved++;
+		numBuffersDeduplicate++;
 		return Optional.of(new BufferAndAvailability(next.buffer(), next.isMoreAvailable(), next.buffersInBacklog()));
 	}
 
@@ -272,6 +274,34 @@ public class LocalInputChannel extends InputChannel implements BufferAvailabilit
 			LOG.debug("Release (because of error) all resources of channel {} (but not {}).", this, view);
 		}
 	}
+
+	@Override
+	public int getResetNumberBuffersRemoved() {
+		LOG.info("Get and reset {} buffers in {} to truncate upstream inflight log.", numBuffersRemoved, this);
+		int nbr = numBuffersRemoved;
+		numBuffersRemoved = 0;
+		return nbr;
+	}
+
+	@Override
+	public void resetNumberBuffersDeduplicate() {
+		LOG.info("NoOP: Reset {} buffers for deduplication in {}.", numBuffersDeduplicate, this);
+		numBuffersDeduplicate = 0;
+	}
+
+	@Override
+	public int getNumberBuffersDeduplicate() {
+		LOG.info("NoOP: Get {} buffers for deduplication in {}.", numBuffersDeduplicate, this);
+		return numBuffersDeduplicate;
+	}
+
+	// NoOP because LocalInputChannel will have lost all state after a failure
+	@Override
+	public void setNumberBuffersDeduplicate(int nbd) {}
+
+	// Ditto
+	@Override
+	public void setDeduplicating() {}
 
 	@Override
 	public String toString() {

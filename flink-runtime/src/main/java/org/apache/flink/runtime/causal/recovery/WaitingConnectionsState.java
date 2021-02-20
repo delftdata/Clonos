@@ -92,7 +92,7 @@ public class WaitingConnectionsState extends AbstractState{
 		for(Boolean[] booleans : outputChannelsReestablishmentStatus.values())
 			channelStatus = Stream.concat(channelStatus, Arrays.stream(booleans));
 		if(channelStatus.allMatch(x -> x)){
-			logInfoWithVertexID("Got all connections set-up. Switching to WaitingDeterminantsState.");
+			logInfoWithVertexID("Got all connections set-up. Switching to ReplayingState.");
 			State newState = new ReplayingState(recoveryManager,context);
 			recoveryManager.setState(newState);
 		}

@@ -29,7 +29,9 @@ import org.apache.flink.runtime.io.network.api.CancelCheckpointMarker;
 import org.apache.flink.runtime.io.network.api.CheckpointBarrier;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
 import org.apache.flink.runtime.io.network.partition.consumer.BufferOrEvent;
+import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
+import org.apache.flink.runtime.io.network.partition.consumer.InputChannel;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 
 import org.slf4j.Logger;
@@ -265,13 +267,11 @@ public class BarrierBuffer implements CheckpointBarrierHandler {
 	private void processBarrier(CheckpointBarrier receivedBarrier, int channelIndex) throws Exception {
 		final long barrierId = receivedBarrier.getId();
 
-		// fast path for single channel cases
-		if (totalNumberOfInputChannels == 1) {
-			if (barrierId > currentCheckpointId) {
-				// new checkpoint
-				currentCheckpointId = barrierId;
-				notifyCheckpoint(receivedBarrier);
-			}
+		// SEEP: just reset the TimestampTracker for this channel
+		if (totalNumberOfInputChannels >= 0) {
+			InputChannel inputChannel = inputGate.getInputChannelById(channelIndex);
+			inputChannel.resetNumberBuffersDeduplicate();
+			LOG.info("Reset number of buffers removed for input gate's {} channel {}", inputGate, inputChannel);
 			return;
 		}
 

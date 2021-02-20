@@ -285,6 +285,14 @@ public class SingleInputGate implements InputGate {
 		return inputChannelArray[i];
 	}
 
+	public InputChannel getInputChannelById(int i) {
+		for (InputChannel channel : inputChannels.values()) {
+			if (channel.getChannelIndex() == i)
+				return channel;
+		}
+		return null;
+	}
+
 	@Override
 	public int getAbsoluteChannelIndex(InputGate gate, int channelIndex) {
 		return channelIndex;
@@ -530,8 +538,8 @@ public class SingleInputGate implements InputGate {
 				try {
 					newChannel.requestSubpartition(consumedSubpartitionIndex);
 					requestedPartitionsFlag.set(true);
-					int numberOfBuffersRemoved = (current instanceof RemoteInputChannel ? ((RemoteInputChannel) current).getNumberOfBuffersRemoved() : 0);
-					recoveryManager.notifyNewInputChannel(newChannel, consumedSubpartitionIndex, numberOfBuffersRemoved);
+					int numberOfBuffersDeduplicate = (current instanceof RemoteInputChannel ? ((RemoteInputChannel) current).getNumberBuffersDeduplicate() : 0);
+					recoveryManager.notifyNewInputChannel(newChannel, consumedSubpartitionIndex, numberOfBuffersDeduplicate);
 				} catch (IOException e) {
 					LOG.error("{}: Request subpartition or send task event for input channel {} failed. Ignoring failure and sending fail trigger for producer (chances are it is dead).",
 						owningTaskName, newChannel, e);

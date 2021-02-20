@@ -124,8 +124,7 @@ public class CheckpointStatsTracker {
 		// do it once.
 		int count = 0;
 		for (ExecutionJobVertex vertex : jobVertices) {
-			if (vertex.getInputs().size() > 0) // SEEP: no checkpoints in sources
-				count += vertex.getParallelism();
+			count += vertex.getParallelism();
 		}
 		this.totalSubtaskCount = count;
 

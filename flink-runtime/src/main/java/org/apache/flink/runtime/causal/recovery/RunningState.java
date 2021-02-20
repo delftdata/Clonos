@@ -28,6 +28,7 @@ package org.apache.flink.runtime.causal.recovery;
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
 import org.apache.flink.runtime.io.network.partition.PipelinedSubpartition;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannel;
+import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -66,15 +67,16 @@ public class RunningState extends AbstractState {
 
 	@Override
 	public void notifyNewInputChannel(InputChannel inputChannel, int consumedSubpartitionIndex,
-									  int numBuffersRemoved) {
+									  int numBuffersDeduplicate) {
+		logInfoWithVertexID("Notify new {}. It should deduplicate/skip the first {} buffers from upstream.",
+				inputChannel, numBuffersDeduplicate);
+		inputChannel.setNumberBuffersDeduplicate(numBuffersDeduplicate);
 
-		//if (context.causalLog.getDeterminantSharingDepth() == 0) {
-		//	SingleInputGate singleInputGate = inputChannel.getInputGate();
-		//	int channelIndex = inputChannel.getChannelIndex();
+		SingleInputGate singleInputGate = inputChannel.getInputGate();
+		int channelIndex = inputChannel.getChannelIndex();
+		context.invokable.resetInputChannelDeserializer(singleInputGate, channelIndex);
 
-		//	context.invokable.resetInputChannelDeserializer(singleInputGate, channelIndex);
-
-		//}
+		inputChannel.setDeduplicating();
 	}
 
 	@Override

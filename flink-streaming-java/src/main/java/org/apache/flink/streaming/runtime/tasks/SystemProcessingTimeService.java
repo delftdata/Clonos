@@ -147,14 +147,14 @@ public class SystemProcessingTimeService extends ProcessingTimeService {
 
 	@Override
 	public ScheduledFuture<?> scheduleAtFixedRate(ProcessingTimeCallback callback, long initialDelay, long period) {
-		throw new RuntimeException("Cannot register timers as this is nondeterministic");
-		//long nextTimestamp = System.currentTimeMillis() + initialDelay;
+		//throw new RuntimeException("Cannot register timers as this is nondeterministic");
+		long nextTimestamp = System.currentTimeMillis() + initialDelay;
 
-		//RepeatedTriggerTask toRegister = new RepeatedTriggerTask(status, task, checkpointLock, callback, nextTimestamp,
-		//	period);
-		//ScheduledFuture<?> future;
-		//future = registerAtFixedRateRunning(initialDelay, period, toRegister);
-		//return future;
+		RepeatedTriggerTask toRegister = new RepeatedTriggerTask(status, task, checkpointLock, callback, nextTimestamp,
+			period);
+		ScheduledFuture<?> future;
+		future = registerAtFixedRateRunning(initialDelay, period, toRegister);
+		return future;
 	}
 
 

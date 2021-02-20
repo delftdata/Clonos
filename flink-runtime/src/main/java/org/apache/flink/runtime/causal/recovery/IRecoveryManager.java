@@ -26,11 +26,15 @@
 package org.apache.flink.runtime.causal.recovery;
 
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
+import org.apache.flink.runtime.event.CheckpointCompletedEvent;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannel;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 
 public interface IRecoveryManager {
 
+	void notifyCheckpointCompletedEvent(CheckpointCompletedEvent e);
+
+	void notifyCheckpointCompletedUpstreamTasks();
 
 	void notifyNewInputChannel(InputChannel inputChannel, int consumedSupartitionIndex, int numberBuffersRemoved);
 

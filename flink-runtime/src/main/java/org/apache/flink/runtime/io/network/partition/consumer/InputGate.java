@@ -98,7 +98,9 @@ public interface InputGate {
 
 	InputChannel getInputChannel(int i);
 
-    int getAbsoluteChannelIndex(InputGate gate, int channelIndex);
+	InputChannel getInputChannelById(int i);
+
+	int getAbsoluteChannelIndex(InputGate gate, int channelIndex);
 
 	SingleInputGate[] getInputGates();
 

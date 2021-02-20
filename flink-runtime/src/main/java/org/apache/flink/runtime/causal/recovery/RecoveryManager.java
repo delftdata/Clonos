@@ -25,12 +25,16 @@
 
 package org.apache.flink.runtime.causal.recovery;
 
+import org.apache.flink.runtime.event.CheckpointCompletedEvent;
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannel;
+import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
+import org.apache.flink.runtime.io.network.partition.PipelinedSubpartition;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 
 public class RecoveryManager implements IRecoveryManager {
 
@@ -46,7 +50,6 @@ public class RecoveryManager implements IRecoveryManager {
 	private State currentState;
 
 	private final RecoveryManagerContext context;
-
 
 	public RecoveryManager(RecoveryManagerContext context) {
 
@@ -93,6 +96,46 @@ public class RecoveryManager implements IRecoveryManager {
 		this.currentState.notifyInFlightLogRequestEvent(e);
 	}
 
+	/*
+	 * Receive checkpoint completion notification from downstream task.
+	 */
+	@Override
+	public synchronized void notifyCheckpointCompletedEvent(CheckpointCompletedEvent e) {
+		int numberBuffersRemoved = e.getNumberBuffersRemoved();
+		PipelinedSubpartition pipelinedSubpartition = context.subpartitionTable.get(
+				e.getIntermediateResultPartitionID(), e.getSubpartitionIndex());
+		LOG.info("Deliver {} to {}.", e, pipelinedSubpartition);
+		pipelinedSubpartition.notifyDownstreamCheckpointComplete(numberBuffersRemoved);
+	}
+
+	/*
+	 * Send checkpoint completion notification to upstream task.
+	 * The counterpart of the above function.
+	 */
+	@Override
+	public synchronized void notifyCheckpointCompletedUpstreamTasks() {
+		if (context.vertexGraphInformation.hasUpstream()) {
+			for (SingleInputGate singleInputGate : context.inputGate.getInputGates()) {
+				int consumedIndex = singleInputGate.getConsumedSubpartitionIndex();
+				for (int i = 0; i < singleInputGate.getNumberOfInputChannels(); i++) {
+					InputChannel inputChannel = singleInputGate.getInputChannelById(i);
+					int numberBuffersRemoved = inputChannel.getResetNumberBuffersRemoved();
+					CheckpointCompletedEvent checkpointCompletedEvent =
+						new CheckpointCompletedEvent(inputChannel.getPartitionId().getPartitionId(),
+							consumedIndex, numberBuffersRemoved);
+					LOG.info("Sending checkpoint completed event {} upstream through input gate {} channel {}: {} numberBuffersRemoved.",
+							checkpointCompletedEvent, singleInputGate, i, numberBuffersRemoved);
+					try {
+						inputChannel.sendTaskEvent(checkpointCompletedEvent);
+					} catch (IOException | InterruptedException e) {
+						e.printStackTrace();
+					}
+				}
+			}
+		}
+	}
+
+
 	public synchronized void setState(State state) {
 		this.currentState = state;
 		this.currentState.executeEnter();
@@ -123,7 +166,6 @@ public class RecoveryManager implements IRecoveryManager {
 	public synchronized RecoveryManagerContext getContext() {
 		return context;
 	}
-
 
 	public State getState() {
 		return currentState;

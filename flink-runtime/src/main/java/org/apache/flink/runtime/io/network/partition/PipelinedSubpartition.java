@@ -108,6 +108,12 @@ public class PipelinedSubpartition extends ResultSubpartition {
 		return inFlightLog;
 	}
 
+	public void notifyDownstreamCheckpointComplete(int numBuffersProcessedDownstream) {
+		synchronized (buffers) {
+			inFlightLog.notifyDownstreamCheckpointComplete(numBuffersProcessedDownstream);
+		}
+	}
+
 	@Override
 	public boolean add(BufferConsumer bufferConsumer) {
 		return add(bufferConsumer, false);

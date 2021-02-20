@@ -21,11 +21,15 @@ package org.apache.flink.streaming.runtime.tasks;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
+import org.apache.flink.runtime.checkpoint.CheckpointProperties;
+import org.apache.flink.runtime.checkpoint.CheckpointRetentionPolicy;
 import org.apache.flink.runtime.execution.Environment;
+import org.apache.flink.runtime.state.CheckpointStorageLocation;
 import org.apache.flink.streaming.api.checkpoint.ExternallyInducedSource;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
 import org.apache.flink.streaming.api.operators.StreamSource;
 import org.apache.flink.streaming.runtime.io.CheckpointBarrierHandler;
+import org.apache.flink.streaming.runtime.tasks.ProcessingTimeCallback;
 import org.apache.flink.util.FlinkException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -90,6 +94,31 @@ public class SourceStreamTask<OUT, SRC extends SourceFunction<OUT>, OP extends S
 			};
 
 			((ExternallyInducedSource<?, ?>) source).setCheckpointTrigger(triggerHook);
+		}
+
+		timerService.scheduleAtFixedRate(new CheckpointProcessingTimeCallback(), 2000L, 2000L);
+	}
+
+	private class CheckpointProcessingTimeCallback implements ProcessingTimeCallback {
+
+		@Override
+		public void onProcessingTime(long timestamp) {
+			try {
+				checkpointID++;
+				final CheckpointMetaData checkpointMetaData = new CheckpointMetaData(checkpointID,
+						timestamp);
+				CheckpointStorageLocation checkpointStorageLocation =
+						checkpointStorage.initializeLocationForCheckpoint(checkpointID);
+				CheckpointProperties checkpointProperties = CheckpointProperties.forCheckpoint(
+						CheckpointRetentionPolicy.RETAIN_ON_FAILURE);
+				final CheckpointOptions checkpointOptions = new CheckpointOptions(
+						checkpointProperties.getCheckpointType(),
+						checkpointStorageLocation.getLocationReference());
+				LOG.info("Trigger checkpoint {} for {}.", checkpointID, this);
+				triggerCheckpoint(checkpointMetaData, checkpointOptions);
+			} catch (Throwable t) {
+				LOG.warn("Failed to trigger checkpoint for job {}.", this, t);
+			}
 		}
 	}
 
