@@ -258,8 +258,7 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 						next.buffer(),
 						reader.getSequenceNumber(),
 						reader.getReceiverId(),
-						next.buffersInBacklog(),
-						next.getEpochID());
+						next.buffersInBacklog());
 
 					if (isEndOfPartitionEvent(next.buffer())) {
 						LOG.warn("Reader {} received end of partition event.", reader);

@@ -84,11 +84,11 @@ public class InMemorySubpartitionInFlightLogger implements InFlightLog {
 
 	public static class ReplayIterator extends InFlightLogIterator<Buffer> {
 		private final ListIterator<Buffer> iterator;
-		private final int size;
+		private int numberRemaining;
 
 		public ReplayIterator(List<Buffer> log) {
 			iterator = log.listIterator();
-			this.size = log.size();
+			this.numberRemaining = log.size();
 		}
 
 		@Override
@@ -98,6 +98,7 @@ public class InMemorySubpartitionInFlightLogger implements InFlightLog {
 
 		@Override
 		public Buffer next() {
+			numberRemaining--;
 			return iterator.next();
 		}
 
@@ -116,7 +117,7 @@ public class InMemorySubpartitionInFlightLogger implements InFlightLog {
 
 		@Override
 		public int numberRemaining() {
-			return size - iterator.nextIndex();
+			return numberRemaining;
 		}
 
 

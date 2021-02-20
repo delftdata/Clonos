@@ -289,8 +289,6 @@ public abstract class NettyMessage {
 
 		final boolean isBuffer;
 
-		final long epochID;
-
 		private BufferResponse(
 			ByteBuf buffer,
 			boolean isBuffer,
@@ -302,29 +300,19 @@ public abstract class NettyMessage {
 			this.sequenceNumber = sequenceNumber;
 			this.receiverId = checkNotNull(receiverId);
 			this.backlog = backlog;
-			this.epochID = -1;
 		}
+
 
 		BufferResponse(
 			Buffer buffer,
 			int sequenceNumber,
 			InputChannelID receiverId,
 			int backlog) {
-			this(buffer, sequenceNumber, receiverId, backlog, -1);
-		}
-
-		BufferResponse(
-			Buffer buffer,
-			int sequenceNumber,
-			InputChannelID receiverId,
-			int backlog,
-			long epochID) {
 			this.buffer = checkNotNull(buffer).asByteBuf();
 			this.isBuffer = buffer.isBuffer();
 			this.sequenceNumber = sequenceNumber;
 			this.receiverId = checkNotNull(receiverId);
 			this.backlog = backlog;
-			this.epochID = epochID;
 		}
 
 		boolean isBuffer() {

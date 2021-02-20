@@ -203,17 +203,12 @@ public abstract class ResultSubpartition {
 		private final boolean isMoreAvailable;
 		private final int buffersInBacklog;
 		private final boolean nextBufferIsEvent;
-		private final long epochID;
 
 		public BufferAndBacklog(Buffer buffer, boolean isMoreAvailable, int buffersInBacklog, boolean nextBufferIsEvent) {
-			this(buffer,isMoreAvailable,buffersInBacklog,nextBufferIsEvent,-1L);
-		}
-		public BufferAndBacklog(Buffer buffer, boolean isMoreAvailable, int buffersInBacklog, boolean nextBufferIsEvent, long epochID) {
 			this.buffer = checkNotNull(buffer);
 			this.buffersInBacklog = buffersInBacklog;
 			this.isMoreAvailable = isMoreAvailable;
 			this.nextBufferIsEvent = nextBufferIsEvent;
-			this.epochID = epochID;
 		}
 
 		public Buffer buffer() {
@@ -232,9 +227,6 @@ public abstract class ResultSubpartition {
 			return nextBufferIsEvent;
 		}
 
-		public long getEpochID(){
-			return epochID;
-		}
 	}
 
 }

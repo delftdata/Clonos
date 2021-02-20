@@ -283,16 +283,11 @@ public abstract class InputChannel {
 		private final Buffer buffer;
 		private final boolean moreAvailable;
 		private final int buffersInBacklog;
-		private final long epochID;
 
-		public BufferAndAvailability(Buffer buffer, boolean moreAvailable, int buffersInBacklog){
-			this(buffer, moreAvailable, buffersInBacklog, -1L);
-		}
-		public BufferAndAvailability(Buffer buffer, boolean moreAvailable, int buffersInBacklog, long epochID) {
+		public BufferAndAvailability(Buffer buffer, boolean moreAvailable, int buffersInBacklog) {
 			this.buffer = checkNotNull(buffer);
 			this.moreAvailable = moreAvailable;
 			this.buffersInBacklog = buffersInBacklog;
-			this.epochID = epochID;
 		}
 
 		public Buffer buffer() {
@@ -307,8 +302,5 @@ public abstract class InputChannel {
 			return buffersInBacklog;
 		}
 
-		public long getEpochID() {
-			return epochID;
-		}
 	}
 }

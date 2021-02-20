@@ -126,7 +126,7 @@ class SequenceNumberingViewReader implements BufferAvailabilityListener, Network
 		BufferAndBacklog next = subpartitionView.getNextBuffer();
 		if (next != null) {
 			sequenceNumber++;
-			return new BufferAndAvailability(next.buffer(), next.isMoreAvailable(), next.buffersInBacklog(), next.getEpochID());
+			return new BufferAndAvailability(next.buffer(), next.isMoreAvailable(), next.buffersInBacklog());
 		} else {
 			return null;
 		}
