@@ -950,6 +950,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	@Override
 	public void notifyCompletedRestoringCheckpoint(long checkpointId) {
 		this.recoveryManager.notifyStateRestorationComplete(checkpointId);
+		checkpointID = checkpointId;
 	}
 
 
@@ -1150,17 +1151,6 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			// SEEP checkpoint complete: make RPC call to downstream task(s) to
 			// get number of buffers to discard and also signal downstream to reset TimestampTracker
 			owner.getRecoveryManager().notifyCheckpointCompletedUpstreamTasks();
-
-			// SEEP: Perform checkpoint barrier propagation to reset SequenceNumberTrackers downstream
-			try {
-				owner.getOperatorChain().broadcastCheckpointBarrier(
-					checkpointMetaData.getCheckpointId(),
-					checkpointMetaData.getTimestamp(),
-					checkpointOptions);
-			} catch (Exception e) {
-				LOG.error("Broadcast checkpoint barrier for checkpoint {} from {} failed",
-						checkpointMetaData.getCheckpointId(), owner.getName(), e);
-			}
 		}
 
 
@@ -1331,6 +1321,12 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 						checkpointMetrics.getAlignmentDurationNanos() / 1_000_000,
 						checkpointMetrics.getSyncDurationMillis());
 				}
+
+				owner.getOperatorChain().broadcastCheckpointBarrier(
+					checkpointMetaData.getCheckpointId(),
+					checkpointMetaData.getTimestamp(),
+					checkpointOptions);
+
 			} catch (Exception ex) {
 				// Cleanup to release resources
 				for (OperatorSnapshotFutures operatorSnapshotResult : operatorSnapshotsInProgress.values()) {

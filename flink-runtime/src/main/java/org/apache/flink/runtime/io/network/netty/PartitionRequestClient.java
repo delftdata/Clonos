@@ -161,10 +161,13 @@ public class PartitionRequestClient {
 							public void operationComplete(ChannelFuture future) throws Exception {
 								if (!future.isSuccess()) {
 									SocketAddress remoteAddr = future.channel().remoteAddress();
-									inputChannel.onError(new LocalTransportException(
-										String.format("Sending the task event to '%s' failed.", remoteAddr),
-										future.channel().localAddress(), future.cause()
-									));
+									LOG.error("Sending task event {} from {} to {} failed: ",
+										event, future.channel().localAddress(), remoteAddr,
+										future.cause());
+									//inputChannel.onError(new LocalTransportException(
+									//	String.format("Sending the task event to '%s' failed.", remoteAddr),
+									//	future.channel().localAddress(), future.cause()
+									//));
 								}
 							}
 						});

@@ -238,6 +238,7 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 			// SEEP: Deduplicate/skip buffers on recovery of upstream operator
 			if (deduplicating) {
 				numBuffersDeduplicate--;
+				LOG.debug("{} deduplicating: {} buffers left to skip.", this, numBuffersDeduplicate);
 				if (numBuffersDeduplicate == 0) deduplicating = false;
 				return Optional.empty();
 			} else {
@@ -274,7 +275,11 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 			}
 		}
 
-		partitionRequestClient.sendTaskEvent(partitionId, event, this);
+		try {
+			partitionRequestClient.sendTaskEvent(partitionId, event, this);
+		} catch (Exception e) {
+			LOG.error("Exception happened while sending task event: ", e);
+		}
 	}
 
 

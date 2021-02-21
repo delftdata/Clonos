@@ -100,6 +100,8 @@ parallelism.default: 1
 
 jobmanager.execution.failover-strategy: standbytask
 
+jobmanager.execution.num-standby-tasks: 0
+
 # The backend that will be used to store operator state checkpoints if
 # checkpointing is enabled.
 #
