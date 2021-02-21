@@ -31,7 +31,6 @@ public class InMemorySubpartitionInFlightLogger implements InFlightLog {
 
 	private final ArrayList<Buffer> log;
 	private BufferPool inFlightBufferPool;
-	private final Object fakeLock = new Object();
 
 	public InMemorySubpartitionInFlightLogger() {
 		log = new ArrayList<>();
@@ -45,7 +44,7 @@ public class InMemorySubpartitionInFlightLogger implements InFlightLog {
 	public synchronized void log(Buffer buffer, boolean isFinished) {
 		log.add(buffer.retainBuffer());
 		if (isFinished)
-			InFlightLoggingUtil.exchangeOwnership(buffer, inFlightBufferPool, fakeLock, true);
+			InFlightLoggingUtil.exchangeOwnership(buffer, inFlightBufferPool, true);
 		LOG.debug("Logged a new buffer");
 	}
 
