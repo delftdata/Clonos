@@ -115,6 +115,23 @@ public class TestInputChannel extends InputChannel {
 	}
 
 	@Override
+	public int getResetNumberBuffersRemoved() {return 0;}
+
+	@Override
+	public void resetNumberBuffersDeduplicate() {}
+
+	@Override
+	public int getNumberBuffersDeduplicate() {return 0;}
+
+	// NoOP because LocalInputChannel will have lost all state after a failure
+	@Override
+	public void setNumberBuffersDeduplicate(int nbd) {}
+
+	// Ditto
+	@Override
+	public void setDeduplicating() {}
+
+	@Override
 	void requestSubpartition(int subpartitionIndex) throws IOException, InterruptedException {
 
 	}

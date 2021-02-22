@@ -211,6 +211,11 @@ public class BarrierBufferMassiveRandomTest {
 		}
 
 		@Override
+		public InputChannel getInputChannelById(int i) {
+			return null;
+		}
+
+		@Override
 		public int getAbsoluteChannelIndex(InputGate gate, int channelIndex) {
 			return 0;
 		}

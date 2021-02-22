@@ -68,6 +68,11 @@ public class MockInputGate implements InputGate {
 	}
 
 	@Override
+	public InputChannel getInputChannelById(int i) {
+		return null;
+	}
+
+	@Override
 	public int getAbsoluteChannelIndex(InputGate gate, int channelIndex) {
 		return 0;
 	}

@@ -1039,7 +1039,6 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 		private final CheckpointMetaData checkpointMetaData;
 		private final CheckpointMetrics checkpointMetrics;
-		private final CheckpointOptions checkpointOptions;
 
 		private final long asyncStartNanos;
 
@@ -1052,14 +1051,12 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			Map<OperatorID, OperatorSnapshotFutures> operatorSnapshotsInProgress,
 			CheckpointMetaData checkpointMetaData,
 			CheckpointMetrics checkpointMetrics,
-			CheckpointOptions checkpointOptions,
 			long asyncStartNanos) {
 
 			this.owner = Preconditions.checkNotNull(owner);
 			this.operatorSnapshotsInProgress = Preconditions.checkNotNull(operatorSnapshotsInProgress);
 			this.checkpointMetaData = Preconditions.checkNotNull(checkpointMetaData);
 			this.checkpointMetrics = Preconditions.checkNotNull(checkpointMetrics);
-			this.checkpointOptions = Preconditions.checkNotNull(checkpointOptions);
 			this.asyncStartNanos = asyncStartNanos;
 		}
 
@@ -1308,7 +1305,6 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 					operatorSnapshotsInProgress,
 					checkpointMetaData,
 					checkpointMetrics,
-					checkpointOptions,
 					startAsyncPartNano);
 
 				owner.cancelables.registerCloseable(asyncCheckpointRunnable);
