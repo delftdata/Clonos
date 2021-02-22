@@ -41,28 +41,34 @@ public class InMemorySubpartitionInFlightLogger implements InFlightLog {
 		this.inFlightBufferPool = bufferPool;
 	}
 
-	public synchronized void log(Buffer buffer, boolean isFinished) {
-		log.add(buffer.retainBuffer());
-		if (isFinished)
-			InFlightLoggingUtil.exchangeOwnership(buffer, inFlightBufferPool, true);
-		LOG.debug("Logged a new buffer");
+	public void log(Buffer buffer, boolean isFinished) {
+		synchronized (log) {
+			log.add(buffer.retainBuffer());
+			if (isFinished)
+				InFlightLoggingUtil.exchangeOwnership(buffer, inFlightBufferPool, true);
+			LOG.debug("Logged a new buffer");
+		}
 	}
 
 	@Override
-	public synchronized void notifyDownstreamCheckpointComplete(int numBuffersProcessedDownstream) {
-		for (int i = 0; i < numBuffersProcessedDownstream; i++)
-			log.get(i).recycleBuffer();
-		log.subList(0, numBuffersProcessedDownstream).clear();
-		LOG.info("InFlightLog: Removed {} buffers.", numBuffersProcessedDownstream);
+	public void notifyDownstreamCheckpointComplete(int numBuffersProcessedDownstream) {
+		synchronized (log) {
+			for (int i = 0; i < numBuffersProcessedDownstream; i++)
+				log.get(i).recycleBuffer();
+			log.subList(0, numBuffersProcessedDownstream).clear();
+			LOG.info("InFlightLog: Removed {} buffers.", numBuffersProcessedDownstream);
+		}
 	}
 
 	@Override
-	public synchronized InFlightLogIterator<Buffer> getInFlightIterator() {
-		//The lower network stack recycles buffers, so for each replay, we must increase reference counts
-		for (Buffer buffer : log)
-			buffer.retainBuffer();
+	public InFlightLogIterator<Buffer> getInFlightIterator() {
+		synchronized (log) {
+			//The lower network stack recycles buffers, so for each replay, we must increase reference counts
+			for (Buffer buffer : log)
+				buffer.retainBuffer();
 
-		return new  ReplayIterator(log);
+			return new ReplayIterator(log);
+		}
 	}
 
 	@Override
@@ -71,9 +77,9 @@ public class InMemorySubpartitionInFlightLogger implements InFlightLog {
 	}
 
 	@Override
-	public synchronized void close() {
-			for(Buffer b : log)
-				b.recycleBuffer();
+	public void close() {
+		for (Buffer b : log)
+			b.recycleBuffer();
 	}
 
 	@Override
@@ -82,43 +88,50 @@ public class InMemorySubpartitionInFlightLogger implements InFlightLog {
 	}
 
 	public static class ReplayIterator extends InFlightLogIterator<Buffer> {
-		private final ListIterator<Buffer> iterator;
-		private int numberRemaining;
+		private final List<Buffer> log;
+		private int currentIndex;
 
 		public ReplayIterator(List<Buffer> log) {
-			iterator = log.listIterator();
-			this.numberRemaining = log.size();
+			this.log = log;
+			this.currentIndex = 0;
 		}
 
 		@Override
 		public boolean hasNext() {
-			return iterator.hasNext();
+			synchronized (log) {
+				//if currentIndex == log.size()  then we are done
+				return currentIndex < log.size();
+			}
 		}
 
 		@Override
 		public Buffer next() {
-			numberRemaining--;
-			return iterator.next();
+			synchronized (log) {
+				return log.get(currentIndex++);
+			}
 		}
 
 		@Override
 		public Buffer peekNext() {
-			Buffer peek = iterator.next();
-			iterator.previous();
-			return peek;
+			synchronized (log) {
+				return log.get(currentIndex);
+			}
 		}
 
 		@Override
 		public void close() {
-			while (this.hasNext())
-				this.next().recycleBuffer();
+			synchronized (log) {
+				while (this.hasNext())
+					this.next().recycleBuffer();
+			}
 		}
 
 		@Override
 		public int numberRemaining() {
-			return numberRemaining;
+			synchronized (log) {
+				return log.size() - currentIndex; //if size is 1 and index is 0, there is 1 remaining
+			}
 		}
-
 
 
 	}
