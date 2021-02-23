@@ -635,9 +635,7 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 
 			++expectedSequenceNumber;
 
-			if (wasEmpty) {
-				notifyChannelNonEmpty();
-			}
+			notifyChannelNonEmpty();
 
 			if (backlog >= 0) {
 				onSenderBacklog(backlog);

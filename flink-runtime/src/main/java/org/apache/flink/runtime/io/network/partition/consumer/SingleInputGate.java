@@ -54,6 +54,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -151,6 +152,12 @@ public class SingleInputGate implements InputGate {
 	 */
 	private final BitSet enqueuedInputChannelsWithData;
 
+	/**
+	 * SEEP: Enforce in-order processing of arriving buffers by round-robining the input channels
+	 * having buffers for processing.
+	 */
+	private int roundRobinChannelSelector;
+
 	private final BitSet channelsWithEndOfPartitionEvents;
 
 	/** The partition state listener listening to failed partition requests. */
@@ -226,6 +233,7 @@ public class SingleInputGate implements InputGate {
 		this.inputChannelArray = new InputChannel[numberOfInputChannels];
 		this.channelsWithEndOfPartitionEvents = new BitSet(numberOfInputChannels);
 		this.enqueuedInputChannelsWithData = new BitSet(numberOfInputChannels);
+		this.roundRobinChannelSelector = 0;
 
 		this.taskActions = checkNotNull(taskActions);
 		this.isCreditBased = isCreditBased;
@@ -722,14 +730,19 @@ public class SingleInputGate implements InputGate {
 
 		requestPartitions();
 
-		InputChannel currentChannel;
+		InputChannel currentChannel = null;
 		boolean moreAvailable;
 		Optional<BufferAndAvailability> result = Optional.empty();
 
 		do {
 			synchronized (inputChannelsWithData) {
 				LOG.debug("{}: getNextBufferOrEvent() select from {} inputChannelsWithData.", owningTaskName, inputChannelsWithData.size());
-				while (inputChannelsWithData.size() == 0) {
+				// SEEP: process buffers in-order
+				while (inputChannelsWithData.size() == 0 ||
+						!enqueuedInputChannelsWithData.get(roundRobinChannelSelector)) {
+					LOG.debug("Channel {} has available data? {}", roundRobinChannelSelector,
+						enqueuedInputChannelsWithData.get(roundRobinChannelSelector));
+
 					if (isReleased) {
 						throw new IllegalStateException("Released");
 					}
@@ -742,9 +755,19 @@ public class SingleInputGate implements InputGate {
 					}
 				}
 
-				currentChannel = inputChannelsWithData.remove();
-				enqueuedInputChannelsWithData.clear(currentChannel.getChannelIndex());
+				Iterator<InputChannel> iterator = inputChannelsWithData.iterator();
+				while (iterator.hasNext()) {
+					if (iterator.next().getChannelIndex() == roundRobinChannelSelector) {
+						iterator.remove();
+						break;
+					}
+				}
+				enqueuedInputChannelsWithData.clear(roundRobinChannelSelector);
 				moreAvailable = !inputChannelsWithData.isEmpty();
+
+				currentChannel = getInputChannelById(roundRobinChannelSelector);
+				LOG.debug("Select to process next buffer from input channel {}.", currentChannel);
+				progressRoundRobinChannelSelector();
 			}
 
 			result = currentChannel.getNextBuffer();
@@ -760,7 +783,7 @@ public class SingleInputGate implements InputGate {
 
 		final Buffer buffer = result.get().buffer();
 		if (buffer.isBuffer()) {
-			LOG.debug("Buffer is a buffer!");
+			LOG.debug("Buffer is a buffer! {}", buffer);
 			return Optional.of(new BufferOrEvent(buffer, currentChannel.getChannelIndex(), moreAvailable));
 		}
 		else {
@@ -802,6 +825,14 @@ public class SingleInputGate implements InputGate {
 		}
 	}
 
+	private void progressRoundRobinChannelSelector() {
+		if (roundRobinChannelSelector + 1 == numberOfInputChannels)
+			roundRobinChannelSelector = 0;
+		else
+			roundRobinChannelSelector++;
+		LOG.debug("Progress RoundRobinChannelSelector to next input channel {}.", roundRobinChannelSelector);
+	}
+
 	// ------------------------------------------------------------------------
 	// Channel notifications
 	// ------------------------------------------------------------------------
@@ -833,6 +864,7 @@ public class SingleInputGate implements InputGate {
 		synchronized (inputChannelsWithData) {
 			LOG.debug("{}: Queue channel {} since it has available data.", owningTaskName, channel);
 			if (enqueuedInputChannelsWithData.get(channel.getChannelIndex())) {
+				inputChannelsWithData.notifyAll();
 				return;
 			}
 			availableChannels = inputChannelsWithData.size();
@@ -841,9 +873,7 @@ public class SingleInputGate implements InputGate {
 			inputChannelsWithData.add(channel);
 			enqueuedInputChannelsWithData.set(channel.getChannelIndex());
 
-			if (availableChannels == 0) {
-				inputChannelsWithData.notifyAll();
-			}
+			inputChannelsWithData.notifyAll();
 		}
 
 		if (availableChannels == 0) {
