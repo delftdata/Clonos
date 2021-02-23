@@ -235,6 +235,11 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 			next = receivedBuffers.poll();
 			moreAvailable = !receivedBuffers.isEmpty();
 
+			if (next == null) {
+				LOG.info("Poll received buffers returned null.");
+				return Optional.empty();
+			}
+
 			// SEEP: Deduplicate/skip buffers on recovery of upstream operator
 			if (deduplicating) {
 				numBuffersDeduplicate--;
