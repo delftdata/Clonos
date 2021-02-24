@@ -96,7 +96,7 @@ public class SourceStreamTask<OUT, SRC extends SourceFunction<OUT>, OP extends S
 			((ExternallyInducedSource<?, ?>) source).setCheckpointTrigger(triggerHook);
 		}
 
-		timerService.scheduleAtFixedRate(new CheckpointProcessingTimeCallback(), 2000L, 2000L);
+		timerService.scheduleAtFixedRate(new CheckpointProcessingTimeCallback(), 2000L, 5000L);
 	}
 
 	private class CheckpointProcessingTimeCallback implements ProcessingTimeCallback {

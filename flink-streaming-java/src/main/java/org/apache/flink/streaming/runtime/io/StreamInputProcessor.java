@@ -229,7 +229,7 @@ public class StreamInputProcessor<IN> {
 		//Checkpoints can happen at this point, before obtaining the next buffer.
 		// SEEP: take local checkpoint
 		long currentTime = System.currentTimeMillis();
-		if (currentTime - checkpointTimer > 2000L) {
+		if (currentTime - checkpointTimer > 5000L) {
 			checkpointedTask.triggerCheckpoint();
 			checkpointTimer = currentTime;
 		}
