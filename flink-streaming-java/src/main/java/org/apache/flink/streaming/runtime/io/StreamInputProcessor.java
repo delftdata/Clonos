@@ -111,10 +111,6 @@ public class StreamInputProcessor<IN> {
 
 	private boolean isFinished;
 
-	private long checkpointTimer;
-
-	private StreamTask<?,?> checkpointedTask;
-
 	@SuppressWarnings("unchecked")
 	public StreamInputProcessor(
 		SingleInputGate[] inputGates,
@@ -164,10 +160,6 @@ public class StreamInputProcessor<IN> {
 
 		this.watermarkGauge = watermarkGauge;
 		metrics.gauge("checkpointAlignmentTime", barrierHandler::getAlignmentDurationNanos);
-
-		this.checkpointedTask = checkpointedTask;
-
-		this.checkpointTimer = System.currentTimeMillis();
 	}
 
 	public boolean processInput() throws Exception {
@@ -224,14 +216,6 @@ public class StreamInputProcessor<IN> {
 					return true;
 				}
 			}
-		}
-
-		//Checkpoints can happen at this point, before obtaining the next buffer.
-		// SEEP: take local checkpoint
-		long currentTime = System.currentTimeMillis();
-		if (currentTime - checkpointTimer > 2000L) {
-			checkpointedTask.triggerCheckpoint();
-			checkpointTimer = currentTime;
 		}
 
 		final BufferOrEvent bufferOrEvent = barrierHandler.getNextNonBlocked();

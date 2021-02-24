@@ -21,6 +21,7 @@ package org.apache.flink.runtime.io.network.partition.consumer;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.core.memory.MemorySegment;
+import org.apache.flink.runtime.causal.CheckpointForceable;
 import org.apache.flink.runtime.causal.recovery.RecoveryManager;
 import org.apache.flink.runtime.deployment.InputChannelDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.InputGateDeploymentDescriptor;
@@ -201,6 +202,11 @@ public class SingleInputGate implements InputGate {
 
 	private InputChannel[] inputChannelArray;
 
+	private CheckpointForceable streamTask;
+
+	private long checkpointTimer;
+
+
 	private RecoveryManager recoveryManager;
 	public void setRecoveryManager(RecoveryManager recoveryManager){
 		this.recoveryManager = recoveryManager;
@@ -237,6 +243,9 @@ public class SingleInputGate implements InputGate {
 
 		this.taskActions = checkNotNull(taskActions);
 		this.isCreditBased = isCreditBased;
+
+		this.streamTask = null;
+		this.checkpointTimer = System.currentTimeMillis();
 
 	}
 
@@ -730,6 +739,14 @@ public class SingleInputGate implements InputGate {
 
 		requestPartitions();
 
+		//Checkpoints can happen at this point, before obtaining the next buffer.
+		// SEEP: take local checkpoint
+		long currentTime = System.currentTimeMillis();
+		if (currentTime - checkpointTimer > 2000L) {
+			streamTask.triggerCheckpoint(currentTime);
+			checkpointTimer = currentTime;
+		}
+
 		InputChannel currentChannel = null;
 		boolean moreAvailable;
 		Optional<BufferAndAvailability> result = Optional.empty();
@@ -976,6 +993,10 @@ public class SingleInputGate implements InputGate {
 			numUnknownChannels);
 
 		return inputGate;
+	}
+
+	public void setStreamTask(CheckpointForceable streamTask) {
+		this.streamTask = streamTask;
 	}
 
 	@Override
