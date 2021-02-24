@@ -198,7 +198,7 @@ public class SingleInputGate implements InputGate {
 	private CheckpointForceable streamTask;
 
 	private long checkpointTimer;
-	private long intialDelay;
+	private long initialDelay;
 
 
 	private RecoveryManager recoveryManager;
