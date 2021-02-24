@@ -198,6 +198,7 @@ public class SingleInputGate implements InputGate {
 	private CheckpointForceable streamTask;
 
 	private long checkpointTimer;
+	private long intialDelay;
 
 
 	private RecoveryManager recoveryManager;
@@ -238,6 +239,7 @@ public class SingleInputGate implements InputGate {
 
 		this.streamTask = null;
 		this.checkpointTimer = System.currentTimeMillis();
+		this.initialDelay = 20000L;
 
 	}
 
@@ -734,9 +736,10 @@ public class SingleInputGate implements InputGate {
 		//Checkpoints can happen at this point, before obtaining the next buffer.
 		// SEEP: take local checkpoint
 		long currentTime = System.currentTimeMillis();
-		if (currentTime - checkpointTimer > 2000L) {
+		if (currentTime - checkpointTimer > 5000L + initialDelay) {
 			streamTask.triggerCheckpoint(currentTime);
 			checkpointTimer = currentTime;
+			initialDelay = 0L;
 		}
 
 		InputChannel currentChannel;
