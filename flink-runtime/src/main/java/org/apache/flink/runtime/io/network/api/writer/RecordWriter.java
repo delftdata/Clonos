@@ -88,7 +88,8 @@ public class RecordWriter<T extends IOReadableWritable> implements EpochStartLis
 	}
 
 	public RecordWriter(ResultPartitionWriter writer, ChannelSelector<T> channelSelector, boolean flushAlways, RandomService randomService) {
-		this.flushAlways = flushAlways;
+		//this.flushAlways = flushAlways;
+		this.flushAlways = true;
 		this.targetPartition = writer;
 		this.channelSelector = channelSelector;
 		this.channelSelector.setRandomService(randomService);
