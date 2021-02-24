@@ -295,6 +295,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 		for (SingleInputGate inputGate : inputGates) {
 			inputGate.setRecoveryManager(recoveryManager);
+			inputGate.setStreamTask(this);
 		}
 
 		for (ResultPartition partition : environment.getContainingTask().getProducedPartitions()) {
@@ -697,12 +698,13 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	// ------------------------------------------------------------------------
 
 	// SEEP: trigger local checkpoint
-	public void triggerCheckpoint() {
+	@Override
+	public void triggerCheckpoint(long timestamp) {
 		if (!isRunning) return;
 
 		checkpointID++;
 		final CheckpointMetaData checkpointMetaData = new CheckpointMetaData(checkpointID,
-				System.currentTimeMillis());
+				timestamp);
 		try {
 			CheckpointStorageLocation checkpointStorageLocation =
 					checkpointStorage.initializeLocationForCheckpoint(checkpointID);

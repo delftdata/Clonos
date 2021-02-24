@@ -37,4 +37,6 @@ public interface CheckpointForceable {
 		CheckpointMetrics checkpointMetrics) throws Exception;
 
 	void ignoreCheckpoint(long checkpointId);
+
+	void triggerCheckpoint(long checkpointId);
 }
