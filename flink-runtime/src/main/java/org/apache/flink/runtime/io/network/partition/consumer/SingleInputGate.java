@@ -241,6 +241,15 @@ public class SingleInputGate implements InputGate {
 		this.checkpointTimer = System.currentTimeMillis();
 		this.initialDelay = 20000L;
 
+		Thread t = new Thread(() -> {
+			try {
+				Thread.sleep(100);
+				this.inputChannelsWithData.notifyAll();
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		});
+		t.start();
 	}
 
 	// ------------------------------------------------------------------------
@@ -733,14 +742,6 @@ public class SingleInputGate implements InputGate {
 
 		requestPartitions();
 
-		//Checkpoints can happen at this point, before obtaining the next buffer.
-		// SEEP: take local checkpoint
-		long currentTime = System.currentTimeMillis();
-		if (currentTime - checkpointTimer > 5000L + initialDelay) {
-			streamTask.triggerCheckpoint(currentTime);
-			checkpointTimer = currentTime;
-			initialDelay = 0L;
-		}
 
 		InputChannel currentChannel;
 		boolean moreAvailable;
@@ -759,6 +760,15 @@ public class SingleInputGate implements InputGate {
 					}
 					else {
 						return Optional.empty();
+					}
+
+					//Checkpoints can happen at this point, before obtaining the next buffer.
+					// SEEP: take local checkpoint
+					long currentTime = System.currentTimeMillis();
+					if (currentTime - checkpointTimer > 5000L + initialDelay) {
+						streamTask.triggerCheckpoint(currentTime);
+						checkpointTimer = currentTime;
+						initialDelay = 0L;
 					}
 				}
 
