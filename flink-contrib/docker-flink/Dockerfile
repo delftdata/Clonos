@@ -16,10 +16,10 @@
 # limitations under the License.
 ################################################################################
 
-FROM java:8-jre-alpine
+FROM openjdk:8-jre-alpine
 
 # Install requirements
-RUN apk add --no-cache bash snappy
+RUN apk add --no-cache bash snappy libc6-compat 
 
 # Flink environment variables
 ENV FLINK_INSTALL_PATH=/opt
@@ -31,13 +31,22 @@ ARG flink_dist=NOT_SET
 
 # Install build dependencies and flink
 ADD $flink_dist $FLINK_INSTALL_PATH
+
 RUN set -x && \
-  ln -s $FLINK_INSTALL_PATH/flink-* $FLINK_HOME && \
+  ln -s $FLINK_INSTALL_PATH/flink-* $FLINK_HOME
+
+COPY beam-jars/* /opt/flink/lib/
+
+RUN set -x && \
+  mkdir -p $FLINK_HOME/rocks/chk && \
+  mkdir -p $FLINK_HOME/rocks/tmp && \
   addgroup -S flink && adduser -D -S -H -G flink -h $FLINK_HOME flink && \
   chown -R flink:flink $FLINK_INSTALL_PATH/flink-* && \
   chown -h flink:flink $FLINK_HOME
 
 COPY docker-entrypoint.sh /
+
+ENV LD_LIBRARY_PATH=/lib64
 
 USER flink
 EXPOSE 8081 6123
